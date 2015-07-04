@@ -1,6 +1,7 @@
 set (RAPMAP_MAIN_SRCS
     RapMap.cpp
     RapMapIndexer.cpp
+    xxhash.c
 )
 
 set (RAPMAP_ALIGN_SRCS
