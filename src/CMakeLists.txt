@@ -1,6 +1,9 @@
 set (RAPMAP_MAIN_SRCS
     RapMap.cpp
     RapMapIndexer.cpp
+    RapMapUtils.cpp
+    RapMapMapper.cpp
+    intersection.cpp
     xxhash.c
 )
 
