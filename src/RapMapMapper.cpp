@@ -30,6 +30,7 @@ extern "C" {
 
 #include "PairSequenceParser.hpp"
 #include "RapMapUtils.hpp"
+#include "RapMapIndex.hpp"
 #include "ScopedTimer.hpp"
 
 // STEP 1: declare the type of file handler and the read() function  
@@ -71,7 +72,12 @@ struct QuasiAlignment {
     uint32_t fragLen;
 };
 
-void collectHits(IntervalIndex& idx, TranscriptList& tidList, PositionList& posList, std::string readStr, std::vector<QuasiAlignment>& hits) {
+void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignment>& hits) {
+
+    auto& idx = rmi.idx;
+    auto& tidList = rmi.tidList;
+    auto& posList = rmi.posList;
+
     rapmap::utils::my_mer mer;
     rapmap::utils::my_mer rcmer;
     auto k = rapmap::utils::my_mer::k();
@@ -199,11 +205,10 @@ void collectHits(IntervalIndex& idx, TranscriptList& tidList, PositionList& posL
 template <typename ParserT>//, typename CoverageCalculator>
 void processReadsKSeq(ParserT* lseq,
                       ParserT* rseq,
-                      IntervalIndex& idx,
-                      TranscriptList& tidList,
-                      PositionList& posList,
-                      std::vector<std::string>& txpNames,
+                      RapMapIndex& rmi,
                       std::mutex& iomutex) {
+
+    auto& txpNames = rmi.txpNames;
     uint32_t n{0};
     uint32_t k = rapmap::utils::my_mer::k();
     std::vector<std::string> transcriptNames;
@@ -225,8 +230,8 @@ void processReadsKSeq(ParserT* lseq,
         jointHits.clear();
         leftHits.clear();
         rightHits.clear();
-        collectHits(idx, tidList, posList, lseq->seq.s, lseq->seq.l, leftHits);
-        collectHits(idx, tidList, posList, rseq->seq.s, rseq->seq.l, rightHits);
+        collectHits(rmi, lseq->seq.s, lseq->seq.l, leftHits);
+        collectHits(rmi, rseq->seq.s, rseq->seq.l, rightHits);
 
         /*
         jointHits.resize(std::min(leftHits.size(), rightHits.size()));
@@ -287,11 +292,10 @@ void processReadsKSeq(ParserT* lseq,
 // jellyfish::sequence_list (see whole_sequence_parser.hpp).
 template <typename ParserT>//, typename CoverageCalculator>
 void processReads(ParserT* parser,
-        IntervalIndex& idx,
-        TranscriptList& tidList,
-        PositionList& posList,
-        std::vector<std::string>& txpNames,
+        RapMapIndex& rmi,
         std::mutex& iomutex) {
+
+    auto& txpNames = rmi.txpNames;
     uint32_t n{0};
     uint32_t k = rapmap::utils::my_mer::k();
     std::vector<std::string> transcriptNames;
@@ -317,8 +321,8 @@ void processReads(ParserT* parser,
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
-            collectHits(idx, tidList, posList, j->data[i].first.seq, leftHits);
-            collectHits(idx, tidList, posList, j->data[i].second.seq, rightHits);  
+            collectHits(rmi, j->data[i].first.seq, leftHits);
+            collectHits(rmi, j->data[i].second.seq, rightHits);  
             /* 
                std::set_intersection(leftHits.begin(), leftHits.end(),
                rightHits.begin(), rightHits.end(),
@@ -391,7 +395,9 @@ void processReads(ParserT* parser,
         } // for all reads in this job
         
         // DUMP OUTPUT
+        iomutex.lock();
         std::cout << sstream.str();
+        iomutex.unlock();
         sstream.str("");
 
     } // processed all reads
@@ -408,48 +414,10 @@ int rapMapMap(int argc, char* argv[]) {
     PositionList posList;
     std::vector<std::string> txpNames;
    
-    std::string intervalIdxName = indexPrefix + ".imap.bin";
-    std::string tidListName = indexPrefix + ".tid.bin";
-    std::string posListName = indexPrefix + ".pos.bin";
-    std::string txpNameFile = indexPrefix + ".txps.bin";
+    RapMapIndex rmi;
+    rmi.load(indexPrefix);
 
-    std::ifstream imapStream(intervalIdxName, std::ios::binary);
-    {
-        std::cerr << "loading interval index ";
-        ScopedTimer timer;
-        cereal::BinaryInputArchive idxArchive(imapStream);
-        idxArchive(idx);
-        std::cerr << "done ";
-    }
-    imapStream.close();
-    std::ifstream tidStream(tidListName, std::ios::binary); 
-    {
-        std::cerr << "loading transcript list ";
-        ScopedTimer timer;
-        cereal::BinaryInputArchive tidArchive(tidStream);
-        tidArchive(tidList);
-        std::cerr << "done ";
-    }
-    tidStream.close();
-    std::ifstream posStream(posListName, std::ios::binary); 
-    {
-        std::cerr << "loading position list ";
-        ScopedTimer timer;
-        cereal::BinaryInputArchive posArchive(posStream);
-        posArchive(posList);
-        std::cerr << "done ";
-    }
-    posStream.close();
-
-    std::ifstream txpNameStream(txpNameFile, std::ios::binary); 
-    {
-        std::cerr << "loading position list ";
-        ScopedTimer timer;
-        cereal::BinaryInputArchive txpNameArchive(txpNameStream);
-        txpNameArchive(txpNames);
-        std::cerr << "done ";
-    }
-    txpNameStream.close();
+    std::cerr << "\n\n\n\n";
 
     int k = std::atoi(argv[1]);
     rapmap::utils::my_mer::k(static_cast<uint32_t>(k));
@@ -458,13 +426,14 @@ int rapMapMap(int argc, char* argv[]) {
     char* reads2 = argv[3];
     char* reads[] = {reads1, reads2};
 
-
     /*
     FILE* fp1 = fopen(reads1, "r"); // STEP 2: open the file handler
     kseq_t *seq1 = kseq_init(fileno(fp1)); // STEP 3: initialize seq 
     FILE* fp2 = fopen(reads2, "r"); // STEP 2: open the file handler
     kseq_t *seq2 = kseq_init(fileno(fp2)); // STEP 3: initialize seq 
     */
+
+    int nthread = std::atoi(argv[4]);
 
     size_t maxReadGroup{1000}; // Number of reads in each "job"
     size_t concurrentFile{2}; // Number of files to read simultaneously
@@ -476,12 +445,12 @@ int rapMapMap(int argc, char* argv[]) {
     {
         ScopedTimer timer; 
         std::cerr << "mapping reads . . . ";
-        //std::vector<std::thread> threads;
-        //for (size_t i = 0; i < 10; ++i) { 
-        //    threads.emplace_back(processReads<paired_parser>, readParserPtr.get(), std::ref(idx), std::ref(occs), std::ref(iomutex));//processReads(readParserPtr.get(), idx, occs, iomutex);
-        //}
-        //for (auto& t : threads) { t.join(); }
-        processReads(readParserPtr.get(), idx, tidList, posList, txpNames, iomutex);
+        std::vector<std::thread> threads;
+        for (size_t i = 0; i < 10; ++i) { 
+            threads.emplace_back(processReads<paired_parser>, readParserPtr.get(), std::ref(rmi), std::ref(iomutex));
+        }
+        for (auto& t : threads) { t.join(); }
+        //processReads(readParserPtr.get(), rmi, iomutex);
         //processReadsKSeq(seq1, seq2, idx, occs, iomutex);
         std::cerr << "done mapping reads\n";
     }
