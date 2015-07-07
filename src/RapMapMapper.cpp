@@ -102,19 +102,12 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
         mer.shift_left(c);
         rcmer.shift_right(jellyfish::mer_dna::complement(c));
         if (i >= k) {
-            auto merIt = idx.find(mer.get_bits(0, kbits));
+            auto& searchMer = (mer < rcmer) ? mer : rcmer;
+            auto merIt = idx.find(searchMer.get_bits(0, kbits));
             if (merIt != endIt) {
                 miniLeftHits = merIt;
                 leftQueryPos = i - k;
                 break;
-            } else {
-                auto rcMerIt = idx.find(rcmer.get_bits(0, kbits));
-                if (rcMerIt != endIt) {
-                    miniLeftHits = rcMerIt;
-                    leftQueryPos = i - k;
-                    leftFwd = false;
-                    break;
-                }
             }
         } 
     }
@@ -143,18 +136,14 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
         mer.shift_right(c);
         rcmer.shift_left(jellyfish::mer_dna::complement(c));
         if (readLen - i >= k) {
-            auto merIt = idx.find(mer.get_bits(0, kbits));
+            auto& searchMer = (mer < rcmer) ? mer : rcmer;
+            auto merIt = idx.find(searchMer.get_bits(0, kbits));
             if (merIt != endIt) {
                 miniRightHits = merIt;
+                // distance from the right end
+                rightQueryPos = readLen - (i + k);
                 break;
-            } else {
-                auto rcMerIt = idx.find(rcmer.get_bits(0, kbits));
-                if (rcMerIt != endIt) {
-                    miniRightHits = rcMerIt;
-                    rightFwd = false;
-                    break;
-                }
-            }
+            } 
         } 
     }
 
@@ -184,8 +173,19 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
                     ++leftIt;
                 } else {
                     if (!(rightTxp < leftTxp)) { 
+                        auto leftPos = (0x7FFFFFFF & posList[leftIt]);
+                        auto rightPos = (0x7FFFFFFF & posList[rightIt]);
                         if (std::abs(static_cast<int32_t>(posList[leftIt]) - static_cast<int32_t>(posList[rightIt])) < maxDist) { 
-                            hits.emplace_back(leftTxp, std::min(posList[leftIt], posList[rightIt]), leftFwd, 0);
+                            auto leftPos = (0x7FFFFFFF & posList[leftIt]);
+                            auto rightPos = (0x7FFFFFFF & posList[rightIt]);
+                            bool isFwd = (posList[leftIt] >> 31);
+                            auto hitPos =  0;
+                            if (leftPos < rightPos) {
+                                hitPos =  (leftPos > leftQueryPos) ? leftPos - leftQueryPos : 0;
+                            } else {
+                                hitPos =  (rightPos > rightQueryPos) ? rightPos - rightQueryPos : 0;
+                            }
+                            hits.emplace_back(leftTxp, hitPos, isFwd, readLen);
                         }
                         ++leftIt;
                     }
@@ -195,7 +195,10 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
         } else {
             hits.reserve(miniLeftHits->second.length);
             for (auto it = leftIt; it < leftEnd; ++it) {
-                hits.emplace_back(tidList[it], posList[it], leftFwd, 0);
+                bool isFwd = (posList[it] >> 31);
+                auto leftPos = (0x7FFFFFFF & posList[it]);
+                auto hitPos = leftPos > leftQueryPos ? leftPos - leftQueryPos : 0;
+                hits.emplace_back(tidList[it], hitPos, isFwd, readLen);
             } 
         }
     }
@@ -446,7 +449,7 @@ int rapMapMap(int argc, char* argv[]) {
         ScopedTimer timer; 
         std::cerr << "mapping reads . . . ";
         std::vector<std::thread> threads;
-        for (size_t i = 0; i < 10; ++i) { 
+        for (size_t i = 0; i < nthread; ++i) { 
             threads.emplace_back(processReads<paired_parser>, readParserPtr.get(), std::ref(rmi), std::ref(iomutex));
         }
         for (auto& t : threads) { t.join(); }

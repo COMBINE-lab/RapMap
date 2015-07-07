@@ -58,11 +58,9 @@ void processTranscripts(ParserT* parser,
     btree::btree_map<uint64_t, uint32_t> cmap;
     std::vector<std::string> transcriptSeqs;
     size_t numKmers{0};
-  //size_t locRead{0};
-  //uint64_t localUpperBoundHits{0};
   while(true) {
-    typename ParserT::job j(*parser); // Get a job from the parser: a bunch of read (at most max_read_group)
-    if(j.is_empty()) break;           // If got nothing, quit
+    typename ParserT::job j(*parser); 
+    if(j.is_empty()) break;           
 
     for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
         std::string& readStr = j->data[i].seq;
@@ -81,8 +79,16 @@ void processTranscripts(ParserT* parser,
             }
             mer.shift_left(c);
             if (b >= k) {
-                auto key = mer.get_bits(0, 2*k);
-                cmap[key]++;//.emplace_back(txpIndex);
+                auto canonicalMer = mer.get_canonical();
+                auto key = canonicalMer.get_bits(0, 2*k);
+                auto it = cmap.find(key);
+                // If we found the k-mer, increment the count
+                if (it != cmap.end()) {
+                    it->second++;
+                } else { // Otherwise, add it 
+                    cmap[key]++;
+                }
+                // No matter what, our k-mer count increased
                 numKmers++;
             }
         }
@@ -93,7 +99,9 @@ void processTranscripts(ParserT* parser,
     }
   }
   
+  auto numDistinctKmers = cmap.size();
   std::cerr << "parsed " << transcriptNames.size() << " transcripts\n";
+  std::cerr << "There were " << numDistinctKmers << " distinct k-mers (canonicalized)\n";
 
   // now, we can prepare the vector for our "efficient map"
   uint32_t invalid = std::numeric_limits<uint32_t>::max();
@@ -111,10 +119,13 @@ void processTranscripts(ParserT* parser,
           int c = jellyfish::mer_dna::code(transcriptSeq[b]);
           mer.shift_left(c);
           if (b >= k) {
-              auto key = mer.get_bits(0, 2*k);
+              bool isRC{false};
+              auto canonicalMer = mer.get_canonical();
+              auto key = canonicalMer.get_bits(0, 2*k);
               auto hIt = hmap.find(key);
               // if this is the first time we have seen this k-mer
               if (hIt == hmap.end()) {
+                  isRC = (mer != canonicalMer);
                   auto occ = cmap[key];
                   hmap[key] = {intervalStart, occ};
                   intervalStart += occ;
@@ -123,7 +134,10 @@ void processTranscripts(ParserT* parser,
               auto& interval = hmap[key];
               auto currentCount = cmap[key];
               tidVec[interval.offset + currentCount] = tid; 
-              posVec[interval.offset + currentCount] = b - k;
+              auto pos = b - k;
+              // If this k-mer is from the rc of the txp, flip the high bit
+              if (isRC) { pos |= 0x80000000; } 
+              posVec[interval.offset + currentCount] = pos;
               cmap[key]++;
           }
       }
