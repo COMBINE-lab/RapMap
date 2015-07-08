@@ -32,6 +32,59 @@ namespace rapmap {
                 arch(offset, length);
             }
     };  
+
+    template <class T>
+    inline void hashCombine(std::size_t& seed, const T& v)
+    {
+            std::hash<T> hasher;
+            seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+    }
+
+    constexpr uint32_t uint32Invalid = std::numeric_limits<uint32_t>::max();
+ 
+    struct EqClass {
+        EqClass() :
+            txpListStart(uint32Invalid), txpListLen(uint32Invalid) {}
+        EqClass(uint32_t txpListStartIn, uint32_t txpListLenIn) :
+            txpListStart(txpListStartIn), txpListLen(txpListLenIn) {}
+
+        template <typename Archive>
+        void load (Archive& ar) {
+            ar(txpListStart, txpListLen);
+        }
+
+        template <typename Archive>
+        void save (Archive& ar) const {
+            ar(txpListStart, txpListLen);
+        }
+
+        uint32_t txpListStart;
+        uint32_t txpListLen;
+    };
+
+
+    struct KmerInfo {
+        KmerInfo () : eqId(0), offset(0), count(0) {}
+
+
+        KmerInfo(uint32_t eqIdIn, uint32_t offsetIn, uint32_t countIn) :
+            eqId(eqIdIn), offset(offsetIn), count(countIn) {}
+
+        template <typename Archive>
+        void load(Archive& ar) {
+            ar(eqId, offset, count); 
+        }
+
+        template <typename Archive>
+        void save(Archive& ar) const {
+            ar(eqId, offset, count); 
+        }
+        uint32_t eqId = 0;
+        uint32_t offset = 0;
+        uint32_t count = 0;
+    };
+
+
     /*
     template <typename Archive>
     void save(Archive& archive, const my_mer& mer);
