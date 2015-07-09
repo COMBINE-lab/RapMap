@@ -116,6 +116,8 @@ bool collectAllHits(uint32_t tid,
 // and the function returns false;
 bool collectHitsWithPositionConstraint(uint32_t tid,
 									   uint32_t readLen,
+									   //bool leftHitRC,
+									   //bool rightHitRC,
 									   PositionList::iterator& leftPosIt, 
 									   PositionList::iterator& rightPosIt, 
 									   uint32_t maxDist, 
