@@ -32,3 +32,4 @@ right arguments are passed in in the right order).  It currently expects only pa
 
 [tclap](http://tclap.sourceforge.net/)
 
+[cereal](https://github.com/USCiLab/cereal)
