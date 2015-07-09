@@ -28,4 +28,7 @@ RapMap is **incredibly** experimental, and the code exists primarily at this poi
 there are shortcuts and hacks abound.  For example, there is currently no proper command line parsing (it's expected that the 
 right arguments are passed in in the right order).  It currently expects only paired-end reads (this will change soon). It also means that I've not yet put much effort into size optimizaiton --- so the RapMap index on the 300M Human transcriptome with 213,121 transcripts is ~4.8G.  There are ways that this can be made **considerably** smaller, but that hasn't been the focus yet.  All of this being said --- RapMap is open to the community because I'd like feedback / help / thoughts.  So, if you're not scared off by any of the above, *dig in*!
 
+# Dependencies
+
+[tclap](http://tclap.sourceforge.net/)
 
