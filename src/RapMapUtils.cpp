@@ -4,6 +4,19 @@
 
 namespace rapmap {
     namespace utils {
+
+		// positions are stored in a packed format, where the highest
+		// 2-bits encode if this position refers to a new transcript
+		// and whether or not the k-mer from the hash matches this txp
+		// in the forward or rc direction.
+		void decodePosition(uint32_t p, int32_t& pOut, bool& newTxp, bool& isRC) {
+			uint32_t highBits = (p >> 30);
+			pOut = (p & 0x3fffffff);
+			newTxp = (highBits & 0x1);
+			isRC = (highBits & 0x2);
+		}
+
+				   				   
         // Is there a smarter way to do save / load here?
         /*
         template <typename Archive, typename MerT>

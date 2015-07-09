@@ -3,6 +3,7 @@ set (RAPMAP_MAIN_SRCS
     RapMapIndexer.cpp
     RapMapUtils.cpp
     RapMapMapper.cpp
+    RapMapFileSystem.cpp
     intersection.cpp
     xxhash.c
 )

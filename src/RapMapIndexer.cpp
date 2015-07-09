@@ -49,6 +49,14 @@ uint64_t encode(uint32_t tid, uint32_t pos) {
 constexpr uint32_t uint32HighestBitMask = 0x80000000;
 constexpr uint32_t uint32LowBitMask = 0x7FFFFFFF;
 
+constexpr uint32_t rcSetMask = 0x40000000;
+
+// marks the second highest bit
+void markRCBit(uint32_t& i) { i |= rcSetMask; }
+
+// marks the highest bit
+void markNewTxpBit(uint32_t& i) { i |= uint32HighestBitMask; }
+
 bool wasSeen(uint32_t i) { return ((i & uint32HighestBitMask) >> 31) == 1; }
 
 void markSeen(uint32_t& i) { i |= uint32HighestBitMask; }
@@ -66,8 +74,17 @@ class VectorHasher {
     }
 };
 
+struct PosInfo {
+    PosInfo(rapmap::utils::my_mer merIn, bool isRCIn, uint32_t posIn) :
+        mer(merIn), isRC(isRCIn), pos(posIn) {}
+
+    rapmap::utils::my_mer mer;
+    bool isRC;
+    uint32_t pos;
+};
+
 template <typename T>
-void printVec(std::vector<T>& vec) { 
+void printVec(std::vector<T>& vec) {
     std::cerr << "{ ";
     for (auto& e : vec) {
         std::cerr << e << ", ";
@@ -114,8 +131,8 @@ void processTranscripts(ParserT* parser,
     {
         ScopedTimer timer;
     while(true) {
-        typename ParserT::job j(*parser); 
-        if(j.is_empty()) break;           
+        typename ParserT::job j(*parser);
+        if(j.is_empty()) break;
 
         for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
             std::string& readStr = j->data[i].seq;
@@ -130,13 +147,13 @@ void processTranscripts(ParserT* parser,
                 if (jellyfish::mer_dna::not_dna(c)) {
                     char rbase = bases[dis(eng)];
                     c = jellyfish::mer_dna::code(rbase);
-                    readStr[b] = rbase; 
+                    readStr[b] = rbase;
                 }
                 mer.shift_left(c);
                 if (b >= k) {
                     auto canonicalMer = mer.get_canonical();
                     auto key = canonicalMer.get_bits(0, 2*k);
-                    
+
                     uint64_t val;
                     start = std::chrono::high_resolution_clock::now();
                     auto found = merIntMap.ary()->get_val_for_key(canonicalMer, &val);
@@ -149,8 +166,8 @@ void processTranscripts(ParserT* parser,
                     } else {
                         kmerInfos[val].count++;
                     }
-                    
-                   /* 
+
+                   /*
                     start = std::chrono::high_resolution_clock::now();
                     auto it = cmap.find(key);
                     end = std::chrono::high_resolution_clock::now();
@@ -158,7 +175,7 @@ void processTranscripts(ParserT* parser,
                     // If we found the k-mer, increment the count
                     if (it != cmap.end()) {
                         it->second.count++;
-                    } else { // Otherwise, add it 
+                    } else { // Otherwise, add it
                         cmap[key] = KmerInfo(txpIndex, 0, 1);
                     }
                     */
@@ -172,6 +189,7 @@ void processTranscripts(ParserT* parser,
             }
         }
     }
+        std::cerr << "\n";
     }
     size_t vsize{0};
     using eager_iterator = MerMapT::array::eager_iterator;
@@ -180,13 +198,13 @@ void processTranscripts(ParserT* parser,
     }
 
     constexpr uint32_t uint32Invalid = std::numeric_limits<uint32_t>::max();
-    std::vector<uint32_t> transcriptIDs(vsize, uint32Invalid);   
+    std::vector<uint32_t> transcriptIDs(vsize, uint32Invalid);
 
     std::cerr << "\n[Step 2 of 4] : marking k-mers\n";
     // Compute the equivalence classes for the k-mers
     uint32_t offset{0};
     uint32_t transcriptID{0};
-    {    
+    {
     ScopedTimer timer;
     for (auto& transcriptSeq : transcriptSeqs) {
         auto readLen = transcriptSeq.length();
@@ -198,7 +216,7 @@ void processTranscripts(ParserT* parser,
             mer.shift_left(c);
             if (b >= k) {
                 auto canonicalMer = mer.get_canonical();
-                
+
                 uint64_t kmerIndex;
                 auto found = merIntMap.ary()->get_val_for_key(canonicalMer, &kmerIndex);
                 // Should ALWAYS find the key
@@ -208,19 +226,19 @@ void processTranscripts(ParserT* parser,
                 // use the highest bit to mark if we've seen this k-mer yet or not
                 // If we haven't seen this k-mer yet
                 if (!wasSeen(v.count)) {
-                   // Where we start looking for transcripts for this k-mer 
+                   // Where we start looking for transcripts for this k-mer
                    v.offset = offset;
                    offset += v.count;
                    // The number of transcripts we've currently added
                    v.count = 0;
                    markSeen(v.count);
-                } 
+                }
 
                 // Note: We allow duplicate transcripts here --- they will always be adjacent
                 auto lastOffset = v.offset + unmarked(v.count);
-                transcriptIDs[lastOffset+1] = transcriptID;
+                transcriptIDs[lastOffset] = transcriptID;
                 v.count++;
-            } 
+            }
         }
         if (transcriptID % 10000 == 0) {
             std::cerr << "\r\rmarked kmers for " << transcriptID << " transcripts";
@@ -232,12 +250,12 @@ void processTranscripts(ParserT* parser,
     //printVec(transcriptIDs);
     // A hash to quickly and easily determine the equivalence classes
     std::unordered_map<std::vector<uint32_t>, uint32_t, VectorHasher> eqClassMap;
-    // Holds the members of each equivalence class in the order in which classes 
+    // Holds the members of each equivalence class in the order in which classes
     // are assigned.  The final size should be \sum_{c \in eqclasses} |c|.
     std::vector<uint32_t> eqClassLabelVec;
     // Holds pointer information about a k-mer's equivalence class.
     // Specifically, where the label for the eq can be found
-    // as an offset and length into eqClassTxpVec, and where the 
+    // as an offset and length into eqClassTxpVec, and where the
     std::vector<rapmap::utils::EqClass> eqClasses;
 
     uint32_t eqClassVecSize{0};
@@ -247,31 +265,36 @@ void processTranscripts(ParserT* parser,
         ScopedTimer timer;
         const auto ary = merIntMap.ary();
         auto hashIt = ary->iterator_all<eager_iterator>();
+        std::vector<uint32_t> tlist;
         while (hashIt.next()) {
             auto& key = hashIt.key();
-            auto& val = kmerInfos[hashIt.val()]; 
+            auto& val = kmerInfos[hashIt.val()];
             //auto& val = kv.second;
             auto offset = val.offset;
             auto num = unmarked(val.count);
 
-            std::vector<uint32_t> tlist;
+	    tlist.clear();
             tlist.reserve(num);
 
             for (size_t idx = offset; idx < offset + num; ++idx) {
                 auto tid = transcriptIDs[idx];
-                // We won't consider duplicate transcript IDs when building the 
-                // equivalence classes 
+                // We won't consider duplicate transcript IDs when building the
+                // equivalence classes
+		//
+		if (tlist.size() > 0 and tlist.back() > tid) {
+		    std::cerr << "Non monotnoically increasing transcript id!\n";
+		}
                 if (tlist.size() == 0 or tlist.back() != tid) {
                     tlist.push_back(tid);
                 }
             }
-            //printVec(tlist);
+
             auto eqIt = eqClassMap.find(tlist);
             uint32_t eqId{0};
             // If there is no such equivalence class yet, then add it
-            if (eqIt == eqClassMap.end()) { 
+            if (eqIt == eqClassMap.end()) {
                 eqId = eqClassMap.size();
-                eqClassMap[tlist] = eqId; 
+                eqClassMap[tlist] = eqId;
                 // The label of this eq-class starts at eqClassVecSize and is
                 // tlist.size() elements long.
                 eqClasses.emplace_back(eqClassVecSize, tlist.size());
@@ -280,7 +303,7 @@ void processTranscripts(ParserT* parser,
                 eqClassVecSize += tlist.size();
             } else {
                 eqId = eqIt->second;
-            } 
+            }
             // Set the equivalence class ID here for this transcript
             val.eqId = eqId;
             val.count = 0;
@@ -290,34 +313,61 @@ void processTranscripts(ParserT* parser,
     // reuse the transcript IDs vector
     auto& posVec = transcriptIDs;
 
+
     std::cerr << "\n[Step 4 of 4] : finalizing index\n";
     transcriptID = 0;
     {
         ScopedTimer finalizeTimer;
+        // Local vector to hold k-mers per transcript
+        std::vector<PosInfo> posInfos;
         for (auto& transcriptSeq : transcriptSeqs) {
+            posInfos.clear();
             auto readLen = transcriptSeq.length();
             rapmap::utils::my_mer mer;
             mer.polyT();
-            std::vector<KmerBinT> kmers;
             for (size_t b = 0; b < readLen; ++b) {
                 int c = jellyfish::mer_dna::code(transcriptSeq[b]);
                 mer.shift_left(c);
                 if (b >= k) {
                     auto canonicalMer = mer.get_canonical();
-                    
+                    bool isRC = (mer != canonicalMer);
+                    // Record the position of this k-mer in the transcript
+                    auto pos = b - k;
+                    posInfos.emplace_back(canonicalMer, isRC, pos);
+                }
+            }
+            std::sort(posInfos.begin(), posInfos.end(),
+                      [] (PosInfo& a, PosInfo& b) -> bool {
+                        if (a.mer < b.mer) {
+                            return true;
+                        } else if (a.mer == b.mer) {
+                            return a.pos < b.pos;
+                        } else {
+                            return false;
+                        }
+                      });
+
+            PosInfo* prev{nullptr};
+            for (auto& posInfo : posInfos) {
                     uint64_t kmerIndex;
-                    auto found = merIntMap.ary()->get_val_for_key(canonicalMer, &kmerIndex);
+                    auto found = merIntMap.ary()->get_val_for_key(
+                                    posInfo.mer, &kmerIndex);
                     // Should ALWAYS find the key
                     assert(found);
                     auto& val = kmerInfos[kmerIndex];
-                    auto offset = val.offset + val.count; 
-                    // Record the position of this k-mer in the transcript
-                    auto pos = b - k;
-                    // The k-mer appears at position pos in the transcript
-                    transcriptIDs[offset] = pos;
+                    auto offset = val.offset + val.count;
+                    // Check if this offset is for a new transcript in the
+                    // position list and, if so, set the proper flag bit.
+                    if ( prev == nullptr or prev->mer != posInfo.mer) {
+                        markNewTxpBit(posInfo.pos);
+                    }
+                    if ( posInfo.isRC ) {
+                        markRCBit(posInfo.pos);
+                    }
+
+                    transcriptIDs[offset] = posInfo.pos;
                     ++val.count;
                 }
-            }
 
             if (transcriptID % 10000 == 0) {
                 std::cerr << "\r\rfinalized kmers for " << transcriptID << " transcripts";
@@ -328,7 +378,7 @@ void processTranscripts(ParserT* parser,
     }
 
     // merIntMap --- jf hash
-    // kmerInfos --- info for each k-mer 
+    // kmerInfos --- info for each k-mer
     // std::vector<uint32_t> eqClassLabelVec --- transcripts for each eq class
     // std::vector<EqClass> eqClasses --- where each eq class starts and ends
     // transcriptIDs --- position vec
@@ -342,8 +392,8 @@ void processTranscripts(ParserT* parser,
 
     JFFileHeader fh;
     fh.fill_standard();
-    fh.update_from_ary(*merIntMap.ary()); 
-    JFDumper dumper(sizeof(uint32_t), k*2, 4, (outputDir + "rapidx.jfhash").c_str(), &fh);
+    fh.update_from_ary(*merIntMap.ary());
+    JFDumper dumper(8*sizeof(uint32_t), k*2, 4, (outputDir + "rapidx.jfhash").c_str(), &fh);
     dumper.one_file(true);
     dumper.zero_array(false);
     dumper.dump(merIntMap.ary());
@@ -375,9 +425,16 @@ void processTranscripts(ParserT* parser,
       posArchive(transcriptIDs);
   }
   posStream.close();
-    std::cerr << "transcriptIDs.size() = " << transcriptIDs.size() << "\n";
-    std::cerr << "parsed " << transcriptNames.size() << " transcripts\n";
-    std::cerr << "There were " << numDistinctKmers << " distinct k-mers (canonicalized)\n";
+  std::ofstream txpStream(outputDir + "txpnames.bin", std::ios::binary);
+  {
+    cereal::BinaryOutputArchive txpArchive(txpStream);
+    txpArchive(transcriptNames);
+  }
+  txpStream.close();
+
+  std::cerr << "transcriptIDs.size() = " << transcriptIDs.size() << "\n";
+  std::cerr << "parsed " << transcriptNames.size() << " transcripts\n";
+  std::cerr << "There were " << numDistinctKmers << " distinct k-mers (canonicalized)\n";
 
   // Data structure idea:
   // k-mer => equivalence class, position array offset
@@ -403,13 +460,13 @@ void processTranscripts(ParserT* parser,
                 auto key = canonicalMer.get_bits(0, 2*k);
                 // push back the *ID* of this k-mer
                 kmers.push_back(cmap[key]);
-            } 
+            }
         }
         partitioner.splitWith(kmers, tid);
         ++transcriptID;
     }
     // Compact the partition IDs
-    partitioner.relabel();    
+    partitioner.relabel();
     */
 
     /*
@@ -443,10 +500,10 @@ void processTranscripts(ParserT* parser,
               }
               auto& interval = hmap[key];
               auto currentCount = cmap[key];
-              tidVec[interval.offset + currentCount] = tid; 
+              tidVec[interval.offset + currentCount] = tid;
               auto pos = b - k;
               // If this k-mer is from the rc of the txp, flip the high bit
-              if (isRC) { pos |= 0x80000000; } 
+              if (isRC) { pos |= 0x80000000; }
               posVec[interval.offset + currentCount] = pos;
               cmap[key]++;
           }
@@ -513,8 +570,8 @@ int rapMapIndex(int argc, char* argv[]) {
 	indexDir += '/';
     }
     bool dirExists = rapmap::fs::DirExists(indexDir.c_str());
-    bool dirIsFile = rapmap::fs::FileExists(indexDir.c_str()); 
-    if (dirIsFile) { 
+    bool dirIsFile = rapmap::fs::FileExists(indexDir.c_str());
+    if (dirIsFile) {
         std::cerr << "The requested index directory already exists as a file.";
         std::exit(1);
     }

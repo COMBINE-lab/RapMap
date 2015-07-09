@@ -23,6 +23,9 @@
 #include "jellyfish/mer_dna.hpp"
 #include "jellyfish/stream_manager.hpp"
 #include "jellyfish/whole_sequence_parser.hpp"
+#include "jellyfish/hash_counter.hpp"
+
+#include "tclap/CmdLine.h"
 
 extern "C" {
 #include "kseq.h"
@@ -31,9 +34,10 @@ extern "C" {
 #include "PairSequenceParser.hpp"
 #include "RapMapUtils.hpp"
 #include "RapMapIndex.hpp"
+#include "RapMapFileSystem.hpp"
 #include "ScopedTimer.hpp"
 
-// STEP 1: declare the type of file handler and the read() function  
+// STEP 1: declare the type of file handler and the read() function
 KSEQ_INIT(int, read)
 
 using paired_parser = pair_sequence_parser<char**>;
@@ -47,6 +51,9 @@ using PositionList = std::vector<uint32_t>;
 using KmerIndex = std::unordered_map<uint64_t, TranscriptList, rapmap::utils::KmerKeyHasher>;
 using IntervalIndex = std::unordered_map<uint64_t, rapmap::utils::KmerInterval, rapmap::utils::KmerKeyHasher>;
 using OccList = std::vector<uint64_t>;
+using KmerInfoList = std::vector<rapmap::utils::KmerInfo>;
+using EqClassList = std::vector<rapmap::utils::EqClass>;
+using EqClassLabelVec = std::vector<uint32_t>;
 
 constexpr char bases[] = {'A', 'C', 'G', 'T'};
 
@@ -72,10 +79,119 @@ struct QuasiAlignment {
     uint32_t fragLen;
 };
 
-void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignment>& hits) {
+// Walks the position list for this transcript and puts all hits 
+// on the back of the hits vector.
+bool collectAllHits(uint32_t tid,
+					uint32_t readLen,
+					PositionList::iterator& posIt, 
+					std::vector<QuasiAlignment>& hits){	
+	bool foundHit{false};
+	bool canAdvance = true;
+	bool nextTxp;
+	bool isRC;
+	int32_t pos;
 
+	rapmap::utils::decodePosition(*posIt, pos, nextTxp, isRC); 
+
+	// The first position should always be a nextTxp, but we don't care 
+	nextTxp = false;
+
+	while (canAdvance) {
+		hits.emplace_back(tid, pos, isRC, readLen); 
+		foundHit = true;
+		// If we can't advance the left but we need to, we're done
+		if (!canAdvance) { return foundHit; }
+		++posIt;
+		rapmap::utils::decodePosition(*posIt, pos, nextTxp, isRC); 
+		canAdvance = !nextTxp;
+	}
+	return foundHit;
+}
+	
+
+// Finds if there are positions within a specific transcript given by 
+// leftPosIt and rightPosIt within the distance constraints such that 
+// abs(leftPos - rightPos) < maxDist.  If so, the hit is appended to 
+// hits and the function returns true --- otherwise hits remains unchanged
+// and the function returns false;
+bool collectHitsWithPositionConstraint(uint32_t tid,
+									   uint32_t readLen,
+									   PositionList::iterator& leftPosIt, 
+									   PositionList::iterator& rightPosIt, 
+									   uint32_t maxDist, 
+									   std::vector<QuasiAlignment>& hits,
+									   bool verbose = false){	
+	bool foundHit{false};
+	bool canAdvance = true, canAdvanceLeft = true, canAdvanceRight = true;
+	bool nextTxpLeft, nextTxpRight;
+	bool isRCLeft, isRCRight;
+	int32_t leftPos, rightPos;
+
+	rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft); 
+	rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight); 
+
+	// The first position should always be a nextTxp, but we don't care 
+	nextTxpLeft = false;
+	nextTxpRight = false;
+
+	if (verbose) {
+		std::cerr << "called collectHitsWithPositionConstraint for tid = " << tid << "\n";
+	}
+
+	while (canAdvance) {
+		int32_t posDiff = rightPos - leftPos;
+		uint32_t fragLen = std::abs(posDiff);
+		// We found a hit (potentially -- what do we do about RCs here?)
+		// I think we need to know if the k-mer from the *read* was fw or rc
+		if (fragLen < maxDist) {
+			hits.emplace_back(tid, std::min(leftPos, rightPos), isRCLeft, readLen); 
+			return true;
+		} 
+		// rightPos >= leftPos (advance left)
+		if (posDiff > 0) {
+			// If we can't advance the left but we need to, we're done
+			if (!canAdvanceLeft) { return foundHit; }
+			++leftPosIt;
+			rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft); 
+			canAdvanceLeft = !nextTxpLeft;
+		} else if (posDiff < 0) { // leftPos > rightPos (advance right)
+			// If we can't advance the right but we need to, we're done
+			if (!canAdvanceRight) { return foundHit; }
+			++rightPosIt;
+			rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight); 
+			canAdvanceRight = !nextTxpRight;
+		} else { // posDiff == 0 (advance both)
+			// If we can't advance the left but we need to, we're done
+			if (!canAdvanceLeft) { return foundHit; }
+			++leftPosIt;
+			rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft); 
+			canAdvanceLeft = !nextTxpLeft;
+			// If we can't advance the right but we need to, we're done
+			if (!canAdvanceRight) { return foundHit; }
+			++rightPosIt;
+			rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight); 
+			canAdvanceRight = !nextTxpRight;
+		}
+
+		// We can continue if we can advance either the left or right position
+		canAdvance = (canAdvanceLeft or canAdvanceRight);
+	}
+	return foundHit;
+	
+}
+
+void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignment>& hits, bool verbose = false) {
+
+    /*
     auto& idx = rmi.idx;
     auto& tidList = rmi.tidList;
+    auto& posList = rmi.posList;
+    */
+
+    auto jfhash = rmi.merHash->ary();
+    auto& kmerInfos = rmi.kmerInfos;
+    auto& eqClasses = rmi.eqClassList;
+    auto& eqClassLabels = rmi.eqLabelList;
     auto& posList = rmi.posList;
 
     rapmap::utils::my_mer mer;
@@ -84,15 +200,23 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
     auto kbits = 2*k;
     auto readLen = readStr.length();
     uint32_t maxDist = static_cast<uint32_t>(readLen) * 1.25;
-    auto endIt = idx.end();
     size_t leftQueryPos = std::numeric_limits<size_t>::max();
     size_t rightQueryPos = std::numeric_limits<size_t>::max();
 
-    IntervalIndex::iterator miniLeftHits = endIt;
-    IntervalIndex::iterator miniRightHits = endIt;
+    auto endIt = kmerInfos.end();
+
+    //IntervalIndex::iterator miniLeftHits = endIt;
+    //IntervalIndex::iterator miniRightHits = endIt;
+
+    KmerInfoList::iterator miniLeftHits = endIt;
+    KmerInfoList::iterator miniRightHits = endIt;
 
     bool leftFwd{true};
     bool rightFwd{true};
+
+    uint64_t merID;
+    size_t kID;
+    rapmap::utils::my_mer searchBuffer;
 
     for (size_t i = 0; i < readLen; ++i) {
         int c = jellyfish::mer_dna::code(readStr[i]);
@@ -103,31 +227,35 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
         rcmer.shift_right(jellyfish::mer_dna::complement(c));
         if (i >= k) {
             auto& searchMer = (mer < rcmer) ? mer : rcmer;
-            auto merIt = idx.find(searchMer.get_bits(0, kbits));
-            if (merIt != endIt) {
-                miniLeftHits = merIt;
+            bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+                                                    searchBuffer, &kID);
+            //auto merIt = idx.find(searchMer.get_bits(0, kbits));
+            //if (merIt != endIt) {
+            if (foundMer) {
+                miniLeftHits = kmerInfos.begin() + merID;
                 leftQueryPos = i - k;
                 break;
             }
-        } 
+        }
     }
-    
+
     // found no hits in the entire read
-    if (miniLeftHits == endIt) { return; } 
-    /* Super-fast
-       else {
-        auto leftIt = miniLeftHits->second.offset;
-        auto leftLen = miniLeftHits->second.length;
-        auto leftEnd = leftIt + leftLen; 
-        for (auto it = leftIt; it < leftEnd; ++it) {
-            hits.push_back(tidList[it]);
-        } 
-        return;
-    }
-    */
+    if (miniLeftHits == endIt) { return; }
 
+    /* Super-fast & dirty --- just map the read based on the 
+	 * first k-mer hit
+	 */
+    //   else {
+    //    auto leftIt = miniLeftHits->second.offset;
+    //    auto leftLen = miniLeftHits->second.length;
+    //    auto leftEnd = leftIt + leftLen;
+    //    for (auto it = leftIt; it < leftEnd; ++it) {
+    //        hits.push_back(tidList[it]);
+    //    }
+    //    return;
+    //}
 
-    // Start from the right and move left
+    // Now, start from the right and move left
     for (size_t i = readLen - 1; i >= leftQueryPos; --i) {
         int c = jellyfish::mer_dna::code(readStr[i]);
         if (jellyfish::mer_dna::not_dna(c)) {
@@ -137,72 +265,101 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
         rcmer.shift_left(jellyfish::mer_dna::complement(c));
         if (readLen - i >= k) {
             auto& searchMer = (mer < rcmer) ? mer : rcmer;
-            auto merIt = idx.find(searchMer.get_bits(0, kbits));
-            if (merIt != endIt) {
-                miniRightHits = merIt;
+            bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+                                                    searchBuffer, &kID);
+            if (foundMer) {
+                miniRightHits = kmerInfos.begin() + merID;
                 // distance from the right end
                 rightQueryPos = readLen - (i + k);
                 break;
-            } 
-        } 
-    }
-
-    // Take the intersection of these two hit lists
-    // Adapted from : http://en.cppreference.com/w/cpp/algorithm/set_intersection
-    if (miniLeftHits != endIt) {
-        auto leftIt = miniLeftHits->second.offset;
-        auto leftLen = miniLeftHits->second.length;
-        auto leftEnd = leftIt + leftLen; 
-        if (miniRightHits != endIt) {
-            auto rightIt = miniRightHits->second.offset; 
-            auto rightLen = miniRightHits->second.length; 
-            auto rightEnd = rightIt + rightLen; 
-            /*
-            hits.resize(std::min(leftLen, rightLen));
-            size_t intSize = SIMDCompressionLib::SIMDintersection(&tidList[leftIt], leftLen,
-                                                                  &tidList[rightIt], rightLen,
-                                                                  &hits[0]);
-            hits.resize(intSize);                                          
-            */
-            hits.reserve(std::min(leftLen, rightLen));
-            uint32_t leftTxp, rightTxp;
-            while (leftIt != leftEnd && rightIt != rightEnd) {
-                leftTxp = tidList[leftIt];
-                rightTxp = tidList[rightIt];
-                if (leftTxp < rightTxp) { 
-                    ++leftIt;
-                } else {
-                    if (!(rightTxp < leftTxp)) { 
-                        auto leftPos = (0x7FFFFFFF & posList[leftIt]);
-                        auto rightPos = (0x7FFFFFFF & posList[rightIt]);
-                        if (std::abs(static_cast<int32_t>(posList[leftIt]) - static_cast<int32_t>(posList[rightIt])) < maxDist) { 
-                            auto leftPos = (0x7FFFFFFF & posList[leftIt]);
-                            auto rightPos = (0x7FFFFFFF & posList[rightIt]);
-                            bool isFwd = (posList[leftIt] >> 31);
-                            auto hitPos =  0;
-                            if (leftPos < rightPos) {
-                                hitPos =  (leftPos > leftQueryPos) ? leftPos - leftQueryPos : 0;
-                            } else {
-                                hitPos =  (rightPos > rightQueryPos) ? rightPos - rightQueryPos : 0;
-                            }
-                            hits.emplace_back(leftTxp, hitPos, isFwd, readLen);
-                        }
-                        ++leftIt;
-                    }
-                    ++rightIt;
-                }
             }
-        } else {
-            hits.reserve(miniLeftHits->second.length);
-            for (auto it = leftIt; it < leftEnd; ++it) {
-                bool isFwd = (posList[it] >> 31);
-                auto leftPos = (0x7FFFFFFF & posList[it]);
-                auto hitPos = leftPos > leftQueryPos ? leftPos - leftQueryPos : 0;
-                hits.emplace_back(tidList[it], hitPos, isFwd, readLen);
-            } 
         }
     }
-    
+
+	// Take the intersection of these two hit lists
+	// Adapted from : http://en.cppreference.com/w/cpp/algorithm/set_intersection
+	if (miniLeftHits != endIt) {
+		// Equiv. class for left hit
+		auto& eqClassLeft = eqClasses[miniLeftHits->eqId];
+		// Iterator into, length of and end of the positon list 
+		auto leftPosIt = posList.begin() + miniLeftHits->offset;
+		auto leftPosLen = miniLeftHits->count;
+		auto leftPosEnd = leftPosIt + leftPosLen;
+		// Iterator into, length of and end of the transcript list
+		auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
+		auto leftTxpListLen = eqClassLeft.txpListLen;
+		auto leftTxpEnd = leftTxpIt + leftTxpListLen; 
+
+		if (verbose) { 
+			std::cerr << "leftList = {";
+			auto it = leftTxpIt;
+			while (it < leftTxpEnd) {
+				std::cerr << *it << ", "; 
+				++it;
+			}
+			std::cerr << "}\n\n";
+		}
+
+		if (miniRightHits != endIt) {
+			// Equiv. class for right hit
+			auto& eqClassRight = eqClasses[miniRightHits->eqId];
+			// Iterator into, length of and end of the positon list 
+			auto rightPosIt = posList.begin() + miniRightHits->offset;
+			auto rightPosLen = miniRightHits->count;
+			auto rightPosEnd = rightPosIt + rightPosLen;
+			// Iterator into, length of and end of the transcript list
+			auto rightTxpIt = eqClassLabels.begin() + eqClassRight.txpListStart;
+			auto rightTxpListLen = eqClassRight.txpListLen;
+			auto rightTxpEnd = rightTxpIt + rightTxpListLen; 
+
+			if (verbose) { 
+				std::cerr << "rightList = {";
+				auto it = rightTxpIt;
+				while (it < rightTxpEnd) {
+					std::cerr << *it << ", "; 
+					++it;
+				}
+				std::cerr << "}\n\n";
+			}
+			//hits.resize(std::min(leftLen, rightLen));
+			//size_t intSize = SIMDCompressionLib::SIMDintersection(&tidList[leftIt], leftLen,
+			//                                                      &tidList[rightIt], rightLen,
+			//                                                      &hits[0]);
+			//hits.resize(intSize);
+
+
+			hits.reserve(std::min(leftPosLen, rightPosLen));
+			uint32_t leftTxp, rightTxp;
+			while (leftTxpIt != leftTxpEnd and rightTxpIt != rightTxpEnd) {
+				// Get the current transcript ID for the left and right eq class
+				leftTxp = *leftTxpIt;
+				rightTxp = *rightTxpIt;
+				// If we need to advance the left txp, do it
+				if (leftTxp < rightTxp) {
+					if (verbose) std::cerr << "leftTxp = " << leftTxp << ", rightTxp = " << rightTxp << "\n";
+					++leftTxpIt;
+				} else {
+					if (verbose) std::cerr << "leftTxp = " << leftTxp << ", rightTxp = " << rightTxp << "\n";
+					// If the transcripts are equal (i.e. leftTxp >= rightTxp and !(rightTxp < leftTxp))
+					// Then see if there are any hits here.
+					if (!(rightTxp < leftTxp)) {
+
+						if (verbose) std::cerr << "they are the same!\n";
+						collectHitsWithPositionConstraint(leftTxp, readLen, leftPosIt, rightPosIt, maxDist, hits, verbose);	
+						++leftTxpIt;
+					}
+					++rightTxpIt;
+				}
+			}
+		} else { // If we had only hits from the left, then map this as an orphan
+			if (verbose) { std::cerr << "listLen = " << miniLeftHits->count << "\n"; }
+			hits.reserve(miniLeftHits->count);
+			for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
+				collectAllHits(*it, readLen, leftPosIt, hits);	
+			}
+		}
+	}
+
 }
 
 template <typename ParserT>//, typename CoverageCalculator>
@@ -221,9 +378,9 @@ void processReadsKSeq(ParserT* lseq,
     std::vector<QuasiAlignment> leftHits;
     std::vector<QuasiAlignment> rightHits;
     std::vector<std::vector<QuasiAlignment>> jointHits(batchSize);
-   
+
    int l1=0;
-   int l2=0; 
+   int l2=0;
    size_t peHits{0};
    size_t seHits{0};
    size_t readLen{0};
@@ -241,28 +398,28 @@ void processReadsKSeq(ParserT* lseq,
         size_t intSize = SIMDCompressionLib::SIMDintersection(&leftHits[0], leftHits.size(),
                                                               &rightHits[0], rightHits.size(),
                                                               &jointHits[0]);
-        jointHits.resize(intSize);                                          
+        jointHits.resize(intSize);
         std::set_intersection(leftHits.begin(), leftHits.end(),
                               rightHits.begin(), rightHits.end(),
                               std::back_inserter(jointHits));
         */
 
         if (leftHits.size() > 0) {
-            auto leftIt = leftHits.begin(); 
-            auto leftEnd = leftHits.end(); 
+            auto leftIt = leftHits.begin();
+            auto leftEnd = leftHits.end();
             auto leftLen = std::distance(leftIt, leftEnd);
             if (rightHits.size() > 0) {
-                auto rightIt = rightHits.begin(); 
-                auto rightEnd = rightHits.end(); 
+                auto rightIt = rightHits.begin();
+                auto rightEnd = rightHits.end();
                 auto rightLen = std::distance(rightIt, rightEnd);
                 jointHits.reserve(std::min(leftLen, rightLen));
                 while (leftIt != leftEnd && rightIt != rightEnd) {
-                    uint32_t leftTxp = leftIt->tid; 
-                    uint32_t rightTxp = rightIt->tid; 
-                    if (leftTxp < rightTxp) { 
+                    uint32_t leftTxp = leftIt->tid;
+                    uint32_t rightTxp = rightIt->tid;
+                    if (leftTxp < rightTxp) {
                         ++leftIt;
                     } else {
-                        if (!(rightTxp < leftTxp)) { 
+                        if (!(rightTxp < leftTxp)) {
                             auto startPos = std::min(leftIt->pos, rightIt->pos);
                             auto endPos = std::max(leftIt->pos, rightIt->pos) + readLen;
                             jointHits.emplace_back(leftTxp, startPos, leftIt->fwd, static_cast<uint16_t>(endPos - startPos));
@@ -271,14 +428,14 @@ void processReadsKSeq(ParserT* lseq,
                         ++rightIt;
                     }
                 }
-            } 
+            }
         }
 
-        if (jointHits.size() > 0) { 
+        if (jointHits.size() > 0) {
            peHits += jointHits.size();
         } else if (leftHits.size() + rightHits.size() > 0) {
            seHits += leftHits.size() + rightHits.size();
-        } 
+        }
 
         if (n % 1000000 == 0) {
             std::cerr << "saw " << n << " reads\n";
@@ -324,36 +481,52 @@ void processReads(ParserT* parser,
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
+			if (j->data[i].first.header == "18:55269924-55664787C:ENST00000626595:2962:833:532:831/1") {
+            collectHits(rmi, j->data[i].first.seq, leftHits, true);
+        	collectHits(rmi, j->data[i].second.seq, rightHits, true);
+			} else {
             collectHits(rmi, j->data[i].first.seq, leftHits);
-            collectHits(rmi, j->data[i].second.seq, rightHits);  
-            /* 
+        	collectHits(rmi, j->data[i].second.seq, rightHits);
+			}
+            /*
                std::set_intersection(leftHits.begin(), leftHits.end(),
                rightHits.begin(), rightHits.end(),
                std::back_inserter(jointHits));
                */
 
+			if (j->data[i].first.header == "18:55269924-55664787C:ENST00000626595:2962:833:532:831/1") {
+				std::cerr << "Left hits for " << j->data[i].first.header  << "\n=================\n";
+				for (auto& h : leftHits) { 
+					std::cerr << h.tid << '\t' << h.pos << '\t' << h.fragLen << '\n';
+				}
+				std::cerr << "Right hits for " << j->data[i].first.header  << "\n================\n";
+				for (auto& h : rightHits) { 
+					std::cerr << h.tid << '\t' << h.pos << '\t' << h.fragLen << '\n';
+				}
+			}
+
             if (leftHits.size() > 0) {
-                auto leftIt = leftHits.begin(); 
-                auto leftEnd = leftHits.end(); 
+                auto leftIt = leftHits.begin();
+                auto leftEnd = leftHits.end();
                 auto leftLen = std::distance(leftIt, leftEnd);
                 if (rightHits.size() > 0) {
-                    auto rightIt = rightHits.begin(); 
-                    auto rightEnd = rightHits.end(); 
+                    auto rightIt = rightHits.begin();
+                    auto rightEnd = rightHits.end();
                     auto rightLen = std::distance(rightIt, rightEnd);
                     size_t numHits{0};
                     jointHits.reserve(std::min(leftLen, rightLen));
                     while (leftIt != leftEnd && rightIt != rightEnd) {
-                        uint32_t leftTxp = leftIt->tid; 
-                        uint32_t rightTxp = rightIt->tid; 
-                        if (leftTxp < rightTxp) { 
+                        uint32_t leftTxp = leftIt->tid;
+                        uint32_t rightTxp = rightIt->tid;
+                        if (leftTxp < rightTxp) {
                             ++leftIt;
                         } else {
-                            if (!(rightTxp < leftTxp)) { 
+                            if (!(rightTxp < leftTxp)) {
                                 uint32_t startPos = std::min(leftIt->pos, rightIt->pos);
                                 uint32_t endPos = std::max(leftIt->pos, rightIt->pos) + readLen;
                                 uint32_t fragLen = endPos - startPos;
                                 jointHits.emplace_back(leftTxp, startPos, leftIt->fwd, fragLen);
-                                nonDegenerateHits += (fragLen > 0) ? 1 : 0; 
+                                nonDegenerateHits += (fragLen > 0) ? 1 : 0;
                                 ++numHits;
                                 if (numHits > maxNumHits) { break; }
                                 ++leftIt;
@@ -362,28 +535,28 @@ void processReads(ParserT* parser,
                         }
                     }
                     if (numHits > maxNumHits) { jointHits.clear(); }
-                } 
+                }
             }
 
-            if (jointHits.size() > 0) { 
+            if (jointHits.size() > 0) {
                 peHits += jointHits.size();
             } else if (leftHits.size() + rightHits.size() > 0) {
                 auto numHits = leftHits.size() + rightHits.size();
-                seHits += numHits; 
+                seHits += numHits;
                 if (numHits < maxNumHits) {
-                    jointHits.insert(jointHits.end(), 
+                    jointHits.insert(jointHits.end(),
                             std::make_move_iterator(leftHits.begin()),
                             std::make_move_iterator(leftHits.end()));
-                    jointHits.insert(jointHits.end(), 
+                    jointHits.insert(jointHits.end(),
                             std::make_move_iterator(rightHits.begin()),
                             std::make_move_iterator(rightHits.end()));
                 }
-            } 
+            }
 
             if (jointHits.size() > 0) {
-                sstream << "[AG]\t" << jointHits.size() << '\t' << j->data[i].first.header << '\n';
+                sstream << "[AG]\t" << jointHits.size() << '\t' << j->data[i].first.header << '\t' << j->data[i].second.header << '\n';
                 for (const auto& qa : jointHits) {
-                    sstream << txpNames[qa.tid] << '\t' << qa.pos << '\t' << qa.fwd << '\t' << qa.fragLen << '\n'; 
+                    sstream << txpNames[qa.tid] << '\t' << qa.pos << '\t' << qa.fwd << '\t' << qa.fragLen << '\n';
                 }
             }
 
@@ -396,7 +569,7 @@ void processReads(ParserT* parser,
                 std::cerr << "# se hits per read = " << seHits / static_cast<float>(n) << "\n";
             }
         } // for all reads in this job
-        
+
         // DUMP OUTPUT
         iomutex.lock();
         std::cout << sstream.str();
@@ -409,47 +582,54 @@ void processReads(ParserT* parser,
 
 
 int rapMapMap(int argc, char* argv[]) {
-    std::cerr << "mapping\n";
+    std::cerr << "RapMap Mapper\n";
+
+    TCLAP::CmdLine cmd("RapMap Mapper");
+    TCLAP::ValueArg<std::string> index("i", "index", "The location where the index should be written", true, "", "path");
+    TCLAP::ValueArg<std::string> read1("1", "leftMates", "The location of the left paired-end reads", true, "", "path");
+    TCLAP::ValueArg<std::string> read2("2", "rightMates", "The location of the right paired-end reads", true, "", "path");
+    TCLAP::ValueArg<uint32_t> numThreads("t", "numThreads", "Number of threads to use", false, 1, "positive integer");
+    cmd.add(index);
+    cmd.add(read1);
+    cmd.add(read2);
+
+    cmd.parse(argc, argv);
+
+
     // stupid parsing for now
-    std::string indexPrefix(argv[0]);
-    IntervalIndex idx;
-    TranscriptList tidList;
-    PositionList posList;
-    std::vector<std::string> txpNames;
-   
+    std::string indexPrefix(index.getValue());
+    if (indexPrefix.back() != '/') {
+        indexPrefix += "/";
+    }
+
+    if (!rapmap::fs::DirExists(indexPrefix.c_str())) {
+        std::cerr << "It looks like the index you provided ["
+                  << indexPrefix << "] doesn't exist\n";
+        std::exit(1);
+    }
+
     RapMapIndex rmi;
     rmi.load(indexPrefix);
 
     std::cerr << "\n\n\n\n";
 
-    int k = std::atoi(argv[1]);
-    rapmap::utils::my_mer::k(static_cast<uint32_t>(k));
-
-    char* reads1 = argv[2];
-    char* reads2 = argv[3];
+    char* reads1 = const_cast<char*>(read1.getValue().c_str());
+    char* reads2 = const_cast<char*>(read2.getValue().c_str());
     char* reads[] = {reads1, reads2};
 
-    /*
-    FILE* fp1 = fopen(reads1, "r"); // STEP 2: open the file handler
-    kseq_t *seq1 = kseq_init(fileno(fp1)); // STEP 3: initialize seq 
-    FILE* fp2 = fopen(reads2, "r"); // STEP 2: open the file handler
-    kseq_t *seq2 = kseq_init(fileno(fp2)); // STEP 3: initialize seq 
-    */
-
-    int nthread = std::atoi(argv[4]);
+    uint32_t nthread = numThreads.getValue();
 
     size_t maxReadGroup{1000}; // Number of reads in each "job"
     size_t concurrentFile{2}; // Number of files to read simultaneously
-    size_t numThreads{2};
     std::unique_ptr<paired_parser> readParserPtr{nullptr};
-    readParserPtr.reset(new paired_parser(4 * numThreads, maxReadGroup,
+    readParserPtr.reset(new paired_parser(4 * nthread, maxReadGroup,
                                          concurrentFile, reads, reads + 2));
     std::mutex iomutex;
     {
-        ScopedTimer timer; 
+        ScopedTimer timer;
         std::cerr << "mapping reads . . . ";
         std::vector<std::thread> threads;
-        for (size_t i = 0; i < nthread; ++i) { 
+        for (size_t i = 0; i < nthread; ++i) {
             threads.emplace_back(processReads<paired_parser>, readParserPtr.get(), std::ref(rmi), std::ref(iomutex));
         }
         for (auto& t : threads) { t.join(); }

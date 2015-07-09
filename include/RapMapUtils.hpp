@@ -8,6 +8,15 @@ namespace rapmap {
 
     using my_mer = jellyfish::mer_dna_ns::mer_base_static<uint64_t, 1>;
 
+    constexpr uint32_t newTxpSetMask = 0x80000000;
+    constexpr uint32_t rcSetMask = 0x40000000;
+
+    // positions are stored in a packed format, where the highest
+    // 2-bits encode if this position refers to a new transcript
+    // and whether or not the k-mer from the hash matches this txp
+    // in the forward or rc direction.
+    void decodePosition(uint32_t p, int32_t& pOut, bool& newTxp, bool& isRC);
+
     class KmerKeyHasher {
         public:
             size_t operator()(const uint64_t& m) const {
@@ -20,7 +29,7 @@ namespace rapmap {
 
     struct KmerInterval {
         uint64_t offset;
-        uint32_t length; 
+        uint32_t length;
 
         template <typename Archive>
             void save(Archive& arch) const {
@@ -31,7 +40,7 @@ namespace rapmap {
             void load(Archive& arch) {
                 arch(offset, length);
             }
-    };  
+    };
 
     template <class T>
     inline void hashCombine(std::size_t& seed, const T& v)
@@ -41,7 +50,7 @@ namespace rapmap {
     }
 
     constexpr uint32_t uint32Invalid = std::numeric_limits<uint32_t>::max();
- 
+
     struct EqClass {
         EqClass() :
             txpListStart(uint32Invalid), txpListLen(uint32Invalid) {}
@@ -72,12 +81,12 @@ namespace rapmap {
 
         template <typename Archive>
         void load(Archive& ar) {
-            ar(eqId, offset, count); 
+            ar(eqId, offset, count);
         }
 
         template <typename Archive>
         void save(Archive& ar) const {
-            ar(eqId, offset, count); 
+            ar(eqId, offset, count);
         }
         uint32_t eqId = 0;
         uint32_t offset = 0;
