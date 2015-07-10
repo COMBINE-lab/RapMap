@@ -82,34 +82,55 @@ struct QuasiAlignment {
     bool isPaired;
 };
 
+// Wraps the standard iterator of the Position list to provide
+// some convenient functionality.  In the future, maybe this
+// should be a proper iterator adaptor.
+struct PositionListHelper{
+	using PLIt = PositionList::iterator;
+
+	PositionListHelper(PLIt itIn, PLIt endIn) :
+		it_(itIn), end_(endIn) {}
+        // The underlying iterator shouldn't be advanced further	
+	inline bool done() { return it_ == end_; }
+
+	// The actual postion on the transcript
+	int32_t pos() { return static_cast<int32_t>((*it_) & 0x3FFFFFFF); }
+
+	// True if the position encoded was on the reverse complement strand
+	// of the reference transcript, false otherwise.
+	bool isRC() { return (*it_) & 0x80000000; }
+
+	// True if we hit the position list for a new transcript, false otherwise
+	bool isNewTxp() { return (*it_) & 0x40000000; }
+
+	PLIt it_; // The underlying iterator
+	PLIt end_; // The end of the container 
+};
+
 // Walks the position list for this transcript and puts all hits
 // on the back of the hits vector.
 bool collectAllHits(uint32_t tid,
-					uint32_t readLen,
-                    bool hitRC,
-					PositionList::iterator& posIt,
-                    PositionList::iterator posEnd,
-					std::vector<QuasiAlignment>& hits){
+		uint32_t readLen,
+		bool hitRC,
+		PositionListHelper& ph,
+		std::vector<QuasiAlignment>& hits){
 	bool foundHit{false};
-	bool canAdvance = posIt < posEnd;
-	bool nextTxp;
+	bool canAdvance = !ph.done(); 
+	// The first position should always be a nextTxp, but we don't care
+	bool nextTxp{false};
 	bool isRC;
 	int32_t pos;
 
-	rapmap::utils::decodePosition(*posIt, pos, nextTxp, isRC);
-
-	// The first position should always be a nextTxp, but we don't care
-	nextTxp = false;
-
 	while (canAdvance) {
-        bool isReadRC = (isRC != hitRC);
+		isRC = ph.isRC();
+		pos = ph.pos();
+		bool isReadRC = (isRC != hitRC);
 		hits.emplace_back(tid, pos, isReadRC, readLen);
 		foundHit = true;
 		// If we can't advance the left but we need to, we're done
 		if (!canAdvance) { return foundHit; }
-		++posIt;
-		rapmap::utils::decodePosition(*posIt, pos, nextTxp, isRC);
-		canAdvance = !nextTxp;
+		++(ph.it_);
+		canAdvance = !ph.isNewTxp();
 	}
 	return foundHit;
 }
@@ -121,72 +142,65 @@ bool collectAllHits(uint32_t tid,
 // hits and the function returns true --- otherwise hits remains unchanged
 // and the function returns false;
 bool collectHitsWithPositionConstraint(uint32_t tid,
-									   uint32_t readLen,
-									   bool leftHitRC,
-									   bool rightHitRC,
-                                       uint32_t leftQueryPos,
-                                       uint32_t rightQueryPos,
-									   PositionList::iterator& leftPosIt,
-									   PositionList::iterator& rightPosIt,
-                                       PositionList::iterator posEnd,
-									   uint32_t maxDist,
-									   std::vector<QuasiAlignment>& hits){
+		uint32_t readLen,
+		bool leftHitRC,
+		bool rightHitRC,
+		uint32_t leftQueryPos,
+		uint32_t rightQueryPos,
+		PositionListHelper& leftPH, 
+		PositionListHelper& rightPH, 
+		//PositionList::iterator& leftPosIt,
+		//PositionList::iterator& rightPosIt,
+		//PositionList::iterator posEnd,
+		uint32_t maxDist,
+		std::vector<QuasiAlignment>& hits){
 	bool foundHit{false};
-	bool canAdvance = true, canAdvanceLeft = leftPosIt < posEnd, canAdvanceRight = rightPosIt < posEnd;
-	bool nextTxpLeft, nextTxpRight;
+	bool canAdvance = true, canAdvanceLeft = !leftPH.done(), canAdvanceRight = !rightPH.done();
+	// The first position should always be a nextTxp, but we don't care
+	bool nextTxpLeft = false, nextTxpRight = false;
 	bool isRCLeft, isRCRight;
 	// True if the k-mer thinks the read is from fwd, false if from rc
 	bool readStrandLeft, readStrandRight;
 	int32_t leftPos, rightPos;
 
-	rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft);
-	rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight);
-
-	//readStrandLeft = (leftHitRC == isRCLeft);
-	//readStrandRight = (rightHitRC == isRCRight);
-
-	// The first position should always be a nextTxp, but we don't care
-	nextTxpLeft = false;
-	nextTxpRight = false;
-    //size_t i = 0;
 	while (canAdvance) {
-        //std::cerr << "advanced " << i++ << "\n";
+		leftPos = leftPH.pos();
+		rightPos = rightPH.pos();
+		isRCLeft = leftPH.isRC();
+		isRCRight = rightPH.isRC();
+
 		int32_t posDiff = rightPos - leftPos;
 		uint32_t fragLen = std::abs(posDiff);
 		// We found a hit (potentially -- what do we do about RCs here?)
 		// I think we need to know if the k-mer from the *read* was fw or rc
 		if (fragLen < maxDist) {
-            bool isRC = (leftHitRC != isRCLeft);
-            int32_t hitPos = (leftPos < rightPos) ? leftPos - leftQueryPos :
-                                                 rightPos - rightQueryPos;
+			bool isRC = (leftHitRC != isRCLeft);
+			int32_t hitPos = (leftPos < rightPos) ? leftPos - leftQueryPos :
+								rightPos - rightQueryPos;
 			hits.emplace_back(tid, hitPos, isRC, readLen);
 			foundHit = true;
-            break;
+			break;
 		}
 		// rightPos >= leftPos (advance left)
 		if (posDiff > 0) {
 			// If we can't advance the left but we need to, we're done
 			if (!canAdvanceLeft) { break; }
-			++leftPosIt;
-			rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft);
-			canAdvanceLeft = !nextTxpLeft and (leftPosIt < posEnd);
+			++(leftPH.it_);
+			canAdvanceLeft = !(leftPH.isNewTxp() or leftPH.done()); 
 		} else if (posDiff < 0) { // leftPos > rightPos (advance right)
 			// If we can't advance the right but we need to, we're done
 			if (!canAdvanceRight) { break; }
-			++rightPosIt;
-			rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight);
-			canAdvanceRight = !nextTxpRight and (rightPosIt < posEnd);
+			++(rightPH.it_);
+			canAdvanceRight = !(rightPH.isNewTxp() or rightPH.done());
 		} else { // posDiff == 0 (advance both)
 			// If we can't advance the left but we need to, we're done
 			if (!canAdvanceLeft) { break; }
-			++leftPosIt;
-			rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft);
-			canAdvanceLeft = !nextTxpLeft and (leftPosIt < posEnd);
+			++(leftPH.it_);
+			canAdvanceLeft = !(leftPH.isNewTxp() or leftPH.done()); 
 			// If we can't advance the right but we need to, we're done
 			if (!canAdvanceRight) { break; }
-			++rightPosIt;
-			rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight);
-			canAdvanceRight = !nextTxpRight and (rightPosIt < posEnd);
+			++(rightPH.it_);
+			canAdvanceRight = !(rightPH.isNewTxp() or rightPH.done());
 		}
 
 		// We can continue if we can advance either the left or right position
@@ -195,17 +209,15 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 
     // Advance left and right until next txp
     while ( canAdvanceLeft ) {
-        ++leftPosIt;
-        rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft);
-        canAdvanceLeft = !nextTxpLeft and (leftPosIt < posEnd);
+	    ++(leftPH.it_);
+	    canAdvanceLeft = !(leftPH.isNewTxp() or leftPH.done()); 
     }
     while ( canAdvanceRight ) {
-        ++rightPosIt;
-        rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight);
-        canAdvanceRight = !nextTxpRight and (rightPosIt < posEnd);
+	    ++(rightPH.it_);
+	    canAdvanceRight = !(rightPH.isNewTxp() or rightPH.done());
     }
 
-	return foundHit;
+    return foundHit;
 
 }
 
@@ -317,6 +329,7 @@ void collectHits(RapMapIndex& rmi, std::string& readStr,
 		auto leftPosIt = posList.begin() + miniLeftHits->offset;
 		auto leftPosLen = miniLeftHits->count;
 		auto leftPosEnd = leftPosIt + leftPosLen;
+		PositionListHelper leftPosHelper(leftPosIt, leftPosEnd); 
 		// Iterator into, length of and end of the transcript list
 		auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
 		auto leftTxpListLen = eqClassLeft.txpListLen;
@@ -329,6 +342,7 @@ void collectHits(RapMapIndex& rmi, std::string& readStr,
 			auto rightPosIt = posList.begin() + miniRightHits->offset;
 			auto rightPosLen = miniRightHits->count;
 			auto rightPosEnd = rightPosIt + rightPosLen;
+			PositionListHelper rightPosHelper(rightPosIt, rightPosEnd); 
 			// Iterator into, length of and end of the transcript list
 			auto rightTxpIt = eqClassLabels.begin() + eqClassRight.txpListStart;
 			auto rightTxpListLen = eqClassRight.txpListLen;
@@ -357,8 +371,7 @@ void collectHits(RapMapIndex& rmi, std::string& readStr,
 						collectHitsWithPositionConstraint(leftTxp, readLen,
                                                           leftHitRC, rightHitRC,
                                                           leftQueryPos, rightQueryPos,
-                                                          leftPosIt, rightPosIt,
-                                                          posEnd,
+							  leftPosHelper, rightPosHelper,
                                                           maxDist, hits);
 						++leftTxpIt;
 					}
@@ -368,7 +381,7 @@ void collectHits(RapMapIndex& rmi, std::string& readStr,
 		} else { // If we had only hits from the left, then map this as an orphan
 			hits.reserve(miniLeftHits->count);
 			for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
-				collectAllHits(*it, readLen, leftHitRC, leftPosIt, posEnd, hits);
+				collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits);
 			}
 		}
 	}
