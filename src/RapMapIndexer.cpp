@@ -339,7 +339,7 @@ void processTranscripts(ParserT* parser,
                 }
             }
             std::sort(posInfos.begin(), posInfos.end(),
-                      [] (PosInfo& a, PosInfo& b) -> bool {
+                      [] (const PosInfo& a, const PosInfo& b) -> bool {
                         if (a.mer < b.mer) {
                             return true;
                         } else if (a.mer == b.mer) {
