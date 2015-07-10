@@ -8,6 +8,8 @@
 #include "jellyfish/file_header.hpp"
 #include "jellyfish/binary_dumper.hpp"
 #include "jellyfish/hash_counter.hpp"
+#include "jellyfish/mapped_file.hpp"
+#include "JFRaw.hpp"
 
 #include <cereal/types/unordered_map.hpp>
 #include <cereal/types/vector.hpp>
@@ -21,7 +23,8 @@ class RapMapIndex {
     using PositionList = std::vector<uint32_t>;
     using KmerInfoList = std::vector<rapmap::utils::KmerInfo>;
     using EqClassList = std::vector<rapmap::utils::EqClass>;
-    using MerMapT = jellyfish::cooperative::hash_counter<rapmap::utils::my_mer>;
+    //using MerMapT = jellyfish::cooperative::hash_counter<rapmap::utils::my_mer>;
+    using FileMerArray = jellyfish::large_hash::array_raw<rapmap::utils::my_mer>;
     using EqClassLabelVec = std::vector<uint32_t>;
 
     //using KmerIndex = std::unordered_map<uint64_t, TranscriptList, rapmap::utils::KmerKeyHasher>;
@@ -54,21 +57,31 @@ class RapMapIndex {
             size_t numDistinctKmers = kmerInfos.size();
 
             {
-            jellyfish::file_header bh;
             std::ifstream bis(jfFileName);
-            bh.read(bis);
+            const SpecialHeader bh(bis);
+            mapFile.reset(new jellyfish::mapped_file(jfFileName.c_str()));
+            const size_t sizeInBytes = bh.size_bytes();
+
             // Load the hash from file
             std::cerr << "Header format = " << bh.format() << "\n";
             std::cerr << "# distinct k-mers = " << numDistinctKmers << "\n";
             std::cerr << "jf hash key len = " << bh.key_len() << "\n";
             std::cerr << "jf counter len = " << bh.counter_len() << "\n";
-            std::cerr << "jf max reprobe offset = " << bh.max_reprobe_offset() << "\n";
+            std::cerr << "jf max reprobe offset = " << bh.max_reprobe() << "\n";
+            std::cerr << "Size in bytes = " << sizeInBytes << "\n";
             std::cerr << std::endl;
 
-
+            merHash.reset( new FileMerArray(mapFile->base() + bh.offset(),
+                                            sizeInBytes,
+                                            bh.size(),
+                                            bh.key_len(),
+                                            bh.counter_len(),
+                                            bh.max_reprobe(),
+                                            bh.matrix()));
             // Set the key size
             rapmap::utils::my_mer::k(bh.key_len() / 2);
 
+            /*
             // Yes --- this is a leak.  For some reason we get a segfault
             // when this goes away?!?
             jellyfish::binary_reader<rapmap::utils::my_mer, uint32_t>* br =
@@ -90,6 +103,7 @@ class RapMapIndex {
                 ++i;
             }
             std::cerr << "\n";
+            */
             //std::swap(kmerHash, merHash);
             //bis.close();
             // Done loading JF hash?
@@ -137,7 +151,8 @@ class RapMapIndex {
 
     public:
     KmerInfoList kmerInfos;
-    std::unique_ptr<MerMapT> merHash{nullptr};
+    std::unique_ptr<jellyfish::mapped_file> mapFile{nullptr};
+    std::unique_ptr<FileMerArray> merHash{nullptr};
     EqClassList eqClassList;
     EqClassLabelVec eqLabelList;
     PositionList posList;

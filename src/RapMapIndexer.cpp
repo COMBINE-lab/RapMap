@@ -30,6 +30,8 @@
 #include "jellyfish/hash_counter.hpp"
 #include "jellyfish/mer_overlap_sequence_parser.hpp"
 #include "jellyfish/mer_iterator.hpp"
+#include "JFRaw.hpp"
+
 #include <chrono>
 
 using stream_manager = jellyfish::stream_manager<std::vector<std::string>::const_iterator>;
@@ -390,13 +392,23 @@ void processTranscripts(ParserT* parser,
     //typedef jellyfish::binary_reader<mer_dna, uint64_t> reader;
     //typedef jellyfish::binary_query_base<mer_dna, uint64_t> query;
 
-    JFFileHeader fh;
-    fh.fill_standard();
+    SpecialHeader fh;
+    //JFFileHeader fh;
     fh.update_from_ary(*merIntMap.ary());
-    JFDumper dumper(8*sizeof(uint32_t), k*2, 4, (outputDir + "rapidx.jfhash").c_str(), &fh);
-    dumper.one_file(true);
-    dumper.zero_array(false);
-    dumper.dump(merIntMap.ary());
+    fh.canonical(true);
+    fh.format("gus/special"); // Thanks, Guillaume
+    fh.counter_len(8*sizeof(uint32_t)); // size of counter in bits
+    fh.fill_standard();
+    //fh.set_cmdline(argc, argv);
+
+    //JFDumper dumper(8*sizeof(uint32_t), k*2, 4, (outputDir + "rapidx.jfhash").c_str(), &fh);
+    //dumper.one_file(true);
+    //dumper.zero_array(false);
+    //dumper.dump(merIntMap.ary());
+    std::ofstream jfos(outputDir + "rapidx.jfhash");
+    fh.write(jfos);
+    merIntMap.ary()->write(jfos);
+    jfos.close();
 
     std::ofstream kinfoStream(outputDir + "kinfo.bin", std::ios::binary);
     {

@@ -79,66 +79,68 @@ struct QuasiAlignment {
     uint32_t fragLen;
 };
 
-// Walks the position list for this transcript and puts all hits 
+// Walks the position list for this transcript and puts all hits
 // on the back of the hits vector.
 bool collectAllHits(uint32_t tid,
 					uint32_t readLen,
-					PositionList::iterator& posIt, 
-					std::vector<QuasiAlignment>& hits){	
+                    bool hitRC,
+					PositionList::iterator& posIt,
+					std::vector<QuasiAlignment>& hits){
 	bool foundHit{false};
 	bool canAdvance = true;
 	bool nextTxp;
 	bool isRC;
 	int32_t pos;
 
-	rapmap::utils::decodePosition(*posIt, pos, nextTxp, isRC); 
+	rapmap::utils::decodePosition(*posIt, pos, nextTxp, isRC);
 
-	// The first position should always be a nextTxp, but we don't care 
+	// The first position should always be a nextTxp, but we don't care
 	nextTxp = false;
 
 	while (canAdvance) {
-		hits.emplace_back(tid, pos, isRC, readLen); 
+        bool isReadRC = (isRC != hitRC);
+		hits.emplace_back(tid, pos, isReadRC, readLen);
 		foundHit = true;
 		// If we can't advance the left but we need to, we're done
 		if (!canAdvance) { return foundHit; }
 		++posIt;
-		rapmap::utils::decodePosition(*posIt, pos, nextTxp, isRC); 
+		rapmap::utils::decodePosition(*posIt, pos, nextTxp, isRC);
 		canAdvance = !nextTxp;
 	}
 	return foundHit;
 }
-	
 
-// Finds if there are positions within a specific transcript given by 
-// leftPosIt and rightPosIt within the distance constraints such that 
-// abs(leftPos - rightPos) < maxDist.  If so, the hit is appended to 
+
+// Finds if there are positions within a specific transcript given by
+// leftPosIt and rightPosIt within the distance constraints such that
+// abs(leftPos - rightPos) < maxDist.  If so, the hit is appended to
 // hits and the function returns true --- otherwise hits remains unchanged
 // and the function returns false;
 bool collectHitsWithPositionConstraint(uint32_t tid,
 									   uint32_t readLen,
-									   //bool leftHitRC,
-									   //bool rightHitRC,
-									   PositionList::iterator& leftPosIt, 
-									   PositionList::iterator& rightPosIt, 
-									   uint32_t maxDist, 
-									   std::vector<QuasiAlignment>& hits,
-									   bool verbose = false){	
+									   bool leftHitRC,
+									   bool rightHitRC,
+									   PositionList::iterator& leftPosIt,
+									   PositionList::iterator& rightPosIt,
+									   uint32_t maxDist,
+									   std::vector<QuasiAlignment>& hits){
 	bool foundHit{false};
 	bool canAdvance = true, canAdvanceLeft = true, canAdvanceRight = true;
 	bool nextTxpLeft, nextTxpRight;
 	bool isRCLeft, isRCRight;
+	// True if the k-mer thinks the read is from fwd, false if from rc
+	bool readStrandLeft, readStrandRight;
 	int32_t leftPos, rightPos;
 
-	rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft); 
-	rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight); 
+	rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft);
+	rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight);
 
-	// The first position should always be a nextTxp, but we don't care 
+	//readStrandLeft = (leftHitRC == isRCLeft);
+	//readStrandRight = (rightHitRC == isRCRight);
+
+	// The first position should always be a nextTxp, but we don't care
 	nextTxpLeft = false;
 	nextTxpRight = false;
-
-	if (verbose) {
-		std::cerr << "called collectHitsWithPositionConstraint for tid = " << tid << "\n";
-	}
 
 	while (canAdvance) {
 		int32_t posDiff = rightPos - leftPos;
@@ -146,32 +148,33 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 		// We found a hit (potentially -- what do we do about RCs here?)
 		// I think we need to know if the k-mer from the *read* was fw or rc
 		if (fragLen < maxDist) {
-			hits.emplace_back(tid, std::min(leftPos, rightPos), isRCLeft, readLen); 
+            bool isRC = (leftHitRC != isRCLeft);
+			hits.emplace_back(tid, std::min(leftPos, rightPos), isRC, readLen);
 			return true;
-		} 
+		}
 		// rightPos >= leftPos (advance left)
 		if (posDiff > 0) {
 			// If we can't advance the left but we need to, we're done
 			if (!canAdvanceLeft) { return foundHit; }
 			++leftPosIt;
-			rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft); 
+			rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft);
 			canAdvanceLeft = !nextTxpLeft;
 		} else if (posDiff < 0) { // leftPos > rightPos (advance right)
 			// If we can't advance the right but we need to, we're done
 			if (!canAdvanceRight) { return foundHit; }
 			++rightPosIt;
-			rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight); 
+			rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight);
 			canAdvanceRight = !nextTxpRight;
 		} else { // posDiff == 0 (advance both)
 			// If we can't advance the left but we need to, we're done
 			if (!canAdvanceLeft) { return foundHit; }
 			++leftPosIt;
-			rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft); 
+			rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft);
 			canAdvanceLeft = !nextTxpLeft;
 			// If we can't advance the right but we need to, we're done
 			if (!canAdvanceRight) { return foundHit; }
 			++rightPosIt;
-			rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight); 
+			rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight);
 			canAdvanceRight = !nextTxpRight;
 		}
 
@@ -179,10 +182,11 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 		canAdvance = (canAdvanceLeft or canAdvanceRight);
 	}
 	return foundHit;
-	
+
 }
 
-void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignment>& hits, bool verbose = false) {
+void collectHits(RapMapIndex& rmi, std::string& readStr,
+                 std::vector<QuasiAlignment>& hits) {
 
     /*
     auto& idx = rmi.idx;
@@ -190,7 +194,7 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
     auto& posList = rmi.posList;
     */
 
-    auto jfhash = rmi.merHash->ary();
+    auto jfhash = rmi.merHash.get();
     auto& kmerInfos = rmi.kmerInfos;
     auto& eqClasses = rmi.eqClassList;
     auto& eqClassLabels = rmi.eqLabelList;
@@ -204,6 +208,7 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
     uint32_t maxDist = static_cast<uint32_t>(readLen) * 1.25;
     size_t leftQueryPos = std::numeric_limits<size_t>::max();
     size_t rightQueryPos = std::numeric_limits<size_t>::max();
+    bool leftHitRC = false, rightHitRC = false;
 
     auto endIt = kmerInfos.end();
 
@@ -231,10 +236,9 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
             auto& searchMer = (mer < rcmer) ? mer : rcmer;
             bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
                                                     searchBuffer, &kID);
-            //auto merIt = idx.find(searchMer.get_bits(0, kbits));
-            //if (merIt != endIt) {
             if (foundMer) {
                 miniLeftHits = kmerInfos.begin() + merID;
+                leftHitRC = (searchMer == rcmer);
                 leftQueryPos = i - k;
                 break;
             }
@@ -244,7 +248,7 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
     // found no hits in the entire read
     if (miniLeftHits == endIt) { return; }
 
-    /* Super-fast & dirty --- just map the read based on the 
+    /* Super-fast & dirty --- just map the read based on the
 	 * first k-mer hit
 	 */
     //   else {
@@ -271,6 +275,7 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
                                                     searchBuffer, &kID);
             if (foundMer) {
                 miniRightHits = kmerInfos.begin() + merID;
+                rightHitRC = (searchMer == rcmer);
                 // distance from the right end
                 rightQueryPos = readLen - (i + k);
                 break;
@@ -283,46 +288,27 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
 	if (miniLeftHits != endIt) {
 		// Equiv. class for left hit
 		auto& eqClassLeft = eqClasses[miniLeftHits->eqId];
-		// Iterator into, length of and end of the positon list 
+		// Iterator into, length of and end of the positon list
 		auto leftPosIt = posList.begin() + miniLeftHits->offset;
 		auto leftPosLen = miniLeftHits->count;
 		auto leftPosEnd = leftPosIt + leftPosLen;
 		// Iterator into, length of and end of the transcript list
 		auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
 		auto leftTxpListLen = eqClassLeft.txpListLen;
-		auto leftTxpEnd = leftTxpIt + leftTxpListLen; 
-
-		if (verbose) { 
-			std::cerr << "leftList = {";
-			auto it = leftTxpIt;
-			while (it < leftTxpEnd) {
-				std::cerr << *it << ", "; 
-				++it;
-			}
-			std::cerr << "}\n\n";
-		}
+		auto leftTxpEnd = leftTxpIt + leftTxpListLen;
 
 		if (miniRightHits != endIt) {
 			// Equiv. class for right hit
 			auto& eqClassRight = eqClasses[miniRightHits->eqId];
-			// Iterator into, length of and end of the positon list 
+			// Iterator into, length of and end of the positon list
 			auto rightPosIt = posList.begin() + miniRightHits->offset;
 			auto rightPosLen = miniRightHits->count;
 			auto rightPosEnd = rightPosIt + rightPosLen;
 			// Iterator into, length of and end of the transcript list
 			auto rightTxpIt = eqClassLabels.begin() + eqClassRight.txpListStart;
 			auto rightTxpListLen = eqClassRight.txpListLen;
-			auto rightTxpEnd = rightTxpIt + rightTxpListLen; 
+			auto rightTxpEnd = rightTxpIt + rightTxpListLen;
 
-			if (verbose) { 
-				std::cerr << "rightList = {";
-				auto it = rightTxpIt;
-				while (it < rightTxpEnd) {
-					std::cerr << *it << ", "; 
-					++it;
-				}
-				std::cerr << "}\n\n";
-			}
 			//hits.resize(std::min(leftLen, rightLen));
 			//size_t intSize = SIMDCompressionLib::SIMDintersection(&tidList[leftIt], leftLen,
 			//                                                      &tidList[rightIt], rightLen,
@@ -338,26 +324,24 @@ void collectHits(RapMapIndex& rmi, std::string& readStr, std::vector<QuasiAlignm
 				rightTxp = *rightTxpIt;
 				// If we need to advance the left txp, do it
 				if (leftTxp < rightTxp) {
-					if (verbose) std::cerr << "leftTxp = " << leftTxp << ", rightTxp = " << rightTxp << "\n";
 					++leftTxpIt;
 				} else {
-					if (verbose) std::cerr << "leftTxp = " << leftTxp << ", rightTxp = " << rightTxp << "\n";
 					// If the transcripts are equal (i.e. leftTxp >= rightTxp and !(rightTxp < leftTxp))
 					// Then see if there are any hits here.
 					if (!(rightTxp < leftTxp)) {
-
-						if (verbose) std::cerr << "they are the same!\n";
-						collectHitsWithPositionConstraint(leftTxp, readLen, leftPosIt, rightPosIt, maxDist, hits, verbose);	
+						collectHitsWithPositionConstraint(leftTxp, readLen,
+                                                          leftHitRC, rightHitRC,
+                                                          leftPosIt, rightPosIt,
+                                                          maxDist, hits);
 						++leftTxpIt;
 					}
 					++rightTxpIt;
 				}
 			}
 		} else { // If we had only hits from the left, then map this as an orphan
-			if (verbose) { std::cerr << "listLen = " << miniLeftHits->count << "\n"; }
 			hits.reserve(miniLeftHits->count);
 			for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
-				collectAllHits(*it, readLen, leftPosIt, hits);	
+				collectAllHits(*it, readLen, leftHitRC, leftPosIt, hits);
 			}
 		}
 	}
@@ -483,30 +467,13 @@ void processReads(ParserT* parser,
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
-			if (j->data[i].first.header == "18:55269924-55664787C:ENST00000626595:2962:833:532:831/1") {
-            collectHits(rmi, j->data[i].first.seq, leftHits, true);
-        	collectHits(rmi, j->data[i].second.seq, rightHits, true);
-			} else {
             collectHits(rmi, j->data[i].first.seq, leftHits);
         	collectHits(rmi, j->data[i].second.seq, rightHits);
-			}
             /*
                std::set_intersection(leftHits.begin(), leftHits.end(),
                rightHits.begin(), rightHits.end(),
                std::back_inserter(jointHits));
                */
-
-			if (j->data[i].first.header == "18:55269924-55664787C:ENST00000626595:2962:833:532:831/1") {
-				std::cerr << "Left hits for " << j->data[i].first.header  << "\n=================\n";
-				for (auto& h : leftHits) { 
-					std::cerr << h.tid << '\t' << h.pos << '\t' << h.fragLen << '\n';
-				}
-				std::cerr << "Right hits for " << j->data[i].first.header  << "\n================\n";
-				for (auto& h : rightHits) { 
-					std::cerr << h.tid << '\t' << h.pos << '\t' << h.fragLen << '\n';
-				}
-			}
-
             if (leftHits.size() > 0) {
                 auto leftIt = leftHits.begin();
                 auto leftEnd = leftHits.end();
@@ -594,6 +561,7 @@ int rapMapMap(int argc, char* argv[]) {
     cmd.add(index);
     cmd.add(read1);
     cmd.add(read2);
+    cmd.add(numThreads);
 
     cmd.parse(argc, argv);
 
