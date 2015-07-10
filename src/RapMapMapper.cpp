@@ -146,8 +146,9 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 	// The first position should always be a nextTxp, but we don't care
 	nextTxpLeft = false;
 	nextTxpRight = false;
-
+    //size_t i = 0;
 	while (canAdvance) {
+        //std::cerr << "advanced " << i++ << "\n";
 		int32_t posDiff = rightPos - leftPos;
 		uint32_t fragLen = std::abs(posDiff);
 		// We found a hit (potentially -- what do we do about RCs here?)
@@ -157,29 +158,30 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
             int32_t hitPos = (leftPos < rightPos) ? leftPos - leftQueryPos :
                                                  rightPos - rightQueryPos;
 			hits.emplace_back(tid, hitPos, isRC, readLen);
-			return true;
+			foundHit = true;
+            break;
 		}
 		// rightPos >= leftPos (advance left)
 		if (posDiff > 0) {
 			// If we can't advance the left but we need to, we're done
-			if (!canAdvanceLeft) { return foundHit; }
+			if (!canAdvanceLeft) { break; }
 			++leftPosIt;
 			rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft);
 			canAdvanceLeft = !nextTxpLeft;
 		} else if (posDiff < 0) { // leftPos > rightPos (advance right)
 			// If we can't advance the right but we need to, we're done
-			if (!canAdvanceRight) { return foundHit; }
+			if (!canAdvanceRight) { break; }
 			++rightPosIt;
 			rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight);
 			canAdvanceRight = !nextTxpRight;
 		} else { // posDiff == 0 (advance both)
 			// If we can't advance the left but we need to, we're done
-			if (!canAdvanceLeft) { return foundHit; }
+			if (!canAdvanceLeft) { break; }
 			++leftPosIt;
 			rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft);
 			canAdvanceLeft = !nextTxpLeft;
 			// If we can't advance the right but we need to, we're done
-			if (!canAdvanceRight) { return foundHit; }
+			if (!canAdvanceRight) { break; }
 			++rightPosIt;
 			rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight);
 			canAdvanceRight = !nextTxpRight;
@@ -188,6 +190,19 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 		// We can continue if we can advance either the left or right position
 		canAdvance = (canAdvanceLeft or canAdvanceRight);
 	}
+
+    // Advance left and right until next txp
+    while ( canAdvanceLeft ) {
+        ++leftPosIt;
+        rapmap::utils::decodePosition(*leftPosIt, leftPos, nextTxpLeft, isRCLeft);
+        canAdvanceLeft = !nextTxpLeft;
+    }
+    while ( canAdvanceRight ) {
+        ++rightPosIt;
+        rapmap::utils::decodePosition(*rightPosIt, rightPos, nextTxpRight, isRCRight);
+        canAdvanceRight = !nextTxpRight;
+    }
+
 	return foundHit;
 
 }
@@ -431,7 +446,7 @@ void processReadsKSeq(ParserT* lseq,
            seHits += leftHits.size() + rightHits.size();
         }
 
-        if (n % 1000000 == 0) {
+        if (n % 1000 == 0) {
             std::cerr << "saw " << n << " reads\n";
             std::cerr << "# pe hits per read = " << peHits / static_cast<float>(n) << "\n";
             std::cerr << "# se hits per read = " << seHits / static_cast<float>(n) << "\n";
@@ -541,7 +556,7 @@ void processReads(ParserT* parser,
                 }
             }
 
-            if (n % 1000000 == 0) {
+            if (n % 1000 == 0) {
                 if (n > 0) {
                     std::cerr << "\033[F\033[F\033[F";
                 }
