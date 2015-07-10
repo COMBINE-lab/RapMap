@@ -69,14 +69,17 @@ std::default_random_engine eng(rd());
 std::uniform_int_distribution<> dis(0, 3);
 
 struct QuasiAlignment {
-    QuasiAlignment(uint32_t tidIn, uint32_t posIn, bool fwdIn, uint32_t fragLenIn) :
-           tid(tidIn), pos(posIn), fwd(fwdIn), fragLen(fragLenIn) {}
+    QuasiAlignment(uint32_t tidIn, uint32_t posIn,
+                   bool fwdIn, uint32_t fragLenIn, bool isPairedIn = false) :
+           tid(tidIn), pos(posIn), fwd(fwdIn),
+           fragLen(fragLenIn), isPaired(isPairedIn) {}
     QuasiAlignment(QuasiAlignment&& other) = default;
     QuasiAlignment& operator=(const QuasiAlignment&) = default;
     uint32_t tid;
     uint32_t pos;
     bool fwd;
     uint32_t fragLen;
+    bool isPaired;
 };
 
 // Walks the position list for this transcript and puts all hits
@@ -120,6 +123,8 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 									   uint32_t readLen,
 									   bool leftHitRC,
 									   bool rightHitRC,
+                                       uint32_t leftQueryPos,
+                                       uint32_t rightQueryPos,
 									   PositionList::iterator& leftPosIt,
 									   PositionList::iterator& rightPosIt,
 									   uint32_t maxDist,
@@ -149,7 +154,9 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 		// I think we need to know if the k-mer from the *read* was fw or rc
 		if (fragLen < maxDist) {
             bool isRC = (leftHitRC != isRCLeft);
-			hits.emplace_back(tid, std::min(leftPos, rightPos), isRC, readLen);
+            int32_t hitPos = (leftPos < rightPos) ? leftPos - leftQueryPos :
+                                                 rightPos - rightQueryPos;
+			hits.emplace_back(tid, hitPos, isRC, readLen);
 			return true;
 		}
 		// rightPos >= leftPos (advance left)
@@ -331,6 +338,7 @@ void collectHits(RapMapIndex& rmi, std::string& readStr,
 					if (!(rightTxp < leftTxp)) {
 						collectHitsWithPositionConstraint(leftTxp, readLen,
                                                           leftHitRC, rightHitRC,
+                                                          leftQueryPos, rightQueryPos,
                                                           leftPosIt, rightPosIt,
                                                           maxDist, hits);
 						++leftTxpIt;
@@ -494,7 +502,7 @@ void processReads(ParserT* parser,
                                 uint32_t startPos = std::min(leftIt->pos, rightIt->pos);
                                 uint32_t endPos = std::max(leftIt->pos, rightIt->pos) + readLen;
                                 uint32_t fragLen = endPos - startPos;
-                                jointHits.emplace_back(leftTxp, startPos, leftIt->fwd, fragLen);
+                                jointHits.emplace_back(leftTxp, startPos, leftIt->fwd, fragLen, true);
                                 nonDegenerateHits += (fragLen > 0) ? 1 : 0;
                                 ++numHits;
                                 if (numHits > maxNumHits) { break; }
@@ -523,9 +531,13 @@ void processReads(ParserT* parser,
             }
 
             if (jointHits.size() > 0) {
-                sstream << "[AG]\t" << jointHits.size() << '\t' << j->data[i].first.header << '\t' << j->data[i].second.header << '\n';
+                auto& readName = j->data[i].first.header;
+                sstream << "[AG]\t" << jointHits.size() << '\t'
+                        <<  readName.substr(0, readName.length()-2) << '\n';
                 for (const auto& qa : jointHits) {
-                    sstream << txpNames[qa.tid] << '\t' << qa.pos << '\t' << qa.fwd << '\t' << qa.fragLen << '\n';
+                    sstream << txpNames[qa.tid] << '\t' << qa.pos << '\t' << qa.fwd
+                            << '\t' << qa.fragLen << '\t'
+                            << (qa.isPaired ? "Paired" : "Orphan") << '\n';
                 }
             }
 
