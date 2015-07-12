@@ -363,22 +363,6 @@ ExternalProject_Add(libgff
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_SOURCE_DIR}/external/install
 )
 
-message("Build system will fetch SPDLOG")
-message("==================================================================")
-ExternalProject_Add(libspdlog
-    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-    DOWNLOAD_COMMAND curl -k -L https://github.com/COMBINE-lab/spdlog/archive/v1.5.tar.gz -o spdlog-v1.5.tar.gz &&
-                     tar -xzf spdlog-v1.5.tar.gz &&
-                     rm -fr spdlog &&
-                     mv -f  spdlog-1.5 spdlog
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/spdlog
-    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
-    CONFIGURE_COMMAND ""
-    BUILD_COMMAND ""
-    BUILD_IN_SOURCE 1
-    INSTALL_COMMAND cp -r <SOURCE_DIR>/include/spdlog <INSTALL_DIR>/include
-)
-
 set (FAST_MALLOC_LIB "")
 set (HAVE_FAST_MALLOC FALSE)
 

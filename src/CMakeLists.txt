@@ -5,6 +5,7 @@ set (RAPMAP_MAIN_SRCS
     RapMapMapper.cpp
     RapMapFileSystem.cpp
     intersection.cpp
+    stringpiece.cc
     xxhash.c
 )
 

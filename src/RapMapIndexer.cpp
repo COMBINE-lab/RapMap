@@ -3,6 +3,7 @@
 #include <vector>
 #include <random>
 #include <unordered_map>
+#include <type_traits>
 #include <fstream>
 
 #include "tclap/CmdLine.h"
@@ -49,7 +50,9 @@ uint64_t encode(uint32_t tid, uint32_t pos) {
 }
 
 constexpr uint32_t uint32HighestBitMask = 0x80000000;
-constexpr uint32_t uint32LowBitMask = 0x7FFFFFFF;
+constexpr uint32_t uint31LowBitMask = 0x7FFFFFFF;
+
+constexpr uint32_t uint30LowBitMask = 0x3FFFFFFF;
 
 constexpr uint32_t rcSetMask = 0x40000000;
 
@@ -63,7 +66,7 @@ bool wasSeen(uint32_t i) { return ((i & uint32HighestBitMask) >> 31) == 1; }
 
 void markSeen(uint32_t& i) { i |= uint32HighestBitMask; }
 
-uint32_t unmarked(uint32_t i) { return (i & uint32LowBitMask); }
+uint32_t unmarked(uint32_t i) { return (i & uint31LowBitMask); }
 
 class VectorHasher {
     public:
@@ -112,6 +115,7 @@ void processTranscripts(ParserT* parser,
     uint32_t n{0};
     uint32_t k = rapmap::utils::my_mer::k();
     std::vector<std::string> transcriptNames;
+    std::vector<uint32_t> transcriptLengths;
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
 
     using TranscriptList = std::vector<uint32_t>;
@@ -132,67 +136,78 @@ void processTranscripts(ParserT* parser,
     std::chrono::duration<double> elapsedNS;
     {
         ScopedTimer timer;
-    while(true) {
-        typename ParserT::job j(*parser);
-        if(j.is_empty()) break;
+        while(true) {
+            typename ParserT::job j(*parser);
+            if(j.is_empty()) break;
 
-        for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
-            std::string& readStr = j->data[i].seq;
-            uint32_t readLen  = readStr.size();
-            uint32_t txpIndex = n++;
-            transcriptNames.push_back(j->data[i].header);
+            for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
+                std::string& readStr = j->data[i].seq;
+                uint32_t readLen  = readStr.size();
+                uint32_t txpIndex = n++;
+                transcriptLengths.push_back(readLen);
+                transcriptNames.push_back(j->data[i].header);
 
-            rapmap::utils::my_mer mer;
-            mer.polyT();
-            for (size_t b = 0; b < readLen; ++b) {
-                int c = jellyfish::mer_dna::code(readStr[b]);
-                if (jellyfish::mer_dna::not_dna(c)) {
-                    char rbase = bases[dis(eng)];
-                    c = jellyfish::mer_dna::code(rbase);
-                    readStr[b] = rbase;
-                }
-                mer.shift_left(c);
-                if (b >= k) {
-                    auto canonicalMer = mer.get_canonical();
-                    auto key = canonicalMer.get_bits(0, 2*k);
-
-                    uint64_t val;
-                    start = std::chrono::high_resolution_clock::now();
-                    auto found = merIntMap.ary()->get_val_for_key(canonicalMer, &val);
-                    end = std::chrono::high_resolution_clock::now();
-                    elapsedNS += end - start;
-                    if (!found) {
-                        merIntMap.add(canonicalMer, numDistinctKmers);
-                        kmerInfos.emplace_back(txpIndex, 0, 1);
-                        ++numDistinctKmers;
-                    } else {
-                        kmerInfos[val].count++;
+                rapmap::utils::my_mer mer;
+                mer.polyT();
+                for (size_t b = 0; b < readLen; ++b) {
+                    int c = jellyfish::mer_dna::code(readStr[b]);
+                    if (jellyfish::mer_dna::not_dna(c)) {
+                        char rbase = bases[dis(eng)];
+                        c = jellyfish::mer_dna::code(rbase);
+                        readStr[b] = rbase;
                     }
+                    mer.shift_left(c);
+                    if (b >= k) {
+                        auto canonicalMer = mer.get_canonical();
+                        auto key = canonicalMer.get_bits(0, 2*k);
 
-                   /*
-                    start = std::chrono::high_resolution_clock::now();
-                    auto it = cmap.find(key);
-                    end = std::chrono::high_resolution_clock::now();
-                    elapsedNS += end - start;
-                    // If we found the k-mer, increment the count
-                    if (it != cmap.end()) {
+                        uint64_t val;
+                        start = std::chrono::high_resolution_clock::now();
+                        auto found = merIntMap.ary()->get_val_for_key(canonicalMer, &val);
+                        end = std::chrono::high_resolution_clock::now();
+                        elapsedNS += end - start;
+                        if (!found) {
+                            merIntMap.add(canonicalMer, numDistinctKmers);
+                            kmerInfos.emplace_back(txpIndex, 0, 1);
+                            ++numDistinctKmers;
+                        } else {
+                            kmerInfos[val].count++;
+                        }
+
+                        /*
+                           start = std::chrono::high_resolution_clock::now();
+                           auto it = cmap.find(key);
+                           end = std::chrono::high_resolution_clock::now();
+                           elapsedNS += end - start;
+                        // If we found the k-mer, increment the count
+                        if (it != cmap.end()) {
                         it->second.count++;
-                    } else { // Otherwise, add it
+                        } else { // Otherwise, add it
                         cmap[key] = KmerInfo(txpIndex, 0, 1);
+                        }
+                        */
+                        // No matter what, our k-mer count increased
+                        numKmers++;
                     }
-                    */
-                    // No matter what, our k-mer count increased
-                    numKmers++;
                 }
-            }
-            transcriptSeqs.push_back(j->data[i].seq);
-            if (n % 10000 == 0) {
-                std::cerr << "\r\rcounted k-mers for " << n << " transcripts";
+                transcriptSeqs.push_back(j->data[i].seq);
+                if (n % 10000 == 0) {
+                    std::cerr << "\r\rcounted k-mers for " << n << " transcripts";
+                }
             }
         }
-    }
         std::cerr << "\n";
     }
+
+    std::ofstream txpLenStream(outputDir + "txplens.bin", std::ios::binary);
+    {
+        cereal::BinaryOutputArchive txpLenArchive(txpLenStream);
+        txpLenArchive(transcriptLengths);
+    }
+    txpLenStream.close();
+    transcriptLengths.clear();
+    transcriptLengths.shrink_to_fit();
+
     size_t vsize{0};
     using eager_iterator = MerMapT::array::eager_iterator;
     for (auto& kinfo : kmerInfos) {
@@ -321,9 +336,10 @@ void processTranscripts(ParserT* parser,
     {
         ScopedTimer finalizeTimer;
         // Local vector to hold k-mers per transcript
-        std::vector<PosInfo> posInfos;
+        btree::btree_map<rapmap::utils::my_mer,
+                         std::vector<PosInfo>> posHash;//std::vector<PosInfo> posInfos;
         for (auto& transcriptSeq : transcriptSeqs) {
-            posInfos.clear();
+            posHash.clear();
             auto readLen = transcriptSeq.length();
             rapmap::utils::my_mer mer;
             mer.polyT();
@@ -334,10 +350,41 @@ void processTranscripts(ParserT* parser,
                     auto canonicalMer = mer.get_canonical();
                     bool isRC = (mer != canonicalMer);
                     // Record the position of this k-mer in the transcript
-                    auto pos = b - k;
-                    posInfos.emplace_back(canonicalMer, isRC, pos);
+                    uint32_t pos = b - k;
+                    if (pos > readLen) {
+                        std::cerr << "Pos is " << pos << ", but transcript length is " << readLen << "\n";
+                    }
+                    //posInfos.emplace_back(canonicalMer, isRC, pos);
+                    if (posHash[canonicalMer].size() > 0) {
+                        if (pos < posHash[canonicalMer].back().pos) {
+                            std::cerr << "NON-MONOTONIC POS\n";
+                        }
+                    }
+                    posHash[canonicalMer].emplace_back(canonicalMer, isRC, pos);
                 }
             }
+
+            for (auto kv = posHash.begin(); kv != posHash.end(); ++kv) {
+                    auto mer = kv->first;
+                    auto& list = kv->second;
+                    uint64_t kmerIndex;
+                    auto found = merIntMap.ary()->get_val_for_key(
+                                            mer, &kmerIndex);
+                    // Should ALWAYS find the key
+                    assert(found);
+                    auto& val = kmerInfos[kmerIndex];
+                    uint32_t offset;
+                    markNewTxpBit(list.front().pos);
+                    for (auto& pi : list) {
+                        offset = val.offset + val.count;
+                        if (pi.isRC) {
+                            markRCBit(pi.pos);
+                        }
+                        transcriptIDs[offset] = pi.pos;
+                        ++val.count;
+                    }
+                }
+            /*
             std::sort(posInfos.begin(), posInfos.end(),
                       [] (const PosInfo& a, const PosInfo& b) -> bool {
                         if (a.mer < b.mer) {
@@ -348,7 +395,6 @@ void processTranscripts(ParserT* parser,
                             return false;
                         }
                       });
-
             PosInfo* prev{nullptr};
             for (auto& posInfo : posInfos) {
                     uint64_t kmerIndex;
@@ -362,15 +408,25 @@ void processTranscripts(ParserT* parser,
                     // position list and, if so, set the proper flag bit.
                     if ( prev == nullptr or prev->mer != posInfo.mer) {
                         markNewTxpBit(posInfo.pos);
+                    } else {
+                        // These are the same k-mer so the pos better
+                        // be increasing!
+                        if (prev != nullptr) {
+                            if ((prev->pos & uint30LowBitMask) >= posInfo.pos) {
+                                std::cerr << "prev pos = " << (prev->pos & uint30LowBitMask)
+                                          << ", but curr pos = " << posInfo.pos
+                                          << "\n";
+                            }
+                        }
                     }
                     if ( posInfo.isRC ) {
                         markRCBit(posInfo.pos);
                     }
-
+        		    prev = &posInfo;
                     transcriptIDs[offset] = posInfo.pos;
                     ++val.count;
                 }
-
+            */
             if (transcriptID % 10000 == 0) {
                 std::cerr << "\r\rfinalized kmers for " << transcriptID << " transcripts";
             }
@@ -379,6 +435,21 @@ void processTranscripts(ParserT* parser,
 	std::cerr << "\n";
     }
 
+    /*
+    std::cerr << "[DEBUG]: Verifying Index\n";
+    {
+        ScopedTimer st;
+    auto hashIt = merIntMap.ary()->iterator_all<eager_iterator>();
+    std::vector<uint32_t> tlist;
+    while (hashIt.next()) {
+        auto& key = hashIt.key();
+        auto& val = kmerInfos[hashIt.val()];
+        if (!(*(transcriptIDs.begin() + val.offset) & uint32HighestBitMask)) {
+            std::cerr << "found un-marked k-mer position at beginning of list!\n";
+        }
+    }
+    }
+    */
     // merIntMap --- jf hash
     // kmerInfos --- info for each k-mer
     // std::vector<uint32_t> eqClassLabelVec --- transcripts for each eq class
@@ -389,11 +460,8 @@ void processTranscripts(ParserT* parser,
 
     using JFFileHeader = jellyfish::file_header;
     using JFDumper = jellyfish::binary_dumper<MerMapT::array>;
-    //typedef jellyfish::binary_reader<mer_dna, uint64_t> reader;
-    //typedef jellyfish::binary_query_base<mer_dna, uint64_t> query;
 
     SpecialHeader fh;
-    //JFFileHeader fh;
     fh.update_from_ary(*merIntMap.ary());
     fh.canonical(true);
     fh.format("gus/special"); // Thanks, Guillaume
@@ -401,10 +469,6 @@ void processTranscripts(ParserT* parser,
     fh.fill_standard();
     //fh.set_cmdline(argc, argv);
 
-    //JFDumper dumper(8*sizeof(uint32_t), k*2, 4, (outputDir + "rapidx.jfhash").c_str(), &fh);
-    //dumper.one_file(true);
-    //dumper.zero_array(false);
-    //dumper.dump(merIntMap.ary());
     std::ofstream jfos(outputDir + "rapidx.jfhash");
     fh.write(jfos);
     merIntMap.ary()->write(jfos);
@@ -452,107 +516,6 @@ void processTranscripts(ParserT* parser,
   // k-mer => equivalence class, position array offset
   // equivalence class = ordered (unique) list of transcripts
   // position array = *self-delimited* list of positions with the same order as txps in the equivalence class
-
-    // using KmerBinT = uint64_t;
-
-    /*
-    // Compute the equivalence classes for the k-mers
-    uint32_t transcriptID{0};
-    for (auto& transcriptSeq : transcriptSeqs) {
-        auto readLen = transcriptSeq.length();
-        rapmap::utils::my_mer mer;
-        mer.polyT();
-        std::vector<KmerBinT> kmers;
-        for (size_t b = 0; b < readLen; ++b) {
-            int c = jellyfish::mer_dna::code(transcriptSeq[b]);
-            mer.shift_left(c);
-            if (b >= k) {
-                bool isRC{false};
-                auto canonicalMer = mer.get_canonical();
-                auto key = canonicalMer.get_bits(0, 2*k);
-                // push back the *ID* of this k-mer
-                kmers.push_back(cmap[key]);
-            }
-        }
-        partitioner.splitWith(kmers, tid);
-        ++transcriptID;
-    }
-    // Compact the partition IDs
-    partitioner.relabel();
-    */
-
-    /*
-  // now, we can prepare the vector for our "efficient map"
-  uint32_t invalid = std::numeric_limits<uint32_t>::max();
-  std::unordered_map<uint64_t, rapmap::utils::KmerInterval, rapmap::utils::KmerKeyHasher> hmap;
-  std::vector<uint32_t> tidVec(numKmers, invalid);
-  std::vector<uint32_t> posVec(numKmers, invalid);
-
-  size_t tid{0};
-  uint64_t intervalStart{0};
-  for (auto& transcriptSeq : transcriptSeqs) {
-      auto readLen = transcriptSeq.length();
-      rapmap::utils::my_mer mer;
-      mer.polyT();
-      for (size_t b = 0; b < readLen; ++b) {
-          int c = jellyfish::mer_dna::code(transcriptSeq[b]);
-          mer.shift_left(c);
-          if (b >= k) {
-              bool isRC{false};
-              auto canonicalMer = mer.get_canonical();
-              auto key = canonicalMer.get_bits(0, 2*k);
-              auto hIt = hmap.find(key);
-              // if this is the first time we have seen this k-mer
-              if (hIt == hmap.end()) {
-                  isRC = (mer != canonicalMer);
-                  auto occ = cmap[key];
-                  hmap[key] = {intervalStart, occ};
-                  intervalStart += occ;
-                  cmap[key] = 0;
-              }
-              auto& interval = hmap[key];
-              auto currentCount = cmap[key];
-              tidVec[interval.offset + currentCount] = tid;
-              auto pos = b - k;
-              // If this k-mer is from the rc of the txp, flip the high bit
-              if (isRC) { pos |= 0x80000000; }
-              posVec[interval.offset + currentCount] = pos;
-              cmap[key]++;
-          }
-      }
-      if (tid % 10000 == 0) {
-         std::cerr << "built index for " << tid << " transcripts\n";
-      }
-      ++tid;
-  }
-  std::ofstream txpStream("rapidx.txps.bin", std::ios::binary);
-  {
-    cereal::BinaryOutputArchive txpArchive(txpStream);
-    txpArchive(transcriptNames);
-  }
-  txpStream.close();
-
-  std::ofstream idxStream("rapidx.imap.bin", std::ios::binary);
-  {
-      cereal::BinaryOutputArchive indexArchive(idxStream);
-      indexArchive(hmap);
-  }
-  idxStream.close();
-
-  std::ofstream tidStream("rapidx.tid.bin", std::ios::binary);
-  {
-      cereal::BinaryOutputArchive tidArchive(tidStream);
-      tidArchive(tidVec);
-  }
-  tidStream.close();
-
-  std::ofstream posStream("rapidx.pos.bin", std::ios::binary);
-  {
-      cereal::BinaryOutputArchive posArchive(posStream);
-      posArchive(posVec);
-  }
-  posStream.close();
-  */
 }
 
 
