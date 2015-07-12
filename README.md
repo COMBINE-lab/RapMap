@@ -31,6 +31,7 @@ there are shortcuts and hacks abound.  It also means that I've not yet put much 
 # External dependencies
 
 [tclap](http://tclap.sourceforge.net/)
+
 [cereal](https://github.com/USCiLab/cereal)
 
 # License 
