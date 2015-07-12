@@ -44,6 +44,7 @@
 #include "RapMapFileSystem.hpp"
 #include "RapMapConfig.hpp"
 #include "ScopedTimer.hpp"
+#include "SpinLock.hpp"
 
 // STEP 1: declare the type of file handler and the read() function
 // KSEQ_INIT(int, read)
@@ -62,6 +63,11 @@ using OccList = std::vector<uint64_t>;
 using KmerInfoList = std::vector<rapmap::utils::KmerInfo>;
 using EqClassList = std::vector<rapmap::utils::EqClass>;
 using EqClassLabelVec = std::vector<uint32_t>;
+#if defined __APPLE__
+using SpinLockT = SpinLock;
+#else
+using SpinLockT = std::mutex;
+#endif
 
 constexpr char bases[] = {'A', 'C', 'G', 'T'};
 
@@ -76,12 +82,22 @@ std::default_random_engine eng(rd());
 
 std::uniform_int_distribution<> dis(0, 3);
 
+struct HitCounters {
+    std::atomic<uint64_t> peHits{0};
+    std::atomic<uint64_t> seHits{0};
+    std::atomic<uint64_t> trueHits{0};
+    std::atomic<uint64_t> totHits{0};
+    std::atomic<uint64_t> numReads{0};
+};
+
 struct QuasiAlignment {
     QuasiAlignment(uint32_t tidIn, uint32_t posIn,
-                   bool fwdIn, uint32_t fragLenIn,
+                   bool fwdIn, uint32_t readLenIn,
+                   uint32_t fragLenIn = 0,
                    bool isPairedIn = false) :
            tid(tidIn), pos(posIn), fwd(fwdIn),
-           fragLen(fragLenIn), isPaired(isPairedIn) {}
+           readLen(readLenIn), fragLen(fragLenIn),
+           isPaired(isPairedIn) {}
     QuasiAlignment(QuasiAlignment&& other) = default;
     QuasiAlignment& operator=(const QuasiAlignment&) = default;
     // Only 1 since the mate should have the same tid
@@ -96,10 +112,64 @@ struct QuasiAlignment {
     bool mateIsFwd;
     // The fragment length (template length)
     uint32_t fragLen;
+    // The read's length;
+    uint32_t readLen;
+    // The mate's length;
+    uint32_t mateLen;
     // Is this a paired *alignment* or not
     bool isPaired;
     uint32_t mateStatus;
 };
+
+// from https://github.com/cppformat/cppformat/issues/105
+class FixedBuffer : public fmt::Buffer<char> {
+ public:
+  FixedBuffer(char *array, std::size_t size)
+    : fmt::Buffer<char>(array, size) {}
+
+ protected:
+  void grow(std::size_t size) {
+    throw std::runtime_error("buffer overflow");
+  }
+};
+
+class FixedWriter : public fmt::Writer {
+ private:
+  FixedBuffer buffer_;
+ public:
+  FixedWriter(char *array, std::size_t size)
+    : fmt::Writer(buffer_), buffer_(array, size) {}
+};
+
+inline void adjustOverhang(int32_t& pos, uint32_t readLen,
+                           uint32_t txpLen, FixedWriter& cigarStr) {
+    cigarStr.clear();
+    if (pos < 0) {
+        int32_t clipLen = -pos;
+        int32_t matchLen = readLen + pos;
+        cigarStr.write("{}S{}M", clipLen, matchLen);
+        // Now adjust the mapping position
+        pos = 0;
+    } else if (pos + readLen > txpLen) {
+        int32_t matchLen = txpLen - pos;
+        int32_t clipLen = pos + readLen - matchLen;
+        cigarStr.write("{}M{}S", matchLen, clipLen);
+    } else {
+        cigarStr.write("{}M", readLen);
+    }
+}
+
+inline void adjustOverhang(QuasiAlignment& qa, uint32_t txpLen,
+                           FixedWriter& cigarStr1, FixedWriter& cigarStr2) {
+    if (qa.isPaired) { // both mapped
+        adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr1);
+        adjustOverhang(qa.matePos, qa.mateLen, txpLen, cigarStr1);
+    } else if (qa.mateStatus == 1) { // left read mapped
+        adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr1);
+    } else if (qa.mateStatus == 2) { // right read mapped
+        adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr2);
+    }
+}
 
 
 // get the sam flags for the quasialignment qaln.
@@ -159,8 +229,8 @@ inline void getSamFlags(const QuasiAlignment& qaln,
     flags1 |= (qaln.isPaired) ? properlyAligned : 0;
     flags2 = flags1;
     // we don't output unmapped yet
-    // flags |= unmapped
-    // flags |= mateUnmapped
+    flags1 |= (qaln.mateStatus == 2) ? unmapped : 0;
+    flags2 |= (qaln.mateStatus == 1) ? mateUnmapped : 0;
     flags1 |= (qaln.fwd) ? 0 : isRC;
     flags1 |= (qaln.mateIsFwd) ? 0 : mateIsRC;
     flags2 |= (qaln.mateIsFwd) ? 0 : isRC;
@@ -556,10 +626,12 @@ void collectHits(RapMapIndex& rmi, std::string& readStr,
 
 void processReadsSingle(single_parser* parser,
         RapMapIndex& rmi,
-        std::mutex& iomutex,
-        std::ostream& outStream) {
+        SpinLockT& iomutex,
+        std::ostream& outStream,
+        HitCounters& hctr) {
 
     auto& txpNames = rmi.txpNames;
+    auto& txpLens = rmi.txpLens;
     uint32_t n{0};
     uint32_t k = rapmap::utils::my_mer::k();
     std::vector<std::string> transcriptNames;
@@ -571,9 +643,8 @@ void processReadsSingle(single_parser* parser,
 
     size_t readLen{0};
     size_t maxNumHits{200};
-    size_t nonDegenerateHits{0};
-    size_t trueHits{0};
-    size_t totHits{0};
+    char cigarBuff[1000];
+    FixedWriter cigarStr(cigarBuff, 1000);
     uint16_t flags;
     // 1000-bp reads are max here (get rid of hard limit later).
     std::string qualStr(1000, '~');
@@ -582,7 +653,7 @@ void processReadsSingle(single_parser* parser,
         if(j.is_empty()) break;           // If got nothing, quit
         for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
             readLen = j->data[i].seq.length();
-            n++;
+            ++hctr.numReads;
             hits.clear();
             collectHits(rmi, j->data[i].seq, hits, 3);
             /*
@@ -591,7 +662,7 @@ void processReadsSingle(single_parser* parser,
                std::back_inserter(jointHits));
                */
             auto numHits = hits.size();
-            totHits += numHits;
+            hctr.totHits += numHits;
 
             if (hits.size() > 0 and hits.size() < maxNumHits) {
                 auto& readName = j->data[i].header;
@@ -602,21 +673,24 @@ void processReadsSingle(single_parser* parser,
                 const auto& txpName = readName.substr(before+1, after-before-1);
 #endif //__DEBUG__
                 uint32_t alnCtr{0};
-                for (const auto& qa : hits) {
+                for (auto& qa : hits) {
                     auto& transcriptName = txpNames[qa.tid];
                     // === SAM
                     getSamFlags(qa, flags);
                     if (alnCtr != 0) {
                         flags |= 0x900;
                     }
+
                     std::string* readSeq = &(j->data[i].seq);
                     std::string* qstr = &(j->data[i].qual);
+                    adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], cigarStr);
+
                     sstream << readName << '\t' // QNAME
                         << flags << '\t' // FLAGS
                         << transcriptName << '\t' // RNAME
                         << qa.pos + 1 << '\t' // POS (1-based)
                         << 255 << '\t' // MAPQ
-                        << readSeq->length() << 'M' << '\t' // CIGAR
+                        << cigarStr.c_str() << '\t' // CIGAR
                         << '*' << '\t' // MATE NAME
                         << 0 << '\t' // MATE POS
                         << qa.fragLen << '\t' // TLEN
@@ -625,24 +699,30 @@ void processReadsSingle(single_parser* parser,
                     ++alnCtr;
                     // === SAM
 #ifdef __DEBUG__
-                    if (txpNames[qa.tid] == txpName) { ++trueHits; }
+                    if (txpNames[qa.tid] == txpName) { ++hctr.trueHits; }
 #endif //__DEBUG__
                 }
             }
 
-            if (n % 500000 == 0) {
-                if (n > 0) {
+            if (hctr.numReads % 1000000 == 0) {
+                if (iomutex.try_lock()){
+                    if (hctr.numReads > 0) {
 #ifdef __DEBUG__
-                    std::cerr << "\033[F\033[F\033[F";
+                        std::cerr << "\033[F\033[F\033[F";
 #else
-                    std::cerr << "\033[F\033[F";
+                        std::cerr << "\033[F\033[F";
 #endif // __DEBUG__
-                }
-                std::cerr << "saw " << n << " reads\n";
-                std::cerr << "# hits per read = " << totHits / static_cast<float>(n) << "\n";
+                    }
+                    std::cerr << "saw " << hctr.numReads << " reads\n";
+                    std::cerr << "# hits per read = "
+                        << hctr.totHits / static_cast<float>(hctr.numReads) << "\n";
 #ifdef __DEBUG__
-        		std::cerr << "The true hit was in the returned set of hits " << 100.0 * (trueHits / static_cast<float>(n)) <<  "% of the time\n";
+                    std::cerr << "The true hit was in the returned set of hits "
+                        << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
+                        <<  "% of the time\n";
 #endif // __DEBUG__
+                    iomutex.unlock();
+                }
             }
         } // for all reads in this job
 
@@ -660,9 +740,11 @@ void processReadsSingle(single_parser* parser,
 // jellyfish::sequence_list (see whole_sequence_parser.hpp).
 void processReadsPair(paired_parser* parser,
         RapMapIndex& rmi,
-        std::mutex& iomutex,
-        std::ostream& outStream) {
+        SpinLockT& iomutex,
+        std::ostream& outStream,
+        HitCounters& hctr) {
     auto& txpNames = rmi.txpNames;
+    std::vector<uint32_t>& txpLens = rmi.txpLens;
     uint32_t n{0};
     uint32_t k = rapmap::utils::my_mer::k();
     std::vector<std::string> transcriptNames;
@@ -674,21 +756,29 @@ void processReadsPair(paired_parser* parser,
     std::vector<QuasiAlignment> rightHits;
     std::vector<QuasiAlignment> jointHits;
 
-    size_t peHits{0};
-    size_t seHits{0};
     size_t readLen{0};
     size_t maxNumHits{200};
-    size_t nonDegenerateHits{0};
-    size_t trueHits{0};
     uint16_t flags1, flags2;
     // 1000-bp reads are max here (get rid of hard limit later).
     std::string qualStr(1000, '~');
+
+    char buff1[1000];
+    char buff2[1000];
+    FixedWriter cigarStr1(buff1, 1000);
+    FixedWriter cigarStr2(buff2, 1000);
+
+    // 0 means properly aligned
+    // 0x1 means only alignments for left read
+    // 0x2 means only alignments for right read
+    // 0x3 means "orphaned" alignments for left and right
+    // (currently not treated as orphan).
+    uint32_t orphanStatus{0};
     while(true) {
         typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of read (at most max_read_group)
         if(j.is_empty()) break;           // If got nothing, quit
         for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
             readLen = j->data[i].first.seq.length();
-            n++;
+            ++hctr.numReads;
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
@@ -724,14 +814,15 @@ void processReadsPair(paired_parser* parser,
                                 jointHits.emplace_back(leftTxp,
                                                        startRead1,
                                                        leftIt->fwd,
+                                                       leftIt->readLen,
                                                        fragLen, true);
                                 // Fill in the mate info
                                 auto& qaln = jointHits.back();
+                                qaln.mateLen = rightIt->readLen;
                                 qaln.matePos = startRead2;
                                 qaln.mateIsFwd = rightIt->fwd;
                                 jointHits.back().mateStatus = 0;
 
-                                nonDegenerateHits += (fragLen > 0) ? 1 : 0;
                                 ++numHits;
                                 if (numHits > maxNumHits) { break; }
                                 ++leftIt;
@@ -744,23 +835,36 @@ void processReadsPair(paired_parser* parser,
             }
 
             if (jointHits.size() > 0) {
-                peHits += jointHits.size();
+                hctr.peHits += jointHits.size();
+                orphanStatus = 0;
             } else if (leftHits.size() + rightHits.size() > 0) {
                 auto numHits = leftHits.size() + rightHits.size();
-                seHits += numHits;
-                if (numHits < maxNumHits) {
-                    jointHits.insert(jointHits.end(),
-                            std::make_move_iterator(leftHits.begin()),
-                            std::make_move_iterator(leftHits.end()));
-                    jointHits.insert(jointHits.end(),
-                            std::make_move_iterator(rightHits.begin()),
-                            std::make_move_iterator(rightHits.end()));
-                }
+                hctr.seHits += numHits;
+                orphanStatus = 0;
+                orphanStatus |= (leftHits.size() > 0) ? 0x1 : 0;
+                orphanStatus |= (rightHits.size() > 0) ? 0x2 : 0;
+                jointHits.insert(jointHits.end(),
+                        std::make_move_iterator(leftHits.begin()),
+                        std::make_move_iterator(leftHits.end()));
+                jointHits.insert(jointHits.end(),
+                        std::make_move_iterator(rightHits.begin()),
+                        std::make_move_iterator(rightHits.end()));
             }
 
             if (jointHits.size() > 0) {
                 auto& readName = j->data[i].first.header;
                 auto& mateName = j->data[i].second.header;
+                // trim /1 and /2 from pe read names
+                if (readName.length() > 2 and
+                        readName[readName.length() - 2] == '/') {
+                    readName[readName.length() - 2] = '\0';
+                }
+                if (mateName.length() > 2 and
+                        mateName[mateName.length() - 2] == '/') {
+                    mateName[mateName.length() - 2] = '\0';
+                }
+
+
 #ifdef __DEBUG__
                 auto before = readName.find_first_of(':');
                 before = readName.find_first_of(':', before+1);
@@ -768,7 +872,7 @@ void processReadsPair(paired_parser* parser,
                 const auto& txpName = readName.substr(before+1, after-before-1);
 #endif //__DEBUG__
                 uint32_t alnCtr{0};
-                for (const auto& qa : jointHits) {
+                for (auto& qa : jointHits) {
                     auto& transcriptName = txpNames[qa.tid];
                     // === SAM
                     if (qa.isPaired) {
@@ -778,26 +882,28 @@ void processReadsPair(paired_parser* parser,
                         } else {
                             flags2 |= 0x900;
                         }
-                        sstream << readName << '\t' // QNAME
+                        adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
+
+                        sstream << readName.c_str() << '\t' // QNAME
                                 << flags1 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
                                 << 255 << '\t' // MAPQ
-                                << j->data[i].first.seq.length() << 'M' << '\t' // CIGAR
-                                << mateName << '\t' // MATE NAME
-                                << qa.matePos + 1 << '\t' // MATE POS
+                                << cigarStr1.c_str() << '\t' // CIGAR
+                                << '=' << '\t' // RNEXT
+                                << qa.matePos + 1 << '\t' // PNEXT
                                 << qa.fragLen << '\t' // TLEN
                                 << j->data[i].first.seq << '\t' // SEQ
                                 << j->data[i].first.qual << '\n';
 
-                        sstream << mateName << '\t' // QNAME
+                        sstream << mateName.c_str() << '\t' // QNAME
                                 << flags2 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.matePos + 1 << '\t' // POS (1-based)
                                 << 255 << '\t' // MAPQ
-                                << j->data[i].second.seq.length() << 'M' << '\t' // CIGAR
-                                << readName << '\t' // MATE NAME
-                                << qa.pos + 1 << '\t' // MATE POS
+                                << cigarStr2.c_str() << '\t' // CIGAR
+                                << '=' << '\t' // RNEXT
+                                << qa.pos + 1 << '\t' // PNEXT
                                 << qa.fragLen << '\t' // TLEN
                                 << j->data[i].second.seq << '\t' // SEQ
                                 << j->data[i].first.qual << '\n';
@@ -806,32 +912,77 @@ void processReadsPair(paired_parser* parser,
                         if (alnCtr != 0) {
                             flags1 |= 0x900; flags2 |= 0x900;
                         } else {
-                            flags2 |= 0x900;
-                        }
-                        std::string* readSeq{nullptr};
-                        uint32_t flags;
-                        std::string* qstr{nullptr};
-                        if (qa.mateStatus == 1) { // left read
-                            readName = j->data[i].first.header;
-                            readSeq = &(j->data[i].first.seq);
-                            qstr = &(j->data[i].first.qual);
-                            flags = flags1;
-                        } else { // right read
-                            readName = j->data[i].second.header;
-                            readSeq = &(j->data[i].second.seq);
-                            qstr = &(j->data[i].second.qual);
-                            flags = flags2;
+                            if (qa.mateStatus == 1) {
+                                flags2 |= 0x900;
+                            } else {
+                                flags1 |= 0x900;
+                            }
                         }
 
-                        sstream << readName << '\t' // QNAME
+                        std::string* readSeq{nullptr};
+                        std::string* unalignedSeq{nullptr};
+
+                        uint32_t flags, unalignedFlags;
+                        std::string* qstr{nullptr};
+                        std::string* unalignedQstr{nullptr};
+                        std::string* unalignedName{nullptr};
+                        FixedWriter* cigarStr;
+                        if (qa.mateStatus == 1) { // left read
+                            readName = j->data[i].first.header;
+                            unalignedName = &j->data[i].second.header;
+
+                            readSeq = &(j->data[i].first.seq);
+                            unalignedSeq = &(j->data[i].second.seq);
+
+                            qstr = &(j->data[i].first.qual);
+                            unalignedQstr = &(j->data[i].second.qual);
+
+                            flags = flags1;
+                            unalignedFlags = flags2;
+
+                            cigarStr = &cigarStr1;
+                        } else { // right read
+                            readName = j->data[i].second.header;
+                            unalignedName = &(j->data[i].first.header);
+
+                            readSeq = &(j->data[i].second.seq);
+                            unalignedSeq = &(j->data[i].first.seq);
+
+                            qstr = &(j->data[i].second.qual);
+                            unalignedQstr = &(j->data[i].first.qual);
+
+                            flags = flags2;
+                            unalignedFlags = flags1;
+
+                            cigarStr = &cigarStr2;
+                        }
+
+                        // If this is the first alignment of the group, then
+                        // output the info for the unaligned mate.
+                        if ( alnCtr == 0 and orphanStatus < 3) {
+                            sstream << unalignedName->c_str() << '\t' // QNAME
+                                << unalignedFlags << '\t' // FLAGS
+                                << '*' << '\t' // RNAME
+                                << 0 << '\t' // POS (1-based)
+                                << 0 << '\t' // MAPQ
+                                << readSeq->length() << 'M' << '\t' // CIGAR
+                                << '=' << '\t' // RNEXT
+                                << 0 << '\t' // PNEXT (only 1 read in template)
+                                << 0 << '\t' // TLEN (spec says 0, not read len)
+                                << *unalignedSeq << '\t' // SEQ
+                                << *unalignedQstr << '\n';
+                        }
+
+                        adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
+                        sstream << readName.c_str() << '\t' // QNAME
                                 << flags << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
                                 << 255 << '\t' // MAPQ
-                                << readSeq->length() << 'M' << '\t' // CIGAR
-                                << mateName << '\t' // MATE NAME
-                                << 0 << '\t' // MATE POS
-                                << qa.fragLen << '\t' // TLEN
+                                << cigarStr->c_str() << '\t' // CIGAR
+                                << '=' << '\t' // RNEXT
+                                << 0 << '\t' // PNEXT (only 1 read in templte)
+                                << 0 << '\t' // TLEN (spec says 0, not read len)
                                 << *readSeq << '\t' // SEQ
                                 << *qstr << '\n';
                     }
@@ -846,25 +997,32 @@ void processReadsPair(paired_parser* parser,
                         << (qa.isPaired ? "Paired" : "Orphan") << '\n';
                     */
 #ifdef __DEBUG__
-                    if (txpNames[qa.tid] == txpName) { ++trueHits; }
+                    if (txpNames[qa.tid] == txpName) { ++hctr.trueHits; }
 #endif //__DEBUG__
                 }
             }
 
-            if (n % 500000 == 0) {
-                if (n > 0) {
+            if (hctr.numReads % 1000000 == 0) {
+                if (iomutex.try_lock()) {
+                    if (hctr.numReads > 0) {
 #ifdef __DEBUG__
-                    std::cerr << "\033[F\033[F\033[F\033[F";
+                        std::cerr << "\033[F\033[F\033[F\033[F";
 #else
-                    std::cerr << "\033[F\033[F\033[F";
+                        std::cerr << "\033[F\033[F\033[F";
 #endif // __DEBUG__
-                }
-                std::cerr << "saw " << n << " reads\n";
-                std::cerr << "# pe hits per read = " << peHits / static_cast<float>(n) << " (# non-degenerate = " << nonDegenerateHits << ")\n";
-                std::cerr << "# se hits per read = " << seHits / static_cast<float>(n) << "\n";
+                    }
+                    std::cerr << "saw " << hctr.numReads << " reads\n";
+                    std::cerr << "# pe hits per read = "
+                        << hctr.peHits / static_cast<float>(hctr.numReads) << "\n";
+                    std::cerr << "# se hits per read = "
+                        << hctr.seHits / static_cast<float>(hctr.numReads) << "\n";
 #ifdef __DEBUG__
-        		std::cerr << "The true hit was in the returned set of hits " << 100.0 * (trueHits / static_cast<float>(n)) <<  "% of the time\n";
+                    std::cerr << "The true hit was in the returned set of hits "
+                        << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
+                        <<  "% of the time\n";
 #endif // __DEBUG__
+                    iomutex.unlock();
+                }
             }
         } // for all reads in this job
 
@@ -974,9 +1132,10 @@ int rapMapMap(int argc, char* argv[]) {
 
     writeSAMHeader(rmi, outStream);
 
-    std::mutex iomutex;
+    SpinLockT iomutex;
     {
         ScopedTimer timer;
+        HitCounters hctrs;
         std::cerr << "mapping reads . . . ";
         if (pairedEnd) {
             std::vector<std::thread> threads;
@@ -1006,7 +1165,8 @@ int rapMapMap(int argc, char* argv[]) {
                         pairParserPtr.get(),
                         std::ref(rmi),
                         std::ref(iomutex),
-                        std::ref(outStream));
+                        std::ref(outStream),
+                        std::ref(hctrs));
             }
 
             for (auto& t : threads) { t.join(); }
@@ -1028,7 +1188,8 @@ int rapMapMap(int argc, char* argv[]) {
                         singleParserPtr.get(),
                         std::ref(rmi),
                         std::ref(iomutex),
-                        std::ref(outStream));
+                        std::ref(outStream),
+                        std::ref(hctrs));
             }
             for (auto& t : threads) { t.join(); }
         }
