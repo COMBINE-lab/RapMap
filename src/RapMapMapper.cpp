@@ -35,6 +35,13 @@
 #include "kseq.h"
 }
 */
+#ifdef __GNUC__
+#define LIKELY(x) __builtin_expect((x),1)
+#define UNLIKELY(x) __builtin_expect((x),0)
+#else
+#define LIKELY(x) (x)
+#define UNLIKELY(x) (x)
+#endif
 
 #include "stringpiece.h"
 
@@ -90,6 +97,12 @@ struct HitCounters {
     std::atomic<uint64_t> numReads{0};
 };
 
+enum class MateStatus : uint8_t {
+    SINGLE_END = 0,
+    PAIRED_END_LEFT = 1,
+    PAIRED_END_RIGHT = 2,
+    PAIRED_END_PAIRED = 3 };
+
 struct QuasiAlignment {
     QuasiAlignment(uint32_t tidIn, uint32_t posIn,
                    bool fwdIn, uint32_t readLenIn,
@@ -100,7 +113,8 @@ struct QuasiAlignment {
            isPaired(isPairedIn) {}
     QuasiAlignment(QuasiAlignment&& other) = default;
     QuasiAlignment& operator=(const QuasiAlignment&) = default;
-    // Only 1 since the mate should have the same tid
+    // Only 1 since the mate must have the same tid
+    // we won't call *chimeric* alignments here.
     uint32_t tid;
     // Left-most position of the hit
     int32_t pos;
@@ -111,14 +125,15 @@ struct QuasiAlignment {
     // Is the mate from the forward strand
     bool mateIsFwd;
     // The fragment length (template length)
+    // This is 0 for single-end or orphaned reads.
     uint32_t fragLen;
-    // The read's length;
+    // The read's length
     uint32_t readLen;
-    // The mate's length;
+    // The mate's length
     uint32_t mateLen;
     // Is this a paired *alignment* or not
     bool isPaired;
-    uint32_t mateStatus;
+    MateStatus mateStatus;
 };
 
 // from https://github.com/cppformat/cppformat/issues/105
@@ -164,11 +179,56 @@ inline void adjustOverhang(QuasiAlignment& qa, uint32_t txpLen,
     if (qa.isPaired) { // both mapped
         adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr1);
         adjustOverhang(qa.matePos, qa.mateLen, txpLen, cigarStr1);
-    } else if (qa.mateStatus == 1) { // left read mapped
+    } else if (qa.mateStatus == MateStatus::PAIRED_END_LEFT ) {
+        // left read mapped
         adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr1);
-    } else if (qa.mateStatus == 2) { // right read mapped
+    } else if (qa.mateStatus == MateStatus::PAIRED_END_RIGHT) {
+        // right read mapped
         adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr2);
     }
+}
+
+
+static constexpr int8_t rc_table[128] = {
+    78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 15
+    78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 31
+    78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 787
+    78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 63
+    78, 84, 78, 71, 78,  78,  78, 67, 78, 78, 78, 78,  78, 78, 78, 78, // 79
+    78, 78,  78, 78,  65, 65, 78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 95
+    78, 84, 78, 71, 78,  78,  78, 67, 78, 78, 78, 78,  78, 78, 78, 78, // 101
+    78, 78,  78, 78,  65, 65, 78, 78,  78, 78, 78, 78,  78, 78, 78, 78  // 127
+};
+
+// Adapted from
+// https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library/blob/8c9933a1685e0ab50c7d8b7926c9068bc0c9d7d2/src/main.c#L36
+void reverseRead(std::string& seq,
+                 std::string& qual,
+                 std::string& readWork,
+                 std::string& qualWork) {
+
+    readWork.resize(seq.length());
+    qualWork.resize(qual.length());
+    int32_t end = seq.length(), start = 0;
+ 	//readWork[end] = '\0';
+    //qualWork[end] = '\0';
+	-- end;
+	while (LIKELY(start < end)) {
+		readWork[start] = (char)rc_table[(int8_t)seq[end]];
+		readWork[end] = (char)rc_table[(int8_t)seq[start]];
+        qualWork[start] = qual[end];
+        qualWork[end] = qual[start];
+		++ start;
+		-- end;
+	}
+    // If odd # of bases, we still have to complement the middle
+	if (start == end) {
+        readWork[start] = (char)rc_table[(int8_t)seq[start]];
+        // but don't need to mess with quality
+        // qualWork[start] = qual[start];
+    }
+    std::swap(seq, readWork);
+    std::swap(qual, qualWork);
 }
 
 
@@ -229,8 +289,8 @@ inline void getSamFlags(const QuasiAlignment& qaln,
     flags1 |= (qaln.isPaired) ? properlyAligned : 0;
     flags2 = flags1;
     // we don't output unmapped yet
-    flags1 |= (qaln.mateStatus == 2) ? unmapped : 0;
-    flags2 |= (qaln.mateStatus == 1) ? mateUnmapped : 0;
+    flags1 |= (qaln.mateStatus == MateStatus::PAIRED_END_RIGHT) ? unmapped : 0;
+    flags2 |= (qaln.mateStatus == MateStatus::PAIRED_END_LEFT) ? mateUnmapped : 0;
     flags1 |= (qaln.fwd) ? 0 : isRC;
     flags1 |= (qaln.mateIsFwd) ? 0 : mateIsRC;
     flags2 |= (qaln.mateIsFwd) ? 0 : isRC;
@@ -281,7 +341,7 @@ bool collectAllHits(uint32_t tid,
 		bool hitRC,
 		PositionListHelper& ph,
 		std::vector<QuasiAlignment>& hits,
-        uint32_t mateStatus){
+        MateStatus mateStatus){
 	bool foundHit{false};
 	bool canAdvance = !ph.done();
 	// The first position should always be a nextTxp, but we don't care
@@ -321,7 +381,7 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 		PositionListHelper& rightPH,
 		uint32_t maxDist,
 		std::vector<QuasiAlignment>& hits,
-        uint32_t mateStatus){
+        MateStatus mateStatus){
 	bool foundHit{false};
 	bool canAdvance = true, canAdvanceLeft = !leftPH.done(), canAdvanceRight = !rightPH.done();
 	// The first position should always be a nextTxp, but we don't care
@@ -419,13 +479,9 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
     return foundHit;
 }
 
-// for mateStatus 0 is proper pair (paired),
-// 1 is left of pair,
-// 2 is right of pair,
-// 3 is unpaired
 void collectHits(RapMapIndex& rmi, std::string& readStr,
                  std::vector<QuasiAlignment>& hits,
-                 uint32_t mateStatus) {
+                 MateStatus mateStatus) {
 
     /*
     auto& idx = rmi.idx;
@@ -628,7 +684,8 @@ void processReadsSingle(single_parser* parser,
         RapMapIndex& rmi,
         SpinLockT& iomutex,
         std::ostream& outStream,
-        HitCounters& hctr) {
+        HitCounters& hctr,
+        bool noOutput) {
 
     auto& txpNames = rmi.txpNames;
     auto& txpLens = rmi.txpLens;
@@ -644,6 +701,9 @@ void processReadsSingle(single_parser* parser,
     size_t readLen{0};
     size_t maxNumHits{200};
     char cigarBuff[1000];
+    std::string readTemp(1000, 'A');
+    std::string qualTemp(1000, '~');
+
     FixedWriter cigarStr(cigarBuff, 1000);
     uint16_t flags;
     // 1000-bp reads are max here (get rid of hard limit later).
@@ -655,7 +715,7 @@ void processReadsSingle(single_parser* parser,
             readLen = j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
-            collectHits(rmi, j->data[i].seq, hits, 3);
+            collectHits(rmi, j->data[i].seq, hits, MateStatus::SINGLE_END);
             /*
                std::set_intersection(leftHits.begin(), leftHits.end(),
                rightHits.begin(), rightHits.end(),
@@ -742,7 +802,8 @@ void processReadsPair(paired_parser* parser,
         RapMapIndex& rmi,
         SpinLockT& iomutex,
         std::ostream& outStream,
-        HitCounters& hctr) {
+        HitCounters& hctr,
+        bool noOutput) {
     auto& txpNames = rmi.txpNames;
     std::vector<uint32_t>& txpLens = rmi.txpLens;
     uint32_t n{0};
@@ -760,7 +821,10 @@ void processReadsPair(paired_parser* parser,
     size_t maxNumHits{200};
     uint16_t flags1, flags2;
     // 1000-bp reads are max here (get rid of hard limit later).
-    std::string qualStr(1000, '~');
+    std::string read1Temp(1000, 'A');
+    std::string qual1Temp(1000, '~');
+    std::string read2Temp(1000, 'A');
+    std::string qual2Temp(1000, '~');
 
     char buff1[1000];
     char buff2[1000];
@@ -782,8 +846,10 @@ void processReadsPair(paired_parser* parser,
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
-            collectHits(rmi, j->data[i].first.seq, leftHits, 1);
-        	collectHits(rmi, j->data[i].second.seq, rightHits, 2);
+            collectHits(rmi, j->data[i].first.seq,
+                        leftHits, MateStatus::PAIRED_END_LEFT);
+        	collectHits(rmi, j->data[i].second.seq,
+                        rightHits, MateStatus::PAIRED_END_RIGHT);
             /*
                std::set_intersection(leftHits.begin(), leftHits.end(),
                rightHits.begin(), rightHits.end(),
@@ -821,7 +887,7 @@ void processReadsPair(paired_parser* parser,
                                 qaln.mateLen = rightIt->readLen;
                                 qaln.matePos = startRead2;
                                 qaln.mateIsFwd = rightIt->fwd;
-                                jointHits.back().mateStatus = 0;
+                                jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
 
                                 ++numHits;
                                 if (numHits > maxNumHits) { break; }
@@ -851,7 +917,7 @@ void processReadsPair(paired_parser* parser,
                         std::make_move_iterator(rightHits.end()));
             }
 
-            if (jointHits.size() > 0) {
+            if (jointHits.size() > 0 and !noOutput) {
                 auto& readName = j->data[i].first.header;
                 auto& mateName = j->data[i].second.header;
                 // trim /1 and /2 from pe read names
@@ -884,11 +950,26 @@ void processReadsPair(paired_parser* parser,
                         }
                         adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
 
+                        // Reverse complement the read and reverse
+                        // the quality string if we need to
+                        if (!qa.fwd) {
+                            reverseRead(j->data[i].first.seq,
+                                        j->data[i].first.qual,
+                                        read1Temp,
+                                        qual1Temp);
+                        }
+                        if (!qa.mateIsFwd) {
+                            reverseRead(j->data[i].second.seq,
+                                        j->data[i].second.qual,
+                                        read2Temp,
+                                        qual2Temp);
+                        }
+
                         sstream << readName.c_str() << '\t' // QNAME
                                 << flags1 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
-                                << 255 << '\t' // MAPQ
+                                << 1 << '\t' // MAPQ
                                 << cigarStr1.c_str() << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.matePos + 1 << '\t' // PNEXT
@@ -900,7 +981,7 @@ void processReadsPair(paired_parser* parser,
                                 << flags2 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.matePos + 1 << '\t' // POS (1-based)
-                                << 255 << '\t' // MAPQ
+                                << 1 << '\t' // MAPQ
                                 << cigarStr2.c_str() << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.pos + 1 << '\t' // PNEXT
@@ -912,9 +993,12 @@ void processReadsPair(paired_parser* parser,
                         if (alnCtr != 0) {
                             flags1 |= 0x900; flags2 |= 0x900;
                         } else {
-                            if (qa.mateStatus == 1) {
+                            // If this is the first alignment for this read
+                            // If the left end is mapped, set 0x900 on the right end
+                            if (qa.mateStatus == MateStatus::PAIRED_END_LEFT) {
                                 flags2 |= 0x900;
                             } else {
+                            // Otherwise, set 0x900 on the left end
                                 flags1 |= 0x900;
                             }
                         }
@@ -927,7 +1011,7 @@ void processReadsPair(paired_parser* parser,
                         std::string* unalignedQstr{nullptr};
                         std::string* unalignedName{nullptr};
                         FixedWriter* cigarStr;
-                        if (qa.mateStatus == 1) { // left read
+                        if (qa.mateStatus == MateStatus::PAIRED_END_LEFT) { // left read
                             readName = j->data[i].first.header;
                             unalignedName = &j->data[i].second.header;
 
@@ -957,20 +1041,11 @@ void processReadsPair(paired_parser* parser,
                             cigarStr = &cigarStr2;
                         }
 
-                        // If this is the first alignment of the group, then
-                        // output the info for the unaligned mate.
-                        if ( alnCtr == 0 and orphanStatus < 3) {
-                            sstream << unalignedName->c_str() << '\t' // QNAME
-                                << unalignedFlags << '\t' // FLAGS
-                                << '*' << '\t' // RNAME
-                                << 0 << '\t' // POS (1-based)
-                                << 0 << '\t' // MAPQ
-                                << readSeq->length() << 'M' << '\t' // CIGAR
-                                << '=' << '\t' // RNEXT
-                                << 0 << '\t' // PNEXT (only 1 read in template)
-                                << 0 << '\t' // TLEN (spec says 0, not read len)
-                                << *unalignedSeq << '\t' // SEQ
-                                << *unalignedQstr << '\n';
+                        // Reverse complement the read and reverse
+                        // the quality string if we need to
+                        if (!qa.fwd) {
+                            reverseRead(*readSeq, *qstr,
+                                        read1Temp, qual1Temp);
                         }
 
                         adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
@@ -978,13 +1053,26 @@ void processReadsPair(paired_parser* parser,
                                 << flags << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
-                                << 255 << '\t' // MAPQ
+                                << 1 << '\t' // MAPQ
                                 << cigarStr->c_str() << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << 0 << '\t' // PNEXT (only 1 read in templte)
                                 << 0 << '\t' // TLEN (spec says 0, not read len)
                                 << *readSeq << '\t' // SEQ
                                 << *qstr << '\n';
+
+                        // Output the info for the unaligned mate.
+                        sstream << unalignedName->c_str() << '\t' // QNAME
+                            << unalignedFlags << '\t' // FLAGS
+                            << transcriptName << '\t' // RNAME (same as mate)
+                            << qa.pos + 1 << '\t' // POS (same as mate)
+                            << 0 << '\t' // MAPQ
+                            << readSeq->length() << 'M' << '\t' // CIGAR
+                            << '=' << '\t' // RNEXT
+                            << 0 << '\t' // PNEXT (only 1 read in template)
+                            << 0 << '\t' // TLEN (spec says 0, not read len)
+                            << *unalignedSeq << '\t' // SEQ
+                            << *unalignedQstr << '\n';
                     }
                     ++alnCtr;
                     // === SAM
@@ -1027,10 +1115,12 @@ void processReadsPair(paired_parser* parser,
         } // for all reads in this job
 
         // DUMP OUTPUT
+        if (!noOutput) {
         iomutex.lock();
         outStream << sstream.str();
         iomutex.unlock();
         sstream.clear();
+        }
 
     } // processed all reads
 }
@@ -1078,7 +1168,9 @@ int rapMapMap(int argc, char* argv[]) {
     TCLAP::ValueArg<std::string> unmatedReads("r", "unmatedReads", "The location of single-end reads", true, "", "path");
     TCLAP::ValueArg<uint32_t> numThreads("t", "numThreads", "Number of threads to use", false, 1, "positive integer");
     TCLAP::ValueArg<std::string> outname("o", "output", "The output file (default: stdout)", false, "", "path");
+    TCLAP::SwitchArg noout("n", "noOutput", "Don't write out any alignments (for speed testing purposes)", false);
     cmd.add(index);
+    cmd.add(noout);
 
     std::vector<TCLAP::Arg*> xorList({&read1, &unmatedReads});
     cmd.xorAdd(xorList);
@@ -1130,7 +1222,9 @@ int rapMapMap(int argc, char* argv[]) {
     std::unique_ptr<paired_parser> pairParserPtr{nullptr};
     std::unique_ptr<single_parser> singleParserPtr{nullptr};
 
-    writeSAMHeader(rmi, outStream);
+    if (!noout.getValue()) {
+        writeSAMHeader(rmi, outStream);
+    }
 
     SpinLockT iomutex;
     {
@@ -1166,7 +1260,8 @@ int rapMapMap(int argc, char* argv[]) {
                         std::ref(rmi),
                         std::ref(iomutex),
                         std::ref(outStream),
-                        std::ref(hctrs));
+                        std::ref(hctrs),
+                        noout.getValue());
             }
 
             for (auto& t : threads) { t.join(); }
@@ -1189,7 +1284,8 @@ int rapMapMap(int argc, char* argv[]) {
                         std::ref(rmi),
                         std::ref(iomutex),
                         std::ref(outStream),
-                        std::ref(hctrs));
+                        std::ref(hctrs),
+                        noout.getValue());
             }
             for (auto& t : threads) { t.join(); }
         }
