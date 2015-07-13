@@ -20,8 +20,12 @@ this functionality is not currently suppored (and is not a high priority right n
 # How fast is RapMap?
 
 It's currently too early in development for a comprehensive benchmark suite, but, on a synthetic test dataset comprised of 
-75 million 76bp paired-end reads, mapping to a human transcriptome with ~213,000 transcripts, RapMap takes ~10 minutes to 
+75 million 76bp paired-end reads, mapping to a human transcriptome with ~213,000 transcripts, RapMap takes < 10 minutes to 
 align all of the reads *on a single core* (on an Intel Xeon E5-2690 @ 3.00 GHz) --- if you actually want to write out the alignments --- it depends on you disk speed, but for us it's ~15 minutes. Again, these mapping times are *on a single core*, and before any significant optimizations (the code is only about a week old) --- but RapMap is trivially parallelizable and can already be run with multiple threads.
+
+# OK, that's fast, but is it accurate?
+
+Again, we're too early in development for a comprehensive benchmark or answer to this question.  However, in the above mentioned synthetic dataset (generated *with* sequencing errors), the true location of origin of the read appears in the hits returned by RapMap ~98% of the time.
 
 # Caveats
 
@@ -36,4 +40,4 @@ there are shortcuts and hacks abound.  It also means that I've not yet put much 
 
 # License 
 
-Recently a hot issue in Bioinformatics :).  Since RapMap uses Jellyfish, it must be released under the GPL.  However, this is currently the only GPL dependency.  If it can be replaced, I'd like to re-license RapMap under the BSD license.  I'd be happy to accept pull-requests the replace the Jellyfish components with a library released under a more liberal license (BSD-compatible), but note that I will *not* accept such pull requests if they reduce the speed or increase the memory consumption over the Jellyfish-based version.
+Recently a hot issue in Bioinformatics :).  Since RapMap uses Jellyfish, it must be released under the GPL.  However, this is currently the only GPL dependency.  If it can be replaced, I'd like to re-license RapMap under the BSD license.  I'd be happy to accept pull-requests that replace the Jellyfish components with a library released under a more liberal license (BSD-compatible), but note that I will *not* accept such pull requests if they reduce the speed or increase the memory consumption over the Jellyfish-based version.
