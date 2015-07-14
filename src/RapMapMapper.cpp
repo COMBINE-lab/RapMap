@@ -17,6 +17,7 @@
 #include <cereal/types/string.hpp>
 #include <cereal/archives/binary.hpp>
 
+#include "HitManager.hpp"
 #include "SIMDCompressionAndIntersection/intersection.h"
 #include "xxhash.h"
 
@@ -53,6 +54,9 @@
 #include "ScopedTimer.hpp"
 #include "SpinLock.hpp"
 
+#define __DEBUG__
+
+
 // STEP 1: declare the type of file handler and the read() function
 // KSEQ_INIT(int, read)
 
@@ -70,6 +74,7 @@ using OccList = std::vector<uint64_t>;
 using KmerInfoList = std::vector<rapmap::utils::KmerInfo>;
 using EqClassList = std::vector<rapmap::utils::EqClass>;
 using EqClassLabelVec = std::vector<uint32_t>;
+using PositionListHelper = rapmap::utils::PositionListHelper;
 #if defined __APPLE__
 using SpinLockT = SpinLock;
 #else
@@ -97,44 +102,11 @@ struct HitCounters {
     std::atomic<uint64_t> numReads{0};
 };
 
-enum class MateStatus : uint8_t {
-    SINGLE_END = 0,
-    PAIRED_END_LEFT = 1,
-    PAIRED_END_RIGHT = 2,
-    PAIRED_END_PAIRED = 3 };
+using MateStatus = rapmap::utils::MateStatus;
+using HitInfo = rapmap::utils::HitInfo;
+using ProcessedHit = rapmap::utils::ProcessedHit;
+using QuasiAlignment = rapmap::utils::QuasiAlignment;
 
-struct QuasiAlignment {
-    QuasiAlignment(uint32_t tidIn, uint32_t posIn,
-                   bool fwdIn, uint32_t readLenIn,
-                   uint32_t fragLenIn = 0,
-                   bool isPairedIn = false) :
-           tid(tidIn), pos(posIn), fwd(fwdIn),
-           readLen(readLenIn), fragLen(fragLenIn),
-           isPaired(isPairedIn) {}
-    QuasiAlignment(QuasiAlignment&& other) = default;
-    QuasiAlignment& operator=(const QuasiAlignment&) = default;
-    // Only 1 since the mate must have the same tid
-    // we won't call *chimeric* alignments here.
-    uint32_t tid;
-    // Left-most position of the hit
-    int32_t pos;
-    // left-most position of the mate
-    int32_t matePos;
-    // Is the read from the forward strand
-    bool fwd;
-    // Is the mate from the forward strand
-    bool mateIsFwd;
-    // The fragment length (template length)
-    // This is 0 for single-end or orphaned reads.
-    uint32_t fragLen;
-    // The read's length
-    uint32_t readLen;
-    // The mate's length
-    uint32_t mateLen;
-    // Is this a paired *alignment* or not
-    bool isPaired;
-    MateStatus mateStatus;
-};
 
 // from https://github.com/cppformat/cppformat/issues/105
 class FixedBuffer : public fmt::Buffer<char> {
@@ -300,39 +272,6 @@ inline void getSamFlags(const QuasiAlignment& qaln,
 }
 
 
-// Wraps the standard iterator of the Position list to provide
-// some convenient functionality.  In the future, maybe this
-// should be a proper iterator adaptor.
-struct PositionListHelper{
-	using PLIt = PositionList::iterator;
-
-	PositionListHelper(PLIt itIn, PLIt endIn) :
-		it_(itIn), end_(endIn) {}
-        // The underlying iterator shouldn't be advanced further
-	inline bool done() { return it_ == end_; }
-
-	// The actual postion on the transcript
-	int32_t pos() { return static_cast<int32_t>((*it_) & 0x3FFFFFFF); }
-
-	// True if the position encoded was on the reverse complement strand
-	// of the reference transcript, false otherwise.
-	bool isRC() { return (*it_) & 0x40000000; }
-
-	// True if we hit the position list for a new transcript, false otherwise
-	bool isNewTxp() { return (*it_) & 0x80000000; }
-
-	void advanceToNextTranscript() {
-		if (it_ < end_) {
-			do {
-				++it_;
-			} while (!isNewTxp() and it_ != end_);
-
-		}
-	}
-
-	PLIt it_; // The underlying iterator
-	PLIt end_; // The end of the container
-};
 
 // Walks the position list for this transcript and puts all hits
 // on the back of the hits vector.
@@ -477,6 +416,115 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
         rightPH.advanceToNextTranscript();
     }
     return foundHit;
+}
+
+
+void collectHitsGeneral(RapMapIndex& rmi,
+                        std::string& readStr,
+                        std::vector<QuasiAlignment>& hits,
+                        MateStatus mateStatus) {
+
+    auto jfhash = rmi.merHash.get();
+    auto& kmerInfos = rmi.kmerInfos;
+    auto& eqClasses = rmi.eqClassList;
+    auto& eqClassLabels = rmi.eqLabelList;
+    auto& posList = rmi.posList;
+    auto posEnd = posList.end();
+
+    rapmap::utils::my_mer mer;
+    rapmap::utils::my_mer rcmer;
+    auto k = rapmap::utils::my_mer::k();
+    auto kbits = 2*k;
+    auto readLen = readStr.length();
+    uint32_t maxDist = static_cast<uint32_t>(readLen) * 1.5;
+    size_t leftQueryPos = std::numeric_limits<size_t>::max();
+    size_t rightQueryPos = std::numeric_limits<size_t>::max();
+    bool leftHitRC = false, rightHitRC = false;
+
+    auto endIt = kmerInfos.end();
+
+    std::vector<HitInfo> kmerHits;
+    bool leftFwd{true};
+    bool rightFwd{true};
+
+    uint64_t merID;
+    size_t kID;
+    rapmap::utils::my_mer searchBuffer;
+
+    for (size_t i = 0; i < readLen; ++i) {
+        int c = jellyfish::mer_dna::code(readStr[i]);
+        if (jellyfish::mer_dna::not_dna(c)) {
+            c = jellyfish::mer_dna::code('G');
+        }
+        mer.shift_left(c);
+        rcmer.shift_right(jellyfish::mer_dna::complement(c));
+        if (i >= k) {
+            auto& searchMer = (mer < rcmer) ? mer : rcmer;
+            bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+                                                    searchBuffer, &kID);
+            if (foundMer) {
+                kmerHits.emplace_back(kmerInfos.begin() + merID,
+                                      merID,
+                                      i - k,
+                                      searchMer == rcmer);
+                leftQueryPos = i - k;
+                break;
+            }
+        }
+    }
+
+    // found no hits in the entire read
+    if (kmerHits.size() == 0) { return; }
+
+    // Now, start from the right and move left
+    for (size_t i = readLen - 1; i >= leftQueryPos; --i) {
+        int c = jellyfish::mer_dna::code(readStr[i]);
+        if (jellyfish::mer_dna::not_dna(c)) {
+            c = jellyfish::mer_dna::code('G');
+        }
+        mer.shift_right(c);
+        rcmer.shift_left(jellyfish::mer_dna::complement(c));
+        if (readLen - i >= k) {
+            auto& searchMer = (mer < rcmer) ? mer : rcmer;
+            bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+                                                    searchBuffer, &kID);
+            if (foundMer) {
+                kmerHits.emplace_back(kmerInfos.begin() + merID,
+                                      merID,
+                                      readLen - (i + k),
+                                      searchMer == rcmer);
+                break;
+            }
+        }
+    }
+
+    if (kmerHits.size() > 0) {
+        if (kmerHits.size() > 1) {
+            //std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
+            auto processedHits = rapmap::hit_manager::intersectHits(kmerHits, rmi);
+            rapmap::hit_manager::collectHitsSimple(processedHits, readLen, maxDist, hits, mateStatus);
+        } else {
+            //std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
+            auto& kinfo = *kmerHits[0].kinfo;
+            hits.reserve(kinfo.count);
+            // Iterator into, length of and end of the transcript list
+		    auto& eqClassLeft = eqClasses[kinfo.eqId];
+            // Iterator into, length of and end of the positon list
+            auto leftPosIt = posList.begin() + kinfo.offset;
+            auto leftPosLen = kinfo.count;
+            auto leftPosEnd = leftPosIt + leftPosLen;
+            PositionListHelper leftPosHelper(leftPosIt, posList.end());
+
+            auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
+            auto leftTxpListLen = eqClassLeft.txpListLen;
+            auto leftTxpEnd = leftTxpIt + leftTxpListLen;
+
+            for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
+                collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits, mateStatus);
+            }
+        }
+    }
+
 }
 
 void collectHits(RapMapIndex& rmi, std::string& readStr,
@@ -715,7 +763,7 @@ void processReadsSingle(single_parser* parser,
             readLen = j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
-            collectHits(rmi, j->data[i].seq, hits, MateStatus::SINGLE_END);
+            collectHitsGeneral(rmi, j->data[i].seq, hits, MateStatus::SINGLE_END);
             /*
                std::set_intersection(leftHits.begin(), leftHits.end(),
                rightHits.begin(), rightHits.end(),
@@ -846,9 +894,9 @@ void processReadsPair(paired_parser* parser,
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
-            collectHits(rmi, j->data[i].first.seq,
+            collectHitsGeneral(rmi, j->data[i].first.seq,
                         leftHits, MateStatus::PAIRED_END_LEFT);
-        	collectHits(rmi, j->data[i].second.seq,
+        	collectHitsGeneral(rmi, j->data[i].second.seq,
                         rightHits, MateStatus::PAIRED_END_RIGHT);
             /*
                std::set_intersection(leftHits.begin(), leftHits.end(),
@@ -1179,10 +1227,13 @@ int rapMapMap(int argc, char* argv[]) {
     cmd.add(numThreads);
     cmd.parse(argc, argv);
 
+    auto consoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
+    auto consoleLog = spdlog::create("stderrLog", {consoleSink});
+
     bool pairedEnd = (read1.isSet() or read2.isSet());
     if (pairedEnd and (read1.isSet() != read2.isSet())) {
-        std::cerr << "You must set both the -1 and -2 arguments to align "
-                  << "paired end reads!\n";
+        consoleLog->error("You must set both the -1 and -2 arguments to align "
+                          "paired end reads!");
         std::exit(1);
     }
 
@@ -1192,15 +1243,15 @@ int rapMapMap(int argc, char* argv[]) {
     }
 
     if (!rapmap::fs::DirExists(indexPrefix.c_str())) {
-        std::cerr << "It looks like the index you provided ["
-                  << indexPrefix << "] doesn't exist\n";
+        consoleLog->error("It looks like the index you provided [{}] "
+                          "doesn't exist", indexPrefix);
         std::exit(1);
     }
 
     RapMapIndex rmi;
     rmi.load(indexPrefix);
 
-    std::cerr << "\n\n";
+    std::cerr << "\n\n\n\n";
 
     // from: http://stackoverflow.com/questions/366955/obtain-a-stdostream-either-from-stdcout-or-stdofstreamfile
     // set either a file or cout as the output stream
@@ -1230,15 +1281,15 @@ int rapMapMap(int argc, char* argv[]) {
     {
         ScopedTimer timer;
         HitCounters hctrs;
-        std::cerr << "mapping reads . . . ";
+        consoleLog->info("mapping reads . . . ");
         if (pairedEnd) {
             std::vector<std::thread> threads;
             std::vector<std::string> read1Vec = tokenize(read1.getValue(), ',');
             std::vector<std::string> read2Vec = tokenize(read2.getValue(), ',');
 
             if (read1Vec.size() != read2Vec.size()) {
-                std::cerr << "The number of provided files for -1 and -2 must "
-                    << "be the same!\n";
+                consoleLog->error("The number of provided files for "
+                                  "-1 and -2 must be the same!");
                 std::exit(1);
             }
 
@@ -1289,7 +1340,7 @@ int rapMapMap(int argc, char* argv[]) {
             }
             for (auto& t : threads) { t.join(); }
         }
-        std::cerr << "done mapping reads\n";
+        consoleLog->info("done mapping reads.");
     }
 
     if (haveOutputFile) {
