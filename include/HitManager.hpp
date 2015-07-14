@@ -46,9 +46,13 @@ namespace rapmap {
         }
 
 
-        // Intersects the hit he with outHits
+        // Intersects the hit h2 with outHits.
+        // This will modify outHits so that the tqvec field of the
+        // entries in outHits that are labeled by the transcripts in 
+        // which h2 appears will have an iterator to the beginning of 
+        // the position list for h2.
         void intersectWithOutput(HitInfo& h2, RapMapIndex& rmi,
-                                 std::vector<ProcessedHit>& outHits) {
+                std::vector<ProcessedHit>& outHits) {
 
             // Convenient bindings for variables we'll use
             auto& eqClasses = rmi.eqClassList;
@@ -59,55 +63,55 @@ namespace rapmap {
             auto outHitIt = outHits.begin();
             auto outHitEnd = outHits.end();
 
-			// Equiv. class for h2
-			auto& eqClassRight = eqClasses[h2.kinfo->eqId];
+            // Equiv. class for h2
+            auto& eqClassRight = eqClasses[h2.kinfo->eqId];
 
             // Iterator into, length of and end of the positon list for h2
-			auto rightPosIt = posList.begin() + h2.kinfo->offset;
-			auto rightPosLen = h2.kinfo->count;
-			auto rightPosEnd = rightPosIt + rightPosLen;
-			// Iterator into, length of and end of the transcript list for h2
-			auto rightTxpIt = eqClassLabels.begin() + eqClassRight.txpListStart;
-			auto rightTxpListLen = eqClassRight.txpListLen;
-			auto rightTxpEnd = rightTxpIt + rightTxpListLen;
+            auto rightPosIt = posList.begin() + h2.kinfo->offset;
+            auto rightPosLen = h2.kinfo->count;
+            auto rightPosEnd = rightPosIt + rightPosLen;
+            // Iterator into, length of and end of the transcript list for h2
+            auto rightTxpIt = eqClassLabels.begin() + eqClassRight.txpListStart;
+            auto rightTxpListLen = eqClassRight.txpListLen;
+            auto rightTxpEnd = rightTxpIt + rightTxpListLen;
 
             auto rightQueryPos = h2.queryPos;
             auto rightQueryRC = h2.queryRC;
             PositionListHelper rightPosHelper(rightPosIt, posList.end());
 
             uint32_t leftTxp, rightTxp;
-			while (outHitIt != outHitEnd and rightTxpIt != rightTxpEnd) {
-				// Get the current transcript ID for the left and right eq class
-				leftTxp = outHitIt->tid;
-				rightTxp = *rightTxpIt;
-				// If we need to advance the left txp, do it
-				if (leftTxp < rightTxp) {
+            while (outHitIt != outHitEnd and rightTxpIt != rightTxpEnd) {
+                // Get the current transcript ID for the left and right eq class
+                leftTxp = outHitIt->tid;
+                rightTxp = *rightTxpIt;
+                // If we need to advance the left txp, do it
+                if (leftTxp < rightTxp) {
                     // Advance to the next transcript in the
                     // equivalence class label
                     ++outHitIt;
-				} else {
-					// If the transcripts are equal (i.e. leftTxp >= rightTxp and !(rightTxp < leftTxp))
-					// Then see if there are any hits here.
-					if (!(rightTxp < leftTxp)) {
+                } else {
+                    // If the transcripts are equal (i.e. leftTxp >= rightTxp and !(rightTxp < leftTxp))
+                    // Then see if there are any hits here.
+                    if (!(rightTxp < leftTxp)) {
                         // Add the position list iterator and query pos for the
                         // hit from h2 to the back of outHits' tqvec.
                         outHitIt->tqvec.emplace_back(rightPosHelper, rightQueryPos, rightQueryRC);
                         ++outHitIt;
-					}
+                    }
                     // advance the hit we're intersecting to the next transcript
                     rightPosHelper.advanceToNextTranscript();
                     // Advance the right transcript id regardless of whether
-                    // we looked for a hit or not.
-					++rightTxpIt;
-				}
-			}
+                    // we found a hit or not.
+                    ++rightTxpIt;
+                }
+            }
 
         }
 
         std::vector<ProcessedHit> intersectHits(
-                                    std::vector<HitInfo>& inHits,
-                                    RapMapIndex& rmi
-                                    ) {
+                std::vector<HitInfo>& inHits,
+                RapMapIndex& rmi
+                ) {
             // Each inHit is a HitInfo structure that contains
             // an iterator to the KmerInfo for this k-mer, the k-mer ID,
             // and the query position where this k-mer appeared.
@@ -119,7 +123,7 @@ namespace rapmap {
             // with less than 2 hits.
             if (inHits.size() < 2) {
                 std::cerr << "intersectHits() called with < 2 k-mer "
-                             " hits; this shouldn't happen\n";
+                    " hits; this shouldn't happen\n";
                 return {};
             }
 
@@ -150,7 +154,7 @@ namespace rapmap {
                 auto txpIt = eqClassLabels.begin() + eqClass.txpListStart;
                 auto txpListLen = eqClass.txpListLen;
                 auto txpEnd = txpIt + txpListLen;
-        		PositionListHelper posHelper(posIt, posList.end());
+                PositionListHelper posHelper(posIt, posList.end());
 
                 while (txpIt != txpEnd) {
                     auto tid = *txpIt;
@@ -170,16 +174,43 @@ namespace rapmap {
             }
 
             size_t requiredNumHits = inHits.size();
-            /*
             // do we need stable_partition? --- don't think so.
-            auto newEnd = std::partition(outHits.begin(), outHits.end(),
-                          [requiredNumHits] (const ProcessedHit& ph) -> bool {
-                            // should never really be greater.
-                            return (ph.tqvec.size() >= requiredNumHits);
-                          });
+            auto newEnd = std::stable_partition(outHits.begin(), outHits.end(),
+                    [requiredNumHits] (const ProcessedHit& ph) -> bool {
+                    // should never really be greater.
+                    return (ph.tqvec.size() >= requiredNumHits);
+                    });
+            /*
+               bool didDrop = false;
+               for (auto it = newEnd; it != outHits.end(); ++it) {
+               std::cerr << "Dropped hit for txp " << it->tid << "\n";
+               didDrop = true;
+               }
+               if (didDrop) {
+               auto& eqClass = eqClasses[inHits[0].kinfo->eqId];
+               auto txpIt = eqClassLabels.begin() + eqClass.txpListStart;
+               auto txpListLen = eqClass.txpListLen;
+               auto txpEnd = txpIt + txpListLen;
+               std::cerr << "hits1: {";
+               while (txpIt != txpEnd) {
+               std::cerr << *txpIt << ", ";
+               ++txpIt;
+               }
+               std::cerr << "}\n";
+               auto& eqClass2 = eqClasses[inHits[1].kinfo->eqId];
+               txpIt = eqClassLabels.begin() + eqClass2.txpListStart;
+               txpListLen = eqClass2.txpListLen;
+               txpEnd = txpIt + txpListLen;
+               std::cerr << "hits2: {";
+               while (txpIt != txpEnd) {
+               std::cerr << *txpIt << ", ";
+               ++txpIt;
+               }
+               std::cerr << "}\n";
+               }
+               */
             // return only the valid hits
             outHits.resize(std::distance(outHits.begin(), newEnd));
-            */
             return outHits;
         }
 
