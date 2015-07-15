@@ -54,7 +54,8 @@
 #include "ScopedTimer.hpp"
 #include "SpinLock.hpp"
 
-#define __DEBUG__
+// #define __DEBUG__
+// #define __TRACK_CORRECT__
 
 
 // STEP 1: declare the type of file handler and the read() function
@@ -100,6 +101,7 @@ struct HitCounters {
     std::atomic<uint64_t> trueHits{0};
     std::atomic<uint64_t> totHits{0};
     std::atomic<uint64_t> numReads{0};
+    std::atomic<uint64_t> tooManyHits{0};
 };
 
 using MateStatus = rapmap::utils::MateStatus;
@@ -754,6 +756,7 @@ void processReadsSingle(single_parser* parser,
         SpinLockT& iomutex,
         std::ostream& outStream,
         HitCounters& hctr,
+        size_t maxNumHits,
         bool noOutput) {
 
     auto& txpNames = rmi.txpNames;
@@ -768,7 +771,7 @@ void processReadsSingle(single_parser* parser,
     std::vector<QuasiAlignment> hits;
 
     size_t readLen{0};
-    size_t maxNumHits{300};
+
     char cigarBuff[1000];
     std::string readTemp(1000, 'A');
     std::string qualTemp(1000, '~');
@@ -795,7 +798,7 @@ void processReadsSingle(single_parser* parser,
 
             if (hits.size() > 0 and hits.size() < maxNumHits) {
                 auto& readName = j->data[i].header;
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                 auto before = readName.find_first_of(':');
                 before = readName.find_first_of(':', before+1);
                 auto after = readName.find_first_of(':', before+1);
@@ -827,7 +830,7 @@ void processReadsSingle(single_parser* parser,
                         << *qstr << '\n';
                     ++alnCtr;
                     // === SAM
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                     if (txpNames[qa.tid] == txpName) { ++hctr.trueHits; }
 #endif //__DEBUG__
                 }
@@ -836,7 +839,7 @@ void processReadsSingle(single_parser* parser,
             if (hctr.numReads % 1000000 == 0) {
                 if (iomutex.try_lock()){
                     if (hctr.numReads > 0) {
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                         std::cerr << "\033[F\033[F\033[F";
 #else
                         std::cerr << "\033[F\033[F";
@@ -845,7 +848,7 @@ void processReadsSingle(single_parser* parser,
                     std::cerr << "saw " << hctr.numReads << " reads\n";
                     std::cerr << "# hits per read = "
                         << hctr.totHits / static_cast<float>(hctr.numReads) << "\n";
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                     std::cerr << "The true hit was in the returned set of hits "
                         << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
                         <<  "% of the time\n";
@@ -889,6 +892,7 @@ void processReadsPair(paired_parser* parser,
         SpinLockT& iomutex,
         std::ostream& outStream,
         HitCounters& hctr,
+        size_t maxNumHits,
         bool noOutput) {
     auto& txpNames = rmi.txpNames;
     std::vector<uint32_t>& txpLens = rmi.txpLens;
@@ -897,6 +901,8 @@ void processReadsPair(paired_parser* parser,
     std::vector<std::string> transcriptNames;
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
 
+    auto logger = spdlog::get("stderrLog");
+
     fmt::MemoryWriter sstream;
     size_t batchSize{1000};
     std::vector<QuasiAlignment> leftHits;
@@ -904,7 +910,6 @@ void processReadsPair(paired_parser* parser,
     std::vector<QuasiAlignment> jointHits;
 
     size_t readLen{0};
-    size_t maxNumHits{200};
 	bool tooManyHits{false};
     uint16_t flags1, flags2;
     // 1000-bp reads are max here (get rid of hard limit later).
@@ -986,7 +991,7 @@ void processReadsPair(paired_parser* parser,
                         }
                     }
                 }
-				if (tooManyHits) { jointHits.clear(); }
+				if (tooManyHits) { jointHits.clear(); ++hctr.tooManyHits; }
             }
 
 			// If we had proper paired hits
@@ -994,7 +999,7 @@ void processReadsPair(paired_parser* parser,
                 hctr.peHits += jointHits.size();
                 orphanStatus = 0;
             } else if (leftHits.size() + rightHits.size() > 0 and !tooManyHits) {
-		    // If there weren't proper paired hits, then either 
+		    // If there weren't proper paired hits, then either
 			// there were too many hits, and we forcibly discarded the read
 			// or we take the single end hits.
 					auto numHits = leftHits.size() + rightHits.size();
@@ -1024,7 +1029,7 @@ void processReadsPair(paired_parser* parser,
                 }
 
 
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                 auto before = readName.find_first_of(':');
                 before = readName.find_first_of(':', before+1);
                 auto after = readName.find_first_of(':', before+1);
@@ -1179,27 +1184,27 @@ void processReadsPair(paired_parser* parser,
                         << '\t' << qa.fragLen << '\t'
                         << (qa.isPaired ? "Paired" : "Orphan") << '\n';
                     */
-#ifdef __DEBUG__
-                    if (transcriptName == trueTxpName) { 
-							if (trueHitCtr == 0) { 
-									++hctr.trueHits; 
-									++trueHitCtr;	
-									firstTrueHit = &qa;
-							} else { 
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
+                    if (transcriptName == trueTxpName) {
+							if (trueHitCtr == 0) {
+									++hctr.trueHits;
 									++trueHitCtr;
-									std::cerr << "Found true hit " << trueHitCtr << " times!\n"; 
-									std::cerr << transcriptName << '\t' << firstTrueHit->pos 
+									firstTrueHit = &qa;
+							} else {
+									++trueHitCtr;
+									std::cerr << "Found true hit " << trueHitCtr << " times!\n";
+									std::cerr << transcriptName << '\t' << firstTrueHit->pos
 											<< '\t' << firstTrueHit->fwd << '\t' << firstTrueHit->fragLen
 											<< '\t' << (firstTrueHit->isPaired ? "Paired" : "Orphan") << '\t';
 								    printMateStatus(firstTrueHit->mateStatus);
 								    std::cerr << '\n';
-									std::cerr << transcriptName << '\t' << qa.pos 
+									std::cerr << transcriptName << '\t' << qa.pos
 											  << '\t' << qa.fwd << '\t' << qa.fragLen
 										      << '\t' << (qa.isPaired ? "Paired" : "Orphan") << '\t';
 								    printMateStatus(qa.mateStatus);
 								    std::cerr << '\n';
-	
-							} 
+
+							}
 					}
 #endif //__DEBUG__
                 }
@@ -1208,7 +1213,7 @@ void processReadsPair(paired_parser* parser,
             if (hctr.numReads % 1000000 == 0) {
                 if (iomutex.try_lock()) {
                     if (hctr.numReads > 0) {
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                         std::cerr << "\033[F\033[F\033[F\033[F";
 #else
                         std::cerr << "\033[F\033[F\033[F";
@@ -1219,7 +1224,7 @@ void processReadsPair(paired_parser* parser,
                         << hctr.peHits / static_cast<float>(hctr.numReads) << "\n";
                     std::cerr << "# se hits per read = "
                         << hctr.seHits / static_cast<float>(hctr.numReads) << "\n";
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                     std::cerr << "The true hit was in the returned set of hits "
                         << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
                         <<  "% of the time\n";
@@ -1231,13 +1236,14 @@ void processReadsPair(paired_parser* parser,
 
         // DUMP OUTPUT
         if (!noOutput) {
-        iomutex.lock();
-        outStream << sstream.str();
-        iomutex.unlock();
-        sstream.clear();
+            iomutex.lock();
+            outStream << sstream.str();
+            iomutex.unlock();
+            sstream.clear();
         }
 
     } // processed all reads
+
 }
 
 void writeSAMHeader(RapMapIndex& rmi, std::ostream& outStream) {
@@ -1318,6 +1324,8 @@ int rapMapMap(int argc, char* argv[]) {
     RapMapIndex rmi;
     rmi.load(indexPrefix);
 
+    size_t maxNumHits{200};
+
     std::cerr << "\n\n\n\n";
 
     // from: http://stackoverflow.com/questions/366955/obtain-a-stdostream-either-from-stdcout-or-stdofstreamfile
@@ -1379,6 +1387,7 @@ int rapMapMap(int argc, char* argv[]) {
                         std::ref(iomutex),
                         std::ref(outStream),
                         std::ref(hctrs),
+                        maxNumHits,
                         noout.getValue());
             }
 
@@ -1403,11 +1412,15 @@ int rapMapMap(int argc, char* argv[]) {
                         std::ref(iomutex),
                         std::ref(outStream),
                         std::ref(hctrs),
+                        maxNumHits,
                         noout.getValue());
             }
             for (auto& t : threads) { t.join(); }
         }
         consoleLog->info("done mapping reads.");
+        consoleLog->info("Discarded {} reads because they had > {} alignments",
+                         hctrs.tooManyHits, maxNumHits);
+
     }
 
     if (haveOutputFile) {

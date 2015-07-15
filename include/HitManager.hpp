@@ -36,10 +36,10 @@ namespace rapmap {
                 bool hitRC = firstHit.queryRC;
                 bool txpRC = ph.tqvec[0].txpPosInfo.isRC();
                 bool isFwd = (hitRC == txpRC);
+                int32_t hitPos = firstHit.txpPosInfo.pos() - firstHit.queryPos;
 
                 // determine forward
-                hits.emplace_back(tid, firstHit.txpPosInfo.pos(),
-                        isFwd, readLen);
+                hits.emplace_back(tid, hitPos, isFwd, readLen);
                 hits.back().mateStatus = mateStatus;
             }
             return true;
@@ -48,8 +48,8 @@ namespace rapmap {
 
         // Intersects the hit h2 with outHits.
         // This will modify outHits so that the tqvec field of the
-        // entries in outHits that are labeled by the transcripts in 
-        // which h2 appears will have an iterator to the beginning of 
+        // entries in outHits that are labeled by the transcripts in
+        // which h2 appears will have an iterator to the beginning of
         // the position list for h2.
         void intersectWithOutput(HitInfo& h2, RapMapIndex& rmi,
                 std::vector<ProcessedHit>& outHits) {
