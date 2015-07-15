@@ -25,7 +25,7 @@ align all of the reads *on a single core* (on an Intel Xeon E5-2690 @ 3.00 GHz) 
 
 # OK, that's fast, but is it accurate?
 
-Again, we're too early in development for a comprehensive benchmark or answer to this question.  However, in the above mentioned synthetic dataset (generated *with* sequencing errors), the true location of origin of the read appears in the hits returned by RapMap ~98% of the time.
+Again, we're too early in development for a comprehensive benchmark or answer to this question.  However, in the above mentioned synthetic dataset (generated *with* sequencing errors), the true location of origin of the read appears in the hits returned by RapMap > 97% of the time.
 
 # Caveats
 
