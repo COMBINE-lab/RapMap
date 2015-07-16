@@ -83,6 +83,16 @@ using SpinLockT = SpinLock;
 using SpinLockT = std::mutex;
 #endif
 
+// "Fake" mutex for single-threaded exceuction that does nothing;
+class NullMutex {
+    public:
+	void lock() { return; }
+	bool try_lock() { return true; }
+	void unlock() { return; }
+};
+
+
+
 constexpr char bases[] = {'A', 'C', 'G', 'T'};
 
 inline int32_t tid(uint64_t x) { return static_cast<uint32_t>(x >> 32); }
@@ -866,11 +876,11 @@ class EndCollector {
     }
 };
 
-template <typename CollectorT>
+template <typename CollectorT, typename MutexT>
 void processReadsSingle(single_parser* parser,
         RapMapIndex& rmi,
 	CollectorT& hitCollector,	
-        SpinLockT& iomutex,
+        MutexT* iomutex,
         std::ostream& outStream,
         HitCounters& hctr,
         uint32_t maxNumHits,
@@ -955,7 +965,7 @@ void processReadsSingle(single_parser* parser,
 
             if (hctr.numReads > hctr.lastPrint + 1000000) {
 		hctr.lastPrint.store(hctr.numReads.load());
-                if (iomutex.try_lock()){
+                if (iomutex->try_lock()){
                     if (hctr.numReads > 0) {
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                         std::cerr << "\033[F\033[F\033[F";
@@ -971,45 +981,45 @@ void processReadsSingle(single_parser* parser,
                         << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
                         <<  "% of the time\n";
 #endif // __DEBUG__
-                    iomutex.unlock();
+                    iomutex->unlock();
                 }
             }
         } // for all reads in this job
 
         // DUMP OUTPUT
-        iomutex.lock();
+        iomutex->lock();
         outStream << sstream.str();
-        iomutex.unlock();
+        iomutex->unlock();
         sstream.clear();
 
     } // processed all reads
 }
 
 void printMateStatus(rapmap::utils::MateStatus ms) {
-		switch(ms) {
-				case rapmap::utils::MateStatus::SINGLE_END:
-						std::cerr << "SINGLE END";
-						break;
-				case rapmap::utils::MateStatus::PAIRED_END_LEFT:
-						std::cerr << "PAIRED END (LEFT)";
-						break;
-				case rapmap::utils::MateStatus::PAIRED_END_RIGHT:
-						std::cerr << "PAIRED END (RIGHT)";
-						break;
-				case rapmap::utils::MateStatus::PAIRED_END_PAIRED:
-						std::cerr << "PAIRED END (PAIRED)";
-						break;
-		}
+    switch(ms) {
+	case rapmap::utils::MateStatus::SINGLE_END:
+	    std::cerr << "SINGLE END";
+	    break;
+	case rapmap::utils::MateStatus::PAIRED_END_LEFT:
+	    std::cerr << "PAIRED END (LEFT)";
+	    break;
+	case rapmap::utils::MateStatus::PAIRED_END_RIGHT:
+	    std::cerr << "PAIRED END (RIGHT)";
+	    break;
+	case rapmap::utils::MateStatus::PAIRED_END_PAIRED:
+	    std::cerr << "PAIRED END (PAIRED)";
+	    break;
+    }
 }
 
 // To use the parser in the following, we get "jobs" until none is
 // available. A job behaves like a pointer to the type
 // jellyfish::sequence_list (see whole_sequence_parser.hpp).
-template <typename CollectorT>
+template <typename CollectorT, typename MutexT>
 void processReadsPair(paired_parser* parser,
         RapMapIndex& rmi,
 	CollectorT& hitCollector,
-        SpinLockT& iomutex,
+        MutexT* iomutex,
         std::ostream& outStream,
         HitCounters& hctr,
         uint32_t maxNumHits,
@@ -1333,7 +1343,7 @@ void processReadsPair(paired_parser* parser,
 
             if (hctr.numReads > hctr.lastPrint + 1000000) {
 		hctr.lastPrint.store(hctr.numReads.load());
-                if (iomutex.try_lock()) {
+                if (iomutex->try_lock()) {
                     if (hctr.numReads > 0) {
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                         std::cerr << "\033[F\033[F\033[F\033[F";
@@ -1355,16 +1365,16 @@ void processReadsPair(paired_parser* parser,
                               << js.jumpSizes / static_cast<double>(js.numJumps) << "\n";
 			      */
 #endif // __DEBUG__
-                    iomutex.unlock();
+                    iomutex->unlock();
                 }
             }
         } // for all reads in this job
 
         // DUMP OUTPUT
         if (!noOutput) {
-            iomutex.lock();
+            iomutex->lock();
             outStream << sstream.str();
-            iomutex.unlock();
+            iomutex->unlock();
             sstream.clear();
         }
 
@@ -1527,11 +1537,11 @@ int rapMapMap(int argc, char* argv[]) {
 		if (endCollectorSwitch.getValue()) {
 		    EndCollector endCollector(&rmi);
 		    for (size_t i = 0; i < nthread; ++i) {
-			threads.emplace_back(processReadsPair<EndCollector>,
+			threads.emplace_back(processReadsPair<EndCollector, SpinLockT>,
 				pairParserPtr.get(),
 				std::ref(rmi),
 				std::ref(endCollector),
-				std::ref(iomutex),
+				&iomutex,
 				std::ref(outStream),
 				std::ref(hctrs),
 				maxNumHits.getValue(), 
@@ -1540,11 +1550,11 @@ int rapMapMap(int argc, char* argv[]) {
 		} else {
 		    SkippingCollector skippingCollector(&rmi);
 		    for (size_t i = 0; i < nthread; ++i) {
-			threads.emplace_back(processReadsPair<SkippingCollector>,
+			threads.emplace_back(processReadsPair<SkippingCollector, SpinLockT>,
 				pairParserPtr.get(),
 				std::ref(rmi),
 				std::ref(skippingCollector),
-				std::ref(iomutex),
+				&iomutex,
 				std::ref(outStream),
 				std::ref(hctrs),
 				maxNumHits.getValue(), 
@@ -1570,11 +1580,11 @@ int rapMapMap(int argc, char* argv[]) {
 		if (endCollectorSwitch.getValue()) {
 		    EndCollector endCollector(&rmi);
 		    for (size_t i = 0; i < nthread; ++i) {
-			threads.emplace_back(processReadsSingle<EndCollector>,
+			threads.emplace_back(processReadsSingle<EndCollector, SpinLockT>,
 				singleParserPtr.get(),
 				std::ref(rmi),
 				std::ref(endCollector),
-				std::ref(iomutex),
+				&iomutex,
 				std::ref(outStream),
 				std::ref(hctrs),
 				maxNumHits.getValue(),
@@ -1583,11 +1593,11 @@ int rapMapMap(int argc, char* argv[]) {
 		} else {
 		    SkippingCollector skippingCollector(&rmi);
 		    for (size_t i = 0; i < nthread; ++i) {
-			threads.emplace_back(processReadsSingle<SkippingCollector>,
+			threads.emplace_back(processReadsSingle<SkippingCollector, SpinLockT>,
 				singleParserPtr.get(),
 				std::ref(rmi),
 				std::ref(skippingCollector),
-				std::ref(iomutex),
+				&iomutex,
 				std::ref(outStream),
 				std::ref(hctrs),
 				maxNumHits.getValue(),
