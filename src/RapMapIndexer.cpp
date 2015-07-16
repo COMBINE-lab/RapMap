@@ -178,6 +178,9 @@ void processTranscripts(ParserT* parser,
     std::vector<std::string> transcriptNames;
     std::vector<uint32_t> transcriptLengths;
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
+    uint32_t polyAClipLength{10};
+    uint32_t numPolyAsClipped{0};
+    std::string polyA(polyAClipLength, 'A');
 
     using TranscriptList = std::vector<uint32_t>;
     using eager_iterator = MerMapT::array::eager_iterator;
@@ -203,6 +206,21 @@ void processTranscripts(ParserT* parser,
 
             for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
                 std::string& readStr = j->data[i].seq;
+
+		// Do Kallisto-esque clipping of polyA tails
+		if (readStr.size() > polyAClipLength and 
+		    readStr.substr(readStr.length() - polyAClipLength) == polyA) {
+		
+		    auto newEndPos = readStr.find_last_not_of("Aa");
+		    // If it was all As
+		    if (newEndPos == std::string::npos) {
+			readStr.resize(0);
+		    } else {
+			readStr.resize(newEndPos + 1);
+		    }
+		    ++numPolyAsClipped;
+		}
+
                 uint32_t readLen  = readStr.size();
                 uint32_t txpIndex = n++;
                 transcriptLengths.push_back(readLen);
@@ -259,6 +277,8 @@ void processTranscripts(ParserT* parser,
         }
         std::cerr << "\n";
     }
+
+    std::cerr << "Clipped poly-A tails from " << numPolyAsClipped << " transcripts\n";
 
     std::ofstream txpLenStream(outputDir + "txplens.bin", std::ios::binary);
     {
