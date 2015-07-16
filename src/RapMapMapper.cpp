@@ -103,6 +103,7 @@ struct HitCounters {
     std::atomic<uint64_t> totHits{0};
     std::atomic<uint64_t> numReads{0};
     std::atomic<uint64_t> tooManyHits{0};
+    std::atomic<uint64_t> lastPrint{0};
 };
 
 using MateStatus = rapmap::utils::MateStatus;
@@ -425,7 +426,7 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 }
 
 
-class SkippingKmerIterator {
+class SkippingKmerSearcher{
     private:
 	std::string* qstr;
 	const char* qCharArray;
@@ -440,7 +441,7 @@ class SkippingKmerIterator {
 	static constexpr uint32_t invalidIndex = std::numeric_limits<uint32_t>::max();
 
     public:
-	SkippingKmerIterator(std::string& queryStr) :
+	SkippingKmerSearcher(std::string& queryStr) :
 		qstr(&queryStr),
 		qCharArray(queryStr.c_str()),
 		qlen(queryStr.length()),
@@ -470,17 +471,23 @@ class SkippingKmerIterator {
 	    	return false;
 	    }
 
-        // otherwise start a new k-mer at the jump position
-        while (!tempMer.from_chars(&qCharArray[searchPos])) {
-            // If it wasn't a valid k-mer, find the offending base
-            // and try to start k bases before it
-            uint32_t invalidLoc = qstr->find_last_not_of("aAcCgGtT", searchPos + k);
-            // Make sure we don't fall off the end
-            if (invalidLoc < k + 1) {
-                return false;
-            }
-            searchPos = invalidLoc - k - 1;
-        }
+	    // We can't search off the end
+	    if (searchPos + k > qlen) {
+		searchPos = qlen - k;
+	    }
+		
+
+	    // otherwise start a new k-mer at the jump position
+	    while (!tempMer.from_chars(&qCharArray[searchPos])) {
+		// If it wasn't a valid k-mer, find the offending base
+		// and try to start k bases before it
+		uint32_t invalidLoc = qstr->find_last_not_of("aAcCgGtT", searchPos + k);
+		// Make sure we don't fall off the end
+		if (invalidLoc < k + 1) {
+		    return false;
+		}
+		searchPos = invalidLoc - k - 1;
+	    }
 
 	    // we found a hit, so make it the current k-mer
 	    klen = k;
@@ -489,6 +496,12 @@ class SkippingKmerIterator {
 	    mer = tempMer;
 	    return true;
 	}
+
+	bool isOutsideQuery(uint32_t jumpLen) {
+	    uint32_t jumpPos = startPos + jumpLen;
+	    return (jumpPos > qlen - k);
+	}
+
 
 	// move to the next valid k-mer that is at least skipVal past
 	// the current position.  If skipVal positions forward is past
@@ -591,458 +604,276 @@ struct JumpStats {
     std::atomic<uint64_t> numJumps{0};
 };
 
-void collectHitsSkippy(RapMapIndex& rmi,
-                        std::string& readStr,
-                        std::vector<QuasiAlignment>& hits,
-                        MateStatus mateStatus,
-                        JumpStats& js) {
 
-    auto jfhash = rmi.merHash.get();
-    auto& kmerInfos = rmi.kmerInfos;
-    auto& eqClasses = rmi.eqClassList;
-    auto& eqClassLabels = rmi.eqLabelList;
-    auto& posList = rmi.posList;
-    auto& fwdJumpTable = rmi.fwdJumpTable;
-    auto& revJumpTable = rmi.revJumpTable;
-    auto posEnd = posList.end();
+class SkippingCollector {
+    private:
+	RapMapIndex* rmi_;
+    public:
+	SkippingCollector(RapMapIndex* rmiIn) : rmi_(rmiIn) {}
 
-    auto k = rapmap::utils::my_mer::k();
-    auto readLen = readStr.length();
-    uint32_t maxDist = static_cast<uint32_t>(readLen) * 1.5;
+	void operator()(std::string& readStr,
+		std::vector<QuasiAlignment>& hits,
+		MateStatus mateStatus) {
 
-    auto endIt = kmerInfos.end();
+	    auto jfhash = rmi_->merHash.get();
+	    auto& kmerInfos = rmi_->kmerInfos;
+	    auto& eqClasses = rmi_->eqClassList;
+	    auto& eqClassLabels = rmi_->eqLabelList;
+	    auto& posList = rmi_->posList;
+	    auto& fwdJumpTable = rmi_->fwdJumpTable;
+	    auto& revJumpTable = rmi_->revJumpTable;
+	    auto posEnd = posList.end();
 
-    std::vector<HitInfo> kmerHits;
-    uint64_t merID;
-    size_t kID;
-    rapmap::utils::my_mer searchBuffer;
+	    auto k = rapmap::utils::my_mer::k();
+	    auto readLen = readStr.length();
+	    uint32_t maxDist = static_cast<uint32_t>(readLen) * 1.5;
 
-    bool terminateSearch{false}; // terminate search after checking the *next* hit
-    bool validKmer{false};
-    uint32_t numAnchors{0};
-    uint32_t searchPos{0};
-    uint32_t jumpLen{0};
-    bool isRC;
-    SkippingKmerIterator ksearch(readStr);
+	    auto endIt = kmerInfos.end();
 
-    while (ksearch.isValid()) {
-        auto searchMer = ksearch.getMer(isRC);
-        bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
-                searchBuffer, &kID);
-        // OK --- we found a hit
-        if (foundMer) {
-            kmerHits.emplace_back(kmerInfos.begin() + merID,
-                    merID, ksearch.queryIndex(), !isRC);
-            ++numAnchors;
-            // If we decided to terminate the search in the last loop, then we're done.
-            if (terminateSearch) { break; }
+	    std::vector<HitInfo> kmerHits;
+	    uint64_t merID;
+	    size_t kID;
+	    rapmap::utils::my_mer searchBuffer;
 
-            jumpLen = isRC ? revJumpTable[merID] :
-                fwdJumpTable[merID];
-            js.jumpSizes += jumpLen;
-            ++js.numJumps;
+	    bool terminateSearch{false}; // terminate search after checking the *next* hit
+	    bool validKmer{false};
+	    uint32_t numAnchors{0};
+	    uint32_t searchPos{0};
+	    uint32_t jumpLen{0};
+	    bool isRC;
+	    SkippingKmerSearcher ksearch(readStr);
 
-            if (jumpLen > 1) { // only jump if it's worth it
-                std::tie(validKmer, searchPos) = ksearch.skipForward(jumpLen);
-                if (!validKmer) {
-                    // There was no valid k-mer from the skip position to the end
-                    // of the read --- execute reverse search
+	    while (ksearch.isValid()) {
+		auto searchMer = ksearch.getMer(isRC);
+		bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+			searchBuffer, &kID);
+		// OK --- we found a hit
+		if (foundMer) {
 
-                    // But -- only do so if we don't have at least 2 anchors
-                    if (numAnchors >= 2) { break; }
+		    kmerHits.emplace_back(kmerInfos.begin() + merID,
+			    merID, ksearch.queryIndex(), !isRC);
+		    // Increment the # of anchor k-mers we found
+		    ++numAnchors;
 
-                    if (ksearch.backwardSearch(searchPos)) {
-                        // If we find something in the reverse search, it will
-                        // be the last thing we check.
-                        terminateSearch = true;
-                        continue;
-                    } else {
-                        // Otherwise, if we don't find anything in the reverse
-                        // search --- just give up and take what we have.
-                        break;
-                    }
-                } else {
-                    if (searchPos == readLen - k) {
-                        terminateSearch = true;
-                    }
-                    // The skip was successful --- continue the search normally
-                    // from here.
-                    continue;
-                }
-            }
-        } else {
-            if (terminateSearch) { break; }
-        }
-        ksearch.next();
-    }
+		    // If we decided to terminate the search in the last loop, then we're done.
+		    if (terminateSearch) { break; }
 
-    // found no hits in the entire read
-    if (kmerHits.size() == 0) { return; }
+		    jumpLen = isRC ? revJumpTable[merID] :
+			      fwdJumpTable[merID];
+		    //js.jumpSizes += jumpLen;
+		    //++js.numJumps;
 
-    if (kmerHits.size() > 0) {
-	if (kmerHits.size() > 1) {
-	    //std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
-	    auto processedHits = rapmap::hit_manager::intersectHits(kmerHits, rmi);
-	    rapmap::hit_manager::collectHitsSimple(processedHits, readLen, maxDist, hits, mateStatus);
-	} else {
-	    // std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
-	    auto& kinfo = *kmerHits[0].kinfo;
-	    hits.reserve(kinfo.count);
-	    // Iterator into, length of and end of the transcript list
-	    auto& eqClassLeft = eqClasses[kinfo.eqId];
-	    // Iterator into, length of and end of the positon list
-	    auto leftPosIt = posList.begin() + kinfo.offset;
-	    auto leftPosLen = kinfo.count;
-	    auto leftPosEnd = leftPosIt + leftPosLen;
-	    PositionListHelper leftPosHelper(leftPosIt, posList.end());
-	    bool leftHitRC = kmerHits[0].queryRC;
-
-	    auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
-	    auto leftTxpListLen = eqClassLeft.txpListLen;
-	    auto leftTxpEnd = leftTxpIt + leftTxpListLen;
-
-	    for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
-		collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits, mateStatus);
-	    }
-	}
-    }
-
-}
-
-
-void collectHitsGeneral(RapMapIndex& rmi,
-                        std::string& readStr,
-                        std::vector<QuasiAlignment>& hits,
-                        MateStatus mateStatus) {
-
-    auto jfhash = rmi.merHash.get();
-    auto& kmerInfos = rmi.kmerInfos;
-    auto& eqClasses = rmi.eqClassList;
-    auto& eqClassLabels = rmi.eqLabelList;
-    auto& posList = rmi.posList;
-    auto posEnd = posList.end();
-
-    rapmap::utils::my_mer mer;
-    rapmap::utils::my_mer rcmer;
-    auto k = rapmap::utils::my_mer::k();
-    auto kbits = 2*k;
-    auto readLen = readStr.length();
-    uint32_t maxDist = static_cast<uint32_t>(readLen) * 1.5;
-    size_t leftQueryPos = std::numeric_limits<size_t>::max();
-    size_t rightQueryPos = std::numeric_limits<size_t>::max();
-    bool leftHitRC = false, rightHitRC = false;
-
-    auto endIt = kmerInfos.end();
-
-    std::vector<HitInfo> kmerHits;
-    bool leftFwd{true};
-    bool rightFwd{true};
-
-    uint64_t merID;
-    size_t kID;
-    rapmap::utils::my_mer searchBuffer;
-
-    size_t klen{0};
-    for (size_t i = 0; i < readLen; ++i) {
-	int c = jellyfish::mer_dna::code(readStr[i]);
-	// If the next base isn't a valid nucleotide
-	if (jellyfish::mer_dna::not_dna(c)) {
-	    // reset the k-mer
-	    klen = 0;
-	    continue;
-	}
-	mer.shift_left(c);
-	rcmer.shift_right(jellyfish::mer_dna::complement(c));
-	++klen;
-	if (klen >= k) {
-	    auto& searchMer = (mer < rcmer) ? mer : rcmer;
-	    bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
-		    searchBuffer, &kID);
-	    if (foundMer) {
-		kmerHits.emplace_back(kmerInfos.begin() + merID,
-			merID,
-			i - k,
-			searchMer == rcmer);
-		leftQueryPos = i - k;
-		break;
-	    }
-	}
-    }
-
-    // found no hits in the entire read
-    if (kmerHits.size() == 0) { return; }
-
-    // Now, start from the right and move left
-	klen = 0;
-    for (size_t i = readLen - 1; i > leftQueryPos; --i) {
-        int c = jellyfish::mer_dna::code(readStr[i]);
-		// If the next base isn't a valid nucleotide
-        if (jellyfish::mer_dna::not_dna(c)) {
-			klen = 0;
-			continue;
-        }
-        mer.shift_right(c);
-        rcmer.shift_left(jellyfish::mer_dna::complement(c));
-		++klen;
-        if (klen >= k) {
-            auto& searchMer = (mer < rcmer) ? mer : rcmer;
-            bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
-                                                    searchBuffer, &kID);
-            if (foundMer) {
-                kmerHits.emplace_back(kmerInfos.begin() + merID,
-                                      merID,
-                                      readLen - (i + k),
-                                      searchMer == rcmer);
-                break;
-            }
-        }
-    }
-
-    if (kmerHits.size() > 0) {
-        if (kmerHits.size() > 1) {
-            //std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
-            auto processedHits = rapmap::hit_manager::intersectHits(kmerHits, rmi);
-            rapmap::hit_manager::collectHitsSimple(processedHits, readLen, maxDist, hits, mateStatus);
-        } else {
-            //std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
-            auto& kinfo = *kmerHits[0].kinfo;
-            hits.reserve(kinfo.count);
-            // Iterator into, length of and end of the transcript list
-		    auto& eqClassLeft = eqClasses[kinfo.eqId];
-            // Iterator into, length of and end of the positon list
-            auto leftPosIt = posList.begin() + kinfo.offset;
-            auto leftPosLen = kinfo.count;
-            auto leftPosEnd = leftPosIt + leftPosLen;
-            PositionListHelper leftPosHelper(leftPosIt, posList.end());
-            leftHitRC = kmerHits[0].queryRC;
-
-            auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
-            auto leftTxpListLen = eqClassLeft.txpListLen;
-            auto leftTxpEnd = leftTxpIt + leftTxpListLen;
-
-            for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
-                collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits, mateStatus);
-            }
-        }
-    }
-
-}
-
-void collectHits(RapMapIndex& rmi, std::string& readStr,
-                 std::vector<QuasiAlignment>& hits,
-                 MateStatus mateStatus) {
-
-    /*
-    auto& idx = rmi.idx;
-    auto& tidList = rmi.tidList;
-    auto& posList = rmi.posList;
-    */
-
-    auto jfhash = rmi.merHash.get();
-    auto& kmerInfos = rmi.kmerInfos;
-    auto& eqClasses = rmi.eqClassList;
-    auto& eqClassLabels = rmi.eqLabelList;
-    auto& posList = rmi.posList;
-    auto posEnd = posList.end();
-
-    rapmap::utils::my_mer mer;
-    rapmap::utils::my_mer rcmer;
-    auto k = rapmap::utils::my_mer::k();
-    auto kbits = 2*k;
-    auto readLen = readStr.length();
-    uint32_t maxDist = static_cast<uint32_t>(readLen) * 1.5;
-    size_t leftQueryPos = std::numeric_limits<size_t>::max();
-    size_t rightQueryPos = std::numeric_limits<size_t>::max();
-    bool leftHitRC = false, rightHitRC = false;
-
-    auto endIt = kmerInfos.end();
-
-    KmerInfoList::iterator miniLeftHits = endIt;
-    KmerInfoList::iterator miniRightHits = endIt;
-
-    bool leftFwd{true};
-    bool rightFwd{true};
-
-    uint64_t merID;
-    size_t kID;
-	uint32_t klen{0};
-    rapmap::utils::my_mer searchBuffer;
-
-    for (size_t i = 0; i < readLen; ++i) {
-        int c = jellyfish::mer_dna::code(readStr[i]);
-        if (jellyfish::mer_dna::not_dna(c)) {
-		    klen = 0;
-			continue;
-        }
-        mer.shift_left(c);
-        rcmer.shift_right(jellyfish::mer_dna::complement(c));
-		++klen;
-        if (klen >= k) {
-            auto& searchMer = (mer < rcmer) ? mer : rcmer;
-            bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
-                                                    searchBuffer, &kID);
-            if (foundMer) {
-                miniLeftHits = kmerInfos.begin() + merID;
-                leftHitRC = (searchMer == rcmer);
-                leftQueryPos = i - k;
-                break;
-            }
-        }
-    }
-
-    // found no hits in the entire read
-    if (miniLeftHits == endIt) { return; }
-
-    /* Super-fast & dirty --- just map the read based on the
-	 * first k-mer hit
-	 */
-    //   else {
-    //    auto leftIt = miniLeftHits->second.offset;
-    //    auto leftLen = miniLeftHits->second.length;
-    //    auto leftEnd = leftIt + leftLen;
-    //    for (auto it = leftIt; it < leftEnd; ++it) {
-    //        hits.push_back(tidList[it]);
-    //    }
-    //    return;
-    //}
-
-    // Now, start from the right and move left
-	klen = 0;
-    for (size_t i = readLen - 1; i > leftQueryPos; --i) {
-        int c = jellyfish::mer_dna::code(readStr[i]);
-        if (jellyfish::mer_dna::not_dna(c)) {
-		  //c = jellyfish::mer_dna::code('G');
-		  klen = 0;
-		  continue;
-        }
-        mer.shift_right(c);
-        rcmer.shift_left(jellyfish::mer_dna::complement(c));
-		++klen;
-        if (klen >= k) {
-            auto& searchMer = (mer < rcmer) ? mer : rcmer;
-            bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
-                                                    searchBuffer, &kID);
-            if (foundMer) {
-                miniRightHits = kmerInfos.begin() + merID;
-				//if (miniLeftHits == miniRightHits) { continue; }
-                rightHitRC = (searchMer == rcmer);
-                // distance from the right end
-                rightQueryPos = readLen - (i + k);
-                break;
-            }
-        }
-    }
-
-    // Take the intersection of these two hit lists
-    // Adapted from : http://en.cppreference.com/w/cpp/algorithm/set_intersection
-    if (miniLeftHits != endIt) {
-	    // Equiv. class for left hit
-	    auto& eqClassLeft = eqClasses[miniLeftHits->eqId];
-	    // Iterator into, length of and end of the positon list
-	    auto leftPosIt = posList.begin() + miniLeftHits->offset;
-	    auto leftPosLen = miniLeftHits->count;
-	    auto leftPosEnd = leftPosIt + leftPosLen;
-	    PositionListHelper leftPosHelper(leftPosIt, posList.end());
-#ifdef __DEBUG__
-	    if (!leftPosHelper.isNewTxp()) {
-		    std::cerr << "\n Should definitely be new txp but "
-			    << "leftPosHelper = ( "
-			    << leftPosHelper.pos() << ", "
-			    << leftPosHelper.isNewTxp() << ")\n";
-	    }
-#endif
-	    // Iterator into, length of and end of the transcript list
-	    auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
-	    auto leftTxpListLen = eqClassLeft.txpListLen;
-	    auto leftTxpEnd = leftTxpIt + leftTxpListLen;
-
-	    if (miniRightHits != endIt) {
-		    // Equiv. class for right hit
-		    auto& eqClassRight = eqClasses[miniRightHits->eqId];
-		    // Iterator into, length of and end of the positon list
-		    auto rightPosIt = posList.begin() + miniRightHits->offset;
-		    auto rightPosLen = miniRightHits->count;
-		    auto rightPosEnd = rightPosIt + rightPosLen;
-		    PositionListHelper rightPosHelper(rightPosIt, posList.end());
-#ifdef __DEBUG__
-		    if (!rightPosHelper.isNewTxp()) {
-			    std::cerr << "\n Should definitely be new txp but "
-				    << "rightPosHelper = ( "
-				    << rightPosHelper.pos() << ", "
-				    << rightPosHelper.isNewTxp() << ")\n";
-		    }
-#endif
-		    // Iterator into, length of and end of the transcript list
-		    auto rightTxpIt = eqClassLabels.begin() + eqClassRight.txpListStart;
-		    auto rightTxpListLen = eqClassRight.txpListLen;
-		    auto rightTxpEnd = rightTxpIt + rightTxpListLen;
-
-		    //hits.resize(std::min(leftLen, rightLen));
-		    //size_t intSize = SIMDCompressionLib::SIMDintersection(&tidList[leftIt], leftLen,
-		    //                                                      &tidList[rightIt], rightLen,
-		    //                                                      &hits[0]);
-		    //hits.resize(intSize);
-
-
-		    hits.reserve(std::min(leftPosLen, rightPosLen));
-		    uint32_t leftTxp, rightTxp;
-		    while (leftTxpIt != leftTxpEnd and rightTxpIt != rightTxpEnd) {
-			    // Get the current transcript ID for the left and right eq class
-			    leftTxp = *leftTxpIt;
-			    rightTxp = *rightTxpIt;
-			    // If we need to advance the left txp, do it
-			    if (leftTxp < rightTxp) {
-				    // Advance to the next transcript in the
-				    // equivalence class label
-				    ++leftTxpIt;
-				    // Advance in the position array to the next ranscript
-				    leftPosHelper.advanceToNextTranscript();
+		    if (jumpLen > 1) { // only jump if it's worth it
+			if (ksearch.isOutsideQuery(jumpLen)) {
+			    if (ksearch.backwardSearch(searchPos)) {
+				terminateSearch = true;
+				continue;
 			    } else {
-				    // If the transcripts are equal (i.e. leftTxp >= rightTxp and !(rightTxp < leftTxp))
-				    // Then see if there are any hits here.
-				    if (!(rightTxp < leftTxp)) {
-					    // If the hits are on the same transcript, look for
-					    // a mapping position where they appear the appropriate
-					    // distance apart.
-					    // Note: The iterators into the *position* vector will
-					    // be advanced, and should be at the start of the
-					    // positions for the *next* transcript when this function
-					    // returns.
-					    collectHitsWithPositionConstraint(leftTxp, readLen,
-							    leftHitRC, rightHitRC,
-							    leftQueryPos, rightQueryPos,
-							    leftPosHelper, rightPosHelper,
-							    maxDist, hits, mateStatus);
-					    ++leftTxpIt;
-					    // advance pos
-					    // leftPosHelper.advanceToNextTranscript();
-				    } else {
-					    // If the right transcript id was less than the left
-					    // transcript id, then advance the right position
-					    // iterator to the next transcript.
-					    rightPosHelper.advanceToNextTranscript();
-				    }
-				    // Advance the right transcript id regardless of whether
-				    // we looked for a hit or not.
-				    ++rightTxpIt;
+				break;
 			    }
-		    }
-	    } else { // If we had only hits from the left, then map this as an orphan
-		    hits.reserve(miniLeftHits->count);
-		    for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
-			    collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits, mateStatus);
-		    }
+			}
+
+			std::tie(validKmer, searchPos) = ksearch.skipForward(jumpLen);
+			if (!validKmer) {
+			    // There was no valid k-mer from the skip position to the end
+			    // of the read --- execute reverse search
+
+			    // But -- only do so if we don't have at least 2 anchors
+			    if (numAnchors >= 2) { break; }
+
+			    if (ksearch.backwardSearch(searchPos)) {
+				// If we find something in the reverse search, it will
+				// be the last thing we check.
+				terminateSearch = true;
+				continue;
+			    } else {
+				// Otherwise, if we don't find anything in the reverse
+				// search --- just give up and take what we have.
+				break;
+			    }
+			} else {
+			    if (searchPos == readLen - k) {
+				terminateSearch = true;
+			    }
+			    // The skip was successful --- continue the search normally
+			    // from here.
+			    continue;
+			}
+		    } 
+		} else {
+		    if (terminateSearch) { break; }
+		}
+		ksearch.next();
 	    }
+
+	    // found no hits in the entire read
+	    if (kmerHits.size() == 0) { return; }
+
+	    if (kmerHits.size() > 0) {
+		if (kmerHits.size() > 1) {
+		    //std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
+		    auto processedHits = rapmap::hit_manager::intersectHits(kmerHits, *rmi_);
+		    rapmap::hit_manager::collectHitsSimple(processedHits, readLen, maxDist, hits, mateStatus);
+		} else {
+		    // std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
+		    auto& kinfo = *kmerHits[0].kinfo;
+		    hits.reserve(kinfo.count);
+		    // Iterator into, length of and end of the transcript list
+		    auto& eqClassLeft = eqClasses[kinfo.eqId];
+		    // Iterator into, length of and end of the positon list
+		    auto leftPosIt = posList.begin() + kinfo.offset;
+		    auto leftPosLen = kinfo.count;
+		    auto leftPosEnd = leftPosIt + leftPosLen;
+		    PositionListHelper leftPosHelper(leftPosIt, posList.end());
+		    bool leftHitRC = kmerHits[0].queryRC;
+
+		    auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
+		    auto leftTxpListLen = eqClassLeft.txpListLen;
+		    auto leftTxpEnd = leftTxpIt + leftTxpListLen;
+
+		    for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
+			collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits, mateStatus);
+		    }
+		}
+	    }
+
+	}
+};
+
+
+
+class EndCollector {
+    private:
+	RapMapIndex* rmi_;
+    public:
+	EndCollector(RapMapIndex* rmiIn) : rmi_(rmiIn) {}
+
+    void operator()(std::string& readStr,
+	    std::vector<QuasiAlignment>& hits,
+	    MateStatus mateStatus) {
+
+	auto jfhash = rmi_->merHash.get();
+	auto& kmerInfos = rmi_->kmerInfos;
+	auto& eqClasses = rmi_->eqClassList;
+	auto& eqClassLabels = rmi_->eqLabelList;
+	auto& posList = rmi_->posList;
+	auto posEnd = posList.end();
+
+	rapmap::utils::my_mer mer;
+	rapmap::utils::my_mer rcmer;
+	auto k = rapmap::utils::my_mer::k();
+	auto kbits = 2*k;
+	auto readLen = readStr.length();
+	uint32_t maxDist = static_cast<uint32_t>(readLen) * 1.5;
+	size_t leftQueryPos = std::numeric_limits<size_t>::max();
+	size_t rightQueryPos = std::numeric_limits<size_t>::max();
+	bool leftHitRC = false, rightHitRC = false;
+
+	auto endIt = kmerInfos.end();
+
+	std::vector<HitInfo> kmerHits;
+	bool leftFwd{true};
+	bool rightFwd{true};
+
+	uint64_t merID;
+	size_t kID;
+	rapmap::utils::my_mer searchBuffer;
+
+	size_t klen{0};
+	for (size_t i = 0; i < readLen; ++i) {
+	    int c = jellyfish::mer_dna::code(readStr[i]);
+	    // If the next base isn't a valid nucleotide
+	    if (jellyfish::mer_dna::not_dna(c)) {
+		// reset the k-mer
+		klen = 0;
+		continue;
+	    }
+	    mer.shift_left(c);
+	    rcmer.shift_right(jellyfish::mer_dna::complement(c));
+	    ++klen;
+	    if (klen >= k) {
+		auto& searchMer = (mer < rcmer) ? mer : rcmer;
+		bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+			searchBuffer, &kID);
+		if (foundMer) {
+		    kmerHits.emplace_back(kmerInfos.begin() + merID,
+			    merID,
+			    i - k,
+			    searchMer == rcmer);
+		    leftQueryPos = i - k;
+		    break;
+		}
+	    }
+	}
+
+	// found no hits in the entire read
+	if (kmerHits.size() == 0) { return; }
+
+	// Now, start from the right and move left
+	klen = 0;
+	for (size_t i = readLen - 1; i > leftQueryPos; --i) {
+	    int c = jellyfish::mer_dna::code(readStr[i]);
+	    // If the next base isn't a valid nucleotide
+	    if (jellyfish::mer_dna::not_dna(c)) {
+		klen = 0;
+		continue;
+	    }
+	    mer.shift_right(c);
+	    rcmer.shift_left(jellyfish::mer_dna::complement(c));
+	    ++klen;
+	    if (klen >= k) {
+		auto& searchMer = (mer < rcmer) ? mer : rcmer;
+		bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+			searchBuffer, &kID);
+		if (foundMer) {
+		    kmerHits.emplace_back(kmerInfos.begin() + merID,
+			    merID,
+			    readLen - (i + k),
+			    searchMer == rcmer);
+		    break;
+		}
+	    }
+	}
+
+	if (kmerHits.size() > 0) {
+	    if (kmerHits.size() > 1) {
+		//std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
+		auto processedHits = rapmap::hit_manager::intersectHits(kmerHits, *rmi_);
+		rapmap::hit_manager::collectHitsSimple(processedHits, readLen, maxDist, hits, mateStatus);
+	    } else {
+		//std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
+		auto& kinfo = *kmerHits[0].kinfo;
+		hits.reserve(kinfo.count);
+		// Iterator into, length of and end of the transcript list
+		auto& eqClassLeft = eqClasses[kinfo.eqId];
+		// Iterator into, length of and end of the positon list
+		auto leftPosIt = posList.begin() + kinfo.offset;
+		auto leftPosLen = kinfo.count;
+		auto leftPosEnd = leftPosIt + leftPosLen;
+		PositionListHelper leftPosHelper(leftPosIt, posList.end());
+		leftHitRC = kmerHits[0].queryRC;
+
+		auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
+		auto leftTxpListLen = eqClassLeft.txpListLen;
+		auto leftTxpEnd = leftTxpIt + leftTxpListLen;
+
+		for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
+		    collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits, mateStatus);
+		}
+	    }
+	}
+
     }
+};
 
-}
-
+template <typename CollectorT>
 void processReadsSingle(single_parser* parser,
         RapMapIndex& rmi,
+	CollectorT& hitCollector,	
         SpinLockT& iomutex,
         std::ostream& outStream,
         HitCounters& hctr,
-        size_t maxNumHits,
+        uint32_t maxNumHits,
         bool noOutput) {
 
     auto& txpNames = rmi.txpNames;
@@ -1073,7 +904,7 @@ void processReadsSingle(single_parser* parser,
             readLen = j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
-            collectHitsGeneral(rmi, j->data[i].seq, hits, MateStatus::SINGLE_END);
+            hitCollector(j->data[i].seq, hits, MateStatus::SINGLE_END);
             /*
                std::set_intersection(leftHits.begin(), leftHits.end(),
                rightHits.begin(), rightHits.end(),
@@ -1122,7 +953,8 @@ void processReadsSingle(single_parser* parser,
                 }
             }
 
-            if (hctr.numReads % 1000000 == 0) {
+            if (hctr.numReads > hctr.lastPrint + 1000000) {
+		hctr.lastPrint.store(hctr.numReads.load());
                 if (iomutex.try_lock()){
                     if (hctr.numReads > 0) {
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
@@ -1173,12 +1005,14 @@ void printMateStatus(rapmap::utils::MateStatus ms) {
 // To use the parser in the following, we get "jobs" until none is
 // available. A job behaves like a pointer to the type
 // jellyfish::sequence_list (see whole_sequence_parser.hpp).
+template <typename CollectorT>
 void processReadsPair(paired_parser* parser,
         RapMapIndex& rmi,
+	CollectorT& hitCollector,
         SpinLockT& iomutex,
         std::ostream& outStream,
         HitCounters& hctr,
-        size_t maxNumHits,
+        uint32_t maxNumHits,
         bool noOutput) {
     auto& txpNames = rmi.txpNames;
     std::vector<uint32_t>& txpLens = rmi.txpLens;
@@ -1226,10 +1060,10 @@ void processReadsPair(paired_parser* parser,
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
-            collectHitsSkippy(rmi, j->data[i].first.seq,
-                        leftHits, MateStatus::PAIRED_END_LEFT, js);
-            collectHitsSkippy(rmi, j->data[i].second.seq,
-                        rightHits, MateStatus::PAIRED_END_RIGHT, js);
+	    hitCollector(j->data[i].first.seq,
+                        leftHits, MateStatus::PAIRED_END_LEFT);
+            hitCollector(j->data[i].second.seq,
+                        rightHits, MateStatus::PAIRED_END_RIGHT);
             /*
                std::set_intersection(leftHits.begin(), leftHits.end(),
                rightHits.begin(), rightHits.end(),
@@ -1497,11 +1331,12 @@ void processReadsPair(paired_parser* parser,
                 }
             }
 
-            if (hctr.numReads % 1000000 == 0) {
+            if (hctr.numReads > hctr.lastPrint + 1000000) {
+		hctr.lastPrint.store(hctr.numReads.load());
                 if (iomutex.try_lock()) {
                     if (hctr.numReads > 0) {
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
-                        std::cerr << "\033[F\033[F\033[F\033[F\033[F";
+                        std::cerr << "\033[F\033[F\033[F\033[F";
 #else
                         std::cerr << "\033[F\033[F\033[F";
 #endif // __DEBUG__
@@ -1515,8 +1350,10 @@ void processReadsPair(paired_parser* parser,
                     std::cerr << "The true hit was in the returned set of hits "
                         << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
                         <<  "% of the time\n";
+		    /*
                     std::cerr << "Average jump size = "
                               << js.jumpSizes / static_cast<double>(js.numJumps) << "\n";
+			      */
 #endif // __DEBUG__
                     iomutex.unlock();
                 }
@@ -1573,149 +1410,207 @@ int rapMapMap(int argc, char* argv[]) {
     cmd.getProgramName() = "rapmap";
 
     TCLAP::ValueArg<std::string> index("i", "index", "The location where the index should be written", true, "", "path");
-    TCLAP::ValueArg<std::string> read1("1", "leftMates", "The location of the left paired-end reads", true, "", "path");
+    TCLAP::ValueArg<std::string> read1("1", "leftMates", "The location of the left paired-end reads", false, "", "path");
     TCLAP::ValueArg<std::string> read2("2", "rightMates", "The location of the right paired-end reads", false, "", "path");
-    TCLAP::ValueArg<std::string> unmatedReads("r", "unmatedReads", "The location of single-end reads", true, "", "path");
+    TCLAP::ValueArg<std::string> unmatedReads("r", "unmatedReads", "The location of single-end reads", false, "", "path");
     TCLAP::ValueArg<uint32_t> numThreads("t", "numThreads", "Number of threads to use", false, 1, "positive integer");
+    TCLAP::ValueArg<uint32_t> maxNumHits("m", "maxNumHits", "Reads mapping to more than this many loci are discarded", false, 200, "positive integer");
     TCLAP::ValueArg<std::string> outname("o", "output", "The output file (default: stdout)", false, "", "path");
+    TCLAP::SwitchArg endCollectorSwitch("e", "endCollector", "Use the simpler (and faster) \"end\" collector as opposed to the more sophisticated \"skipping\" collector", false);
     TCLAP::SwitchArg noout("n", "noOutput", "Don't write out any alignments (for speed testing purposes)", false);
     cmd.add(index);
     cmd.add(noout);
 
-    std::vector<TCLAP::Arg*> xorList({&read1, &unmatedReads});
-    cmd.xorAdd(xorList);
+    cmd.add(read1);
     cmd.add(read2);
+    cmd.add(unmatedReads);
     cmd.add(outname);
     cmd.add(numThreads);
-    cmd.parse(argc, argv);
+    cmd.add(maxNumHits);
+    cmd.add(endCollectorSwitch);
 
     auto consoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
     auto consoleLog = spdlog::create("stderrLog", {consoleSink});
 
-    bool pairedEnd = (read1.isSet() or read2.isSet());
-    if (pairedEnd and (read1.isSet() != read2.isSet())) {
-        consoleLog->error("You must set both the -1 and -2 arguments to align "
-                          "paired end reads!");
-        std::exit(1);
+    try {
+
+	cmd.parse(argc, argv);
+	bool pairedEnd = (read1.isSet() or read2.isSet());
+	if (pairedEnd and (read1.isSet() != read2.isSet())) {
+	    consoleLog->error("You must set both the -1 and -2 arguments to align "
+		    "paired end reads!");
+	    std::exit(1);
+	}
+	
+	if (pairedEnd and unmatedReads.isSet()) {
+	    consoleLog->error("You cannot specify both paired-end and unmated "
+		    "reads in the input!");
+	    std::exit(1);
+	}
+
+	if (!pairedEnd and !unmatedReads.isSet()) {
+	    consoleLog->error("You must specify input; either both paired-end "
+			      "or unmated reads!");
+	    std::exit(1);
+
+	}
+
+	std::string indexPrefix(index.getValue());
+	if (indexPrefix.back() != '/') {
+	    indexPrefix += "/";
+	}
+
+	if (!rapmap::fs::DirExists(indexPrefix.c_str())) {
+	    consoleLog->error("It looks like the index you provided [{}] "
+		    "doesn't exist", indexPrefix);
+	    std::exit(1);
+	}
+
+	RapMapIndex rmi;
+	rmi.load(indexPrefix);
+
+	std::cerr << "\n\n\n\n";
+
+	// from: http://stackoverflow.com/questions/366955/obtain-a-stdostream-either-from-stdcout-or-stdofstreamfile
+	// set either a file or cout as the output stream
+	std::streambuf* outBuf;
+	std::ofstream outFile;
+	bool haveOutputFile{false};
+	if (outname.getValue() == "") {
+	    outBuf = std::cout.rdbuf();
+	} else {
+	    outFile.open(outname.getValue());
+	    outBuf = outFile.rdbuf();
+	    haveOutputFile = true;
+	}
+	// Now set the output stream to the buffer, which is
+	// either std::cout, or a file.
+	std::ostream outStream(outBuf);
+
+	uint32_t nthread = numThreads.getValue();
+	std::unique_ptr<paired_parser> pairParserPtr{nullptr};
+	std::unique_ptr<single_parser> singleParserPtr{nullptr};
+
+	if (!noout.getValue()) {
+	    writeSAMHeader(rmi, outStream);
+	}
+
+	SpinLockT iomutex;
+	{
+	    ScopedTimer timer;
+	    HitCounters hctrs;
+	    consoleLog->info("mapping reads . . . \n\n\n");
+	    if (pairedEnd) {
+		std::vector<std::thread> threads;
+		std::vector<std::string> read1Vec = tokenize(read1.getValue(), ',');
+		std::vector<std::string> read2Vec = tokenize(read2.getValue(), ',');
+
+		if (read1Vec.size() != read2Vec.size()) {
+		    consoleLog->error("The number of provided files for "
+			    "-1 and -2 must be the same!");
+		    std::exit(1);
+		}
+
+		size_t numFiles = read1Vec.size() + read2Vec.size();
+		char** pairFileList = new char*[numFiles];
+		for (size_t i = 0; i < read1Vec.size(); ++i) {
+		    pairFileList[2*i] = const_cast<char*>(read1Vec[i].c_str());
+		    pairFileList[2*i+1] = const_cast<char*>(read2Vec[i].c_str());
+		}
+		size_t maxReadGroup{1000}; // Number of reads in each "job"
+		size_t concurrentFile{2}; // Number of files to read simultaneously
+		pairParserPtr.reset(new paired_parser(4 * nthread, maxReadGroup,
+			    concurrentFile,
+			    pairFileList, pairFileList+numFiles));
+
+		/** Create the threads depending on the collector type **/
+		if (endCollectorSwitch.getValue()) {
+		    EndCollector endCollector(&rmi);
+		    for (size_t i = 0; i < nthread; ++i) {
+			threads.emplace_back(processReadsPair<EndCollector>,
+				pairParserPtr.get(),
+				std::ref(rmi),
+				std::ref(endCollector),
+				std::ref(iomutex),
+				std::ref(outStream),
+				std::ref(hctrs),
+				maxNumHits.getValue(), 
+				noout.getValue());
+		    }
+		} else {
+		    SkippingCollector skippingCollector(&rmi);
+		    for (size_t i = 0; i < nthread; ++i) {
+			threads.emplace_back(processReadsPair<SkippingCollector>,
+				pairParserPtr.get(),
+				std::ref(rmi),
+				std::ref(skippingCollector),
+				std::ref(iomutex),
+				std::ref(outStream),
+				std::ref(hctrs),
+				maxNumHits.getValue(), 
+				noout.getValue());
+		    }
+		}
+
+		for (auto& t : threads) { t.join(); }
+		delete [] pairFileList;
+	    } else {
+		std::vector<std::thread> threads;
+		std::vector<std::string> unmatedReadVec = tokenize(unmatedReads.getValue(), ',');
+		size_t maxReadGroup{1000}; // Number of reads in each "job"
+		size_t concurrentFile{1};
+		stream_manager streams( unmatedReadVec.begin(), unmatedReadVec.end(),
+			concurrentFile);
+		singleParserPtr.reset(new single_parser(4 * nthread,
+			    maxReadGroup,
+			    concurrentFile,
+			    streams));
+
+		/** Create the threads depending on the collector type **/
+		if (endCollectorSwitch.getValue()) {
+		    EndCollector endCollector(&rmi);
+		    for (size_t i = 0; i < nthread; ++i) {
+			threads.emplace_back(processReadsSingle<EndCollector>,
+				singleParserPtr.get(),
+				std::ref(rmi),
+				std::ref(endCollector),
+				std::ref(iomutex),
+				std::ref(outStream),
+				std::ref(hctrs),
+				maxNumHits.getValue(),
+				noout.getValue());
+		    } 
+		} else {
+		    SkippingCollector skippingCollector(&rmi);
+		    for (size_t i = 0; i < nthread; ++i) {
+			threads.emplace_back(processReadsSingle<SkippingCollector>,
+				singleParserPtr.get(),
+				std::ref(rmi),
+				std::ref(skippingCollector),
+				std::ref(iomutex),
+				std::ref(outStream),
+				std::ref(hctrs),
+				maxNumHits.getValue(),
+				noout.getValue());
+		    }
+		}
+		for (auto& t : threads) { t.join(); }
+	    }
+	    consoleLog->info("done mapping reads.");
+	    consoleLog->info("Discarded {} reads because they had > {} alignments",
+		    hctrs.tooManyHits, maxNumHits.getValue());
+
+	}
+
+	if (haveOutputFile) {
+	    outFile.close();
+	}
+	return 0;
+    } catch (TCLAP::ArgException& e) {
+	consoleLog->error("Exception [{}] when parsing argument {}", e.error(), e.argId());
+	return 1;
     }
 
-    std::string indexPrefix(index.getValue());
-    if (indexPrefix.back() != '/') {
-        indexPrefix += "/";
-    }
-
-    if (!rapmap::fs::DirExists(indexPrefix.c_str())) {
-        consoleLog->error("It looks like the index you provided [{}] "
-                          "doesn't exist", indexPrefix);
-        std::exit(1);
-    }
-
-    RapMapIndex rmi;
-    rmi.load(indexPrefix);
-
-    size_t maxNumHits{200};
-
-    std::cerr << "\n\n\n\n";
-
-    // from: http://stackoverflow.com/questions/366955/obtain-a-stdostream-either-from-stdcout-or-stdofstreamfile
-    // set either a file or cout as the output stream
-    std::streambuf* outBuf;
-    std::ofstream outFile;
-    bool haveOutputFile{false};
-    if (outname.getValue() == "") {
-        outBuf = std::cout.rdbuf();
-    } else {
-        outFile.open(outname.getValue());
-        outBuf = outFile.rdbuf();
-        haveOutputFile = true;
-    }
-    // Now set the output stream to the buffer, which is
-    // either std::cout, or a file.
-    std::ostream outStream(outBuf);
-
-    uint32_t nthread = numThreads.getValue();
-    std::unique_ptr<paired_parser> pairParserPtr{nullptr};
-    std::unique_ptr<single_parser> singleParserPtr{nullptr};
-
-    if (!noout.getValue()) {
-        writeSAMHeader(rmi, outStream);
-    }
-
-    SpinLockT iomutex;
-    {
-        ScopedTimer timer;
-        HitCounters hctrs;
-        consoleLog->info("mapping reads . . . ");
-        if (pairedEnd) {
-            std::vector<std::thread> threads;
-            std::vector<std::string> read1Vec = tokenize(read1.getValue(), ',');
-            std::vector<std::string> read2Vec = tokenize(read2.getValue(), ',');
-
-            if (read1Vec.size() != read2Vec.size()) {
-                consoleLog->error("The number of provided files for "
-                                  "-1 and -2 must be the same!");
-                std::exit(1);
-            }
-
-            size_t numFiles = read1Vec.size() + read2Vec.size();
-            char** pairFileList = new char*[numFiles];
-            for (size_t i = 0; i < read1Vec.size(); ++i) {
-                pairFileList[2*i] = const_cast<char*>(read1Vec[i].c_str());
-                pairFileList[2*i+1] = const_cast<char*>(read2Vec[i].c_str());
-            }
-            size_t maxReadGroup{1000}; // Number of reads in each "job"
-            size_t concurrentFile{2}; // Number of files to read simultaneously
-            pairParserPtr.reset(new paired_parser(4 * nthread, maxReadGroup,
-                        concurrentFile,
-                        pairFileList, pairFileList+numFiles));
-
-            for (size_t i = 0; i < nthread; ++i) {
-                threads.emplace_back(processReadsPair,
-                        pairParserPtr.get(),
-                        std::ref(rmi),
-                        std::ref(iomutex),
-                        std::ref(outStream),
-                        std::ref(hctrs),
-                        maxNumHits,
-                        noout.getValue());
-            }
-
-            for (auto& t : threads) { t.join(); }
-            delete [] pairFileList;
-        } else {
-            std::vector<std::thread> threads;
-            std::vector<std::string> unmatedReadVec = tokenize(unmatedReads.getValue(), ',');
-            size_t maxReadGroup{1000}; // Number of reads in each "job"
-            size_t concurrentFile{1};
-            stream_manager streams( unmatedReadVec.begin(), unmatedReadVec.end(),
-                    concurrentFile);
-            singleParserPtr.reset(new single_parser(4 * nthread,
-                        maxReadGroup,
-                        concurrentFile,
-                        streams));
-
-            for (size_t i = 0; i < nthread; ++i) {
-                threads.emplace_back(processReadsSingle,
-                        singleParserPtr.get(),
-                        std::ref(rmi),
-                        std::ref(iomutex),
-                        std::ref(outStream),
-                        std::ref(hctrs),
-                        maxNumHits,
-                        noout.getValue());
-            }
-            for (auto& t : threads) { t.join(); }
-        }
-        consoleLog->info("done mapping reads.");
-        consoleLog->info("Discarded {} reads because they had > {} alignments",
-                         hctrs.tooManyHits, maxNumHits);
-
-    }
-
-    if (haveOutputFile) {
-        outFile.close();
-    }
-    return 0;
 }
 
 
@@ -1800,4 +1695,196 @@ void processReadsKSeq(ParserT* lseq,
         }
     }
   }
+
+
+void collectHits(RapMapIndex& rmi, std::string& readStr,
+                 std::vector<QuasiAlignment>& hits,
+                 MateStatus mateStatus) {
+
+    auto jfhash = rmi.merHash.get();
+    auto& kmerInfos = rmi.kmerInfos;
+    auto& eqClasses = rmi.eqClassList;
+    auto& eqClassLabels = rmi.eqLabelList;
+    auto& posList = rmi.posList;
+    auto posEnd = posList.end();
+
+    rapmap::utils::my_mer mer;
+    rapmap::utils::my_mer rcmer;
+    auto k = rapmap::utils::my_mer::k();
+    auto kbits = 2*k;
+    auto readLen = readStr.length();
+    uint32_t maxDist = static_cast<uint32_t>(readLen) * 1.5;
+    size_t leftQueryPos = std::numeric_limits<size_t>::max();
+    size_t rightQueryPos = std::numeric_limits<size_t>::max();
+    bool leftHitRC = false, rightHitRC = false;
+
+    auto endIt = kmerInfos.end();
+
+    KmerInfoList::iterator miniLeftHits = endIt;
+    KmerInfoList::iterator miniRightHits = endIt;
+
+    bool leftFwd{true};
+    bool rightFwd{true};
+
+    uint64_t merID;
+    size_t kID;
+	uint32_t klen{0};
+    rapmap::utils::my_mer searchBuffer;
+
+    for (size_t i = 0; i < readLen; ++i) {
+        int c = jellyfish::mer_dna::code(readStr[i]);
+        if (jellyfish::mer_dna::not_dna(c)) {
+		    klen = 0;
+			continue;
+        }
+        mer.shift_left(c);
+        rcmer.shift_right(jellyfish::mer_dna::complement(c));
+		++klen;
+        if (klen >= k) {
+            auto& searchMer = (mer < rcmer) ? mer : rcmer;
+            bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+                                                    searchBuffer, &kID);
+            if (foundMer) {
+                miniLeftHits = kmerInfos.begin() + merID;
+                leftHitRC = (searchMer == rcmer);
+                leftQueryPos = i - k;
+                break;
+            }
+        }
+    }
+
+    // found no hits in the entire read
+    if (miniLeftHits == endIt) { return; }
+
+    // Now, start from the right and move left
+	klen = 0;
+    for (size_t i = readLen - 1; i > leftQueryPos; --i) {
+        int c = jellyfish::mer_dna::code(readStr[i]);
+        if (jellyfish::mer_dna::not_dna(c)) {
+		  //c = jellyfish::mer_dna::code('G');
+		  klen = 0;
+		  continue;
+        }
+        mer.shift_right(c);
+        rcmer.shift_left(jellyfish::mer_dna::complement(c));
+		++klen;
+        if (klen >= k) {
+            auto& searchMer = (mer < rcmer) ? mer : rcmer;
+            bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+                                                    searchBuffer, &kID);
+            if (foundMer) {
+                miniRightHits = kmerInfos.begin() + merID;
+				//if (miniLeftHits == miniRightHits) { continue; }
+                rightHitRC = (searchMer == rcmer);
+                // distance from the right end
+                rightQueryPos = readLen - (i + k);
+                break;
+            }
+        }
+    }
+
+    // Take the intersection of these two hit lists
+    // Adapted from : http://en.cppreference.com/w/cpp/algorithm/set_intersection
+    if (miniLeftHits != endIt) {
+	    // Equiv. class for left hit
+	    auto& eqClassLeft = eqClasses[miniLeftHits->eqId];
+	    // Iterator into, length of and end of the positon list
+	    auto leftPosIt = posList.begin() + miniLeftHits->offset;
+	    auto leftPosLen = miniLeftHits->count;
+	    auto leftPosEnd = leftPosIt + leftPosLen;
+	    PositionListHelper leftPosHelper(leftPosIt, posList.end());
+#ifdef __DEBUG__
+	    if (!leftPosHelper.isNewTxp()) {
+		    std::cerr << "\n Should definitely be new txp but "
+			    << "leftPosHelper = ( "
+			    << leftPosHelper.pos() << ", "
+			    << leftPosHelper.isNewTxp() << ")\n";
+	    }
+#endif
+	    // Iterator into, length of and end of the transcript list
+	    auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
+	    auto leftTxpListLen = eqClassLeft.txpListLen;
+	    auto leftTxpEnd = leftTxpIt + leftTxpListLen;
+
+	    if (miniRightHits != endIt) {
+		    // Equiv. class for right hit
+		    auto& eqClassRight = eqClasses[miniRightHits->eqId];
+		    // Iterator into, length of and end of the positon list
+		    auto rightPosIt = posList.begin() + miniRightHits->offset;
+		    auto rightPosLen = miniRightHits->count;
+		    auto rightPosEnd = rightPosIt + rightPosLen;
+		    PositionListHelper rightPosHelper(rightPosIt, posList.end());
+#ifdef __DEBUG__
+		    if (!rightPosHelper.isNewTxp()) {
+			    std::cerr << "\n Should definitely be new txp but "
+				    << "rightPosHelper = ( "
+				    << rightPosHelper.pos() << ", "
+				    << rightPosHelper.isNewTxp() << ")\n";
+		    }
+#endif
+		    // Iterator into, length of and end of the transcript list
+		    auto rightTxpIt = eqClassLabels.begin() + eqClassRight.txpListStart;
+		    auto rightTxpListLen = eqClassRight.txpListLen;
+		    auto rightTxpEnd = rightTxpIt + rightTxpListLen;
+
+		    //hits.resize(std::min(leftLen, rightLen));
+		    //size_t intSize = SIMDCompressionLib::SIMDintersection(&tidList[leftIt], leftLen,
+		    //                                                      &tidList[rightIt], rightLen,
+		    //                                                      &hits[0]);
+		    //hits.resize(intSize);
+
+
+		    hits.reserve(std::min(leftPosLen, rightPosLen));
+		    uint32_t leftTxp, rightTxp;
+		    while (leftTxpIt != leftTxpEnd and rightTxpIt != rightTxpEnd) {
+			    // Get the current transcript ID for the left and right eq class
+			    leftTxp = *leftTxpIt;
+			    rightTxp = *rightTxpIt;
+			    // If we need to advance the left txp, do it
+			    if (leftTxp < rightTxp) {
+				    // Advance to the next transcript in the
+				    // equivalence class label
+				    ++leftTxpIt;
+				    // Advance in the position array to the next ranscript
+				    leftPosHelper.advanceToNextTranscript();
+			    } else {
+				    // If the transcripts are equal (i.e. leftTxp >= rightTxp and !(rightTxp < leftTxp))
+				    // Then see if there are any hits here.
+				    if (!(rightTxp < leftTxp)) {
+					    // If the hits are on the same transcript, look for
+					    // a mapping position where they appear the appropriate
+					    // distance apart.
+					    // Note: The iterators into the *position* vector will
+					    // be advanced, and should be at the start of the
+					    // positions for the *next* transcript when this function
+					    // returns.
+					    collectHitsWithPositionConstraint(leftTxp, readLen,
+							    leftHitRC, rightHitRC,
+							    leftQueryPos, rightQueryPos,
+							    leftPosHelper, rightPosHelper,
+							    maxDist, hits, mateStatus);
+					    ++leftTxpIt;
+					    // advance pos
+					    // leftPosHelper.advanceToNextTranscript();
+				    } else {
+					    // If the right transcript id was less than the left
+					    // transcript id, then advance the right position
+					    // iterator to the next transcript.
+					    rightPosHelper.advanceToNextTranscript();
+				    }
+				    // Advance the right transcript id regardless of whether
+				    // we looked for a hit or not.
+				    ++rightTxpIt;
+			    }
+		    }
+	    } else { // If we had only hits from the left, then map this as an orphan
+		    hits.reserve(miniLeftHits->count);
+		    for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
+			    collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits, mateStatus);
+		    }
+	    }
+    }
+
+}
+
 */

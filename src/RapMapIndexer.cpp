@@ -279,7 +279,6 @@ void processTranscripts(ParserT* parser,
 
     bool isRC{false};
     int32_t pos{0};
-    int32_t lastBreak{0};
     uint32_t offset{0};
     uint32_t transcriptID{0};
     {
@@ -288,11 +287,6 @@ void processTranscripts(ParserT* parser,
 
     for (auto& transcriptSeq : transcriptSeqs) {
         auto readLen = transcriptSeq.length();
-
-        // We can always jump to the beginning of a
-        // new transcript
-        lastBreak = 0;
-
         rapmap::utils::my_mer mer;
         mer.polyT();
         std::vector<KmerBinT> kmers;
@@ -409,6 +403,7 @@ void processTranscripts(ParserT* parser,
     std::vector<uint8_t> fwdJump(numDistinctKmers, maxJump);
     // How far we can move "forward" backward hitting a new eq. class
     std::vector<uint8_t> revJump(numDistinctKmers, maxJump);
+    int32_t lastBreak{0};
 
     std::cerr << "\n[Step 4 of 4] : finalizing index\n";
     transcriptID = 0;
@@ -424,6 +419,10 @@ void processTranscripts(ParserT* parser,
         std::vector<JumpCell> revJumpQueue;
 
         for (auto& transcriptSeq : transcriptSeqs) {
+	    // We can always jump to the beginning of a
+	    // new transcript
+	    lastBreak = 0;
+
             fwdJumpQueue.clear();
             revJumpQueue.clear();
             posHash.clear();
