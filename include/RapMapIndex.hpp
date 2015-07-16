@@ -44,6 +44,8 @@ class RapMapIndex {
             std::string jfFileName = indexPrefix + "rapidx.jfhash";
             std::string txpNameFile = indexPrefix + "txpnames.bin";
             std::string txpLenFile = indexPrefix + "txplens.bin";
+	    std::string fwdJumpFile = indexPrefix + "fwdjump.bin";
+	    std::string revJumpFile = indexPrefix + "revjump.bin";
 
             // Load the kmer info list first --- this will
             // give us the # of unique k-mers
@@ -144,6 +146,27 @@ class RapMapIndex {
             }
             txpLenStream.close();
 
+            std::ifstream fwdJumpStream(fwdJumpFile, std::ios::binary);
+            {
+                logger->info("loading forward jumps");
+                ScopedTimer timer;
+                cereal::BinaryInputArchive fwdJumpArchive(fwdJumpStream);
+                fwdJumpArchive(fwdJumpTable);
+                logger->info("[{}] forward jumps", fwdJumpTable.size());
+                logger->info("done ");
+            }
+            fwdJumpStream.close();
+
+            std::ifstream revJumpStream(revJumpFile, std::ios::binary);
+            {
+                logger->info("loading forward jumps");
+                ScopedTimer timer;
+                cereal::BinaryInputArchive revJumpArchive(revJumpStream);
+                revJumpArchive(revJumpTable);
+                logger->info("[{}] reverse jumps", revJumpTable.size());
+                logger->info("done ");
+            }
+            revJumpStream.close();
             return true;
         }
 
@@ -156,6 +179,8 @@ class RapMapIndex {
     PositionList posList;
     std::vector<std::string> txpNames;
     std::vector<uint32_t> txpLens;
+    std::vector<uint8_t> fwdJumpTable;
+    std::vector<uint8_t> revJumpTable;
 };
 
 #endif //__RAP_MAP_INDEX_HPP__

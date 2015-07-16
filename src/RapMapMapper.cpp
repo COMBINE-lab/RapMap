@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <thread>
+#include <tuple>
 #include <sstream>
 
 #include <cereal/types/unordered_map.hpp>
@@ -424,6 +425,291 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 }
 
 
+class SkippingKmerIterator {
+    private:
+	std::string* qstr;
+	const char* qCharArray;
+	uint32_t qlen;
+	uint32_t k;
+	uint32_t klen;
+	uint32_t startPos;
+	uint32_t nextBaseIndex;
+	rapmap::utils::my_mer mer;
+	rapmap::utils::my_mer rcmer;
+	rapmap::utils::my_mer tempMer;
+	static constexpr uint32_t invalidIndex = std::numeric_limits<uint32_t>::max();
+
+    public:
+	SkippingKmerIterator(std::string& queryStr) :
+		qstr(&queryStr),
+		qCharArray(queryStr.c_str()),
+		qlen(queryStr.length()),
+		k(rapmap::utils::my_mer::k()),
+		klen(0),
+		startPos(0),
+		nextBaseIndex(0) {
+		    next();
+	}
+
+
+	// return the index of the current k-mer (start) in the query string
+	uint32_t queryIndex() { return startPos; }
+
+	rapmap::utils::my_mer getMer(bool& isRC) {
+	    tempMer = mer.get_canonical();
+	    isRC = (mer != tempMer);
+	    return tempMer;
+	}
+
+	bool backwardSearch(uint32_t searchPos) {
+	    // Perform a backward search starting from searchPos
+
+	    // If we're not at least k bases in, we can't do a
+	    // backward search
+	    if (searchPos < k) {
+	    	return false;
+	    }
+
+        // otherwise start a new k-mer at the jump position
+        while (!tempMer.from_chars(&qCharArray[searchPos])) {
+            // If it wasn't a valid k-mer, find the offending base
+            // and try to start k bases before it
+            uint32_t invalidLoc = qstr->find_last_not_of("aAcCgGtT", searchPos + k);
+            // Make sure we don't fall off the end
+            if (invalidLoc < k + 1) {
+                return false;
+            }
+            searchPos = invalidLoc - k - 1;
+        }
+
+	    // we found a hit, so make it the current k-mer
+	    klen = k;
+	    startPos = searchPos;
+	    nextBaseIndex = searchPos + k + 1;
+	    mer = tempMer;
+	    return true;
+	}
+
+	// move to the next valid k-mer that is at least skipVal past
+	// the current position.  If skipVal positions forward is past
+	// the end of the query, try and move to the last k-mer.
+	//
+	// If a valid k-mer is found, make it the current k-mer and
+	// return true and the k-mer position. Otherwise, return
+	// false.
+	std::tuple<bool, uint32_t> skipForward(uint32_t skipVal) {
+	   tempMer = mer;
+	   uint32_t tempKLen = klen;
+      	   uint32_t tempStartPos = startPos;
+	   uint32_t tempNextBaseIndex = nextBaseIndex;
+
+	   uint32_t jumpPos = startPos + skipVal;
+	   // Would we jump past the end of the read?
+	   // If so, just jump to the end.
+	   if (jumpPos > qlen - k) {
+	     jumpPos = qlen - k;
+	   }
+	   uint32_t initJumpPos = jumpPos;
+	   if (jumpPos == startPos) { return std::make_pair(false, 0); }
+
+	   // if the jumpPos is < k away, it's more efficient to just
+	   // walk there b/c it overlaps the current k-mer
+	   bool reachedGoal{false};
+	   if (jumpPos - startPos < k) {
+	       while (!reachedGoal and next()) {
+		   reachedGoal = (startPos >= jumpPos);
+	       }
+	   } else {
+	      // otherwise start a new k-mer at the jump position
+	      while (! (reachedGoal = mer.from_chars(&qCharArray[jumpPos])) ) {
+		  // If it wasn't a valid k-mer, find the offending base
+		  // and try to start after it
+		  jumpPos = qstr->find_first_not_of("aAcCgGtT", jumpPos) + 1;
+		  // Make sure we don't fall off the end
+		  if (jumpPos > qlen - k) {
+		      startPos = invalidIndex;
+		      reachedGoal = false;
+		      break;
+		  }
+	      }
+	      // If the search was successful
+	      if (reachedGoal) {
+		  // set startPos to the position we ended up jumping to
+		  klen = k;
+		  startPos = jumpPos;
+		  nextBaseIndex = startPos + k + 1;
+	      }
+	   }
+	   // If the search was un-successful, return the searcher to it's previous state
+	   // and report the failure and the position where the backward search should begin.
+	   if (!reachedGoal) {
+	       mer = tempMer;
+	       klen = tempKLen;
+	       startPos = tempStartPos;
+	       nextBaseIndex = tempNextBaseIndex;
+	       return std::make_pair(false, initJumpPos);
+	   }
+	   return std::make_pair(true, startPos);
+	}
+
+	// Move to the next *valid* k-mer.  If we found a k-mer, return true,
+	// If we can't move forward anymore, then return false.
+	bool next() {
+	    bool valid{false};
+	    while (!valid and nextBaseIndex < qlen) {
+		int c = jellyfish::mer_dna::code(qCharArray[nextBaseIndex]);
+		// If the next base isn't a valid nucleotide
+		if (jellyfish::mer_dna::not_dna(c)) {
+		    // reset the k-mer
+		    klen = 0;
+		    ++nextBaseIndex;
+		    if (qlen - nextBaseIndex < k) {
+			startPos = invalidIndex;
+			return false;
+		    } else {
+			continue;
+		    }
+		}
+		mer.shift_left(c);
+		//rcmer.shift_right(jellyfish::mer_dna::complement(c));
+		++klen;
+	        ++nextBaseIndex;
+		if (klen >= k) {
+		    startPos = nextBaseIndex - k;
+		    valid = true;
+		}
+	    }
+	    if (!valid) { startPos = invalidIndex; }
+	    return valid;
+	}
+
+	bool isValid() { return startPos != invalidIndex; }
+};
+
+struct JumpStats {
+    std::atomic<uint64_t> jumpSizes{0};
+    std::atomic<uint64_t> numJumps{0};
+};
+
+void collectHitsSkippy(RapMapIndex& rmi,
+                        std::string& readStr,
+                        std::vector<QuasiAlignment>& hits,
+                        MateStatus mateStatus,
+                        JumpStats& js) {
+
+    auto jfhash = rmi.merHash.get();
+    auto& kmerInfos = rmi.kmerInfos;
+    auto& eqClasses = rmi.eqClassList;
+    auto& eqClassLabels = rmi.eqLabelList;
+    auto& posList = rmi.posList;
+    auto& fwdJumpTable = rmi.fwdJumpTable;
+    auto& revJumpTable = rmi.revJumpTable;
+    auto posEnd = posList.end();
+
+    auto k = rapmap::utils::my_mer::k();
+    auto readLen = readStr.length();
+    uint32_t maxDist = static_cast<uint32_t>(readLen) * 1.5;
+
+    auto endIt = kmerInfos.end();
+
+    std::vector<HitInfo> kmerHits;
+    uint64_t merID;
+    size_t kID;
+    rapmap::utils::my_mer searchBuffer;
+
+    bool terminateSearch{false}; // terminate search after checking the *next* hit
+    bool validKmer{false};
+    uint32_t numAnchors{0};
+    uint32_t searchPos{0};
+    uint32_t jumpLen{0};
+    bool isRC;
+    SkippingKmerIterator ksearch(readStr);
+
+    while (ksearch.isValid()) {
+        auto searchMer = ksearch.getMer(isRC);
+        bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+                searchBuffer, &kID);
+        // OK --- we found a hit
+        if (foundMer) {
+            kmerHits.emplace_back(kmerInfos.begin() + merID,
+                    merID, ksearch.queryIndex(), !isRC);
+            ++numAnchors;
+            // If we decided to terminate the search in the last loop, then we're done.
+            if (terminateSearch) { break; }
+
+            jumpLen = isRC ? revJumpTable[merID] :
+                fwdJumpTable[merID];
+            js.jumpSizes += jumpLen;
+            ++js.numJumps;
+
+            if (jumpLen > 1) { // only jump if it's worth it
+                std::tie(validKmer, searchPos) = ksearch.skipForward(jumpLen);
+                if (!validKmer) {
+                    // There was no valid k-mer from the skip position to the end
+                    // of the read --- execute reverse search
+
+                    // But -- only do so if we don't have at least 2 anchors
+                    if (numAnchors >= 2) { break; }
+
+                    if (ksearch.backwardSearch(searchPos)) {
+                        // If we find something in the reverse search, it will
+                        // be the last thing we check.
+                        terminateSearch = true;
+                        continue;
+                    } else {
+                        // Otherwise, if we don't find anything in the reverse
+                        // search --- just give up and take what we have.
+                        break;
+                    }
+                } else {
+                    if (searchPos == readLen - k) {
+                        terminateSearch = true;
+                    }
+                    // The skip was successful --- continue the search normally
+                    // from here.
+                    continue;
+                }
+            }
+        } else {
+            if (terminateSearch) { break; }
+        }
+        ksearch.next();
+    }
+
+    // found no hits in the entire read
+    if (kmerHits.size() == 0) { return; }
+
+    if (kmerHits.size() > 0) {
+	if (kmerHits.size() > 1) {
+	    //std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
+	    auto processedHits = rapmap::hit_manager::intersectHits(kmerHits, rmi);
+	    rapmap::hit_manager::collectHitsSimple(processedHits, readLen, maxDist, hits, mateStatus);
+	} else {
+	    // std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
+	    auto& kinfo = *kmerHits[0].kinfo;
+	    hits.reserve(kinfo.count);
+	    // Iterator into, length of and end of the transcript list
+	    auto& eqClassLeft = eqClasses[kinfo.eqId];
+	    // Iterator into, length of and end of the positon list
+	    auto leftPosIt = posList.begin() + kinfo.offset;
+	    auto leftPosLen = kinfo.count;
+	    auto leftPosEnd = leftPosIt + leftPosLen;
+	    PositionListHelper leftPosHelper(leftPosIt, posList.end());
+	    bool leftHitRC = kmerHits[0].queryRC;
+
+	    auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
+	    auto leftTxpListLen = eqClassLeft.txpListLen;
+	    auto leftTxpEnd = leftTxpIt + leftTxpListLen;
+
+	    for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
+		collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits, mateStatus);
+	    }
+	}
+    }
+
+}
+
+
 void collectHitsGeneral(RapMapIndex& rmi,
                         std::string& readStr,
                         std::vector<QuasiAlignment>& hits,
@@ -456,31 +742,31 @@ void collectHitsGeneral(RapMapIndex& rmi,
     size_t kID;
     rapmap::utils::my_mer searchBuffer;
 
-	size_t klen{0};
+    size_t klen{0};
     for (size_t i = 0; i < readLen; ++i) {
-        int c = jellyfish::mer_dna::code(readStr[i]);
-		// If the next base isn't a valid nucleotide
-        if (jellyfish::mer_dna::not_dna(c)) {
-		    // reset the k-mer
-			klen = 0;
-			continue;
-        }
-        mer.shift_left(c);
-        rcmer.shift_right(jellyfish::mer_dna::complement(c));
-		++klen;
-        if (klen >= k) {
-            auto& searchMer = (mer < rcmer) ? mer : rcmer;
-            bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
-                                                    searchBuffer, &kID);
-            if (foundMer) {
-                kmerHits.emplace_back(kmerInfos.begin() + merID,
-                                      merID,
-                                      i - k,
-                                      searchMer == rcmer);
-                leftQueryPos = i - k;
-                break;
-            }
-        }
+	int c = jellyfish::mer_dna::code(readStr[i]);
+	// If the next base isn't a valid nucleotide
+	if (jellyfish::mer_dna::not_dna(c)) {
+	    // reset the k-mer
+	    klen = 0;
+	    continue;
+	}
+	mer.shift_left(c);
+	rcmer.shift_right(jellyfish::mer_dna::complement(c));
+	++klen;
+	if (klen >= k) {
+	    auto& searchMer = (mer < rcmer) ? mer : rcmer;
+	    bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+		    searchBuffer, &kID);
+	    if (foundMer) {
+		kmerHits.emplace_back(kmerInfos.begin() + merID,
+			merID,
+			i - k,
+			searchMer == rcmer);
+		leftQueryPos = i - k;
+		break;
+	    }
+	}
     }
 
     // found no hits in the entire read
@@ -923,6 +1209,7 @@ void processReadsPair(paired_parser* parser,
     FixedWriter cigarStr1(buff1, 1000);
     FixedWriter cigarStr2(buff2, 1000);
 
+    JumpStats js;
     // 0 means properly aligned
     // 0x1 means only alignments for left read
     // 0x2 means only alignments for right read
@@ -939,10 +1226,10 @@ void processReadsPair(paired_parser* parser,
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
-            collectHitsGeneral(rmi, j->data[i].first.seq,
-                        leftHits, MateStatus::PAIRED_END_LEFT);
-        	collectHitsGeneral(rmi, j->data[i].second.seq,
-                        rightHits, MateStatus::PAIRED_END_RIGHT);
+            collectHitsSkippy(rmi, j->data[i].first.seq,
+                        leftHits, MateStatus::PAIRED_END_LEFT, js);
+            collectHitsSkippy(rmi, j->data[i].second.seq,
+                        rightHits, MateStatus::PAIRED_END_RIGHT, js);
             /*
                std::set_intersection(leftHits.begin(), leftHits.end(),
                rightHits.begin(), rightHits.end(),
@@ -1214,7 +1501,7 @@ void processReadsPair(paired_parser* parser,
                 if (iomutex.try_lock()) {
                     if (hctr.numReads > 0) {
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
-                        std::cerr << "\033[F\033[F\033[F\033[F";
+                        std::cerr << "\033[F\033[F\033[F\033[F\033[F";
 #else
                         std::cerr << "\033[F\033[F\033[F";
 #endif // __DEBUG__
@@ -1228,6 +1515,8 @@ void processReadsPair(paired_parser* parser,
                     std::cerr << "The true hit was in the returned set of hits "
                         << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
                         <<  "% of the time\n";
+                    std::cerr << "Average jump size = "
+                              << js.jumpSizes / static_cast<double>(js.numJumps) << "\n";
 #endif // __DEBUG__
                     iomutex.unlock();
                 }
