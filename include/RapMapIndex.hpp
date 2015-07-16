@@ -11,6 +11,8 @@
 #include "jellyfish/mapped_file.hpp"
 #include "JFRaw.hpp"
 
+#include "spdlog/spdlog.h"
+
 #include <cereal/types/unordered_map.hpp>
 #include <cereal/types/vector.hpp>
 #include <cereal/types/string.hpp>
@@ -34,7 +36,7 @@ class RapMapIndex {
         RapMapIndex() {}
 
         bool load(std::string& indexPrefix) {
-
+            auto logger = spdlog::get("stderrLog");
             std::string kmerInfosName = indexPrefix + "kinfo.bin";
             std::string eqClassListName = indexPrefix + "eqclass.bin";
             std::string eqLabelListName = indexPrefix + "eqlab.bin";
@@ -42,34 +44,36 @@ class RapMapIndex {
             std::string jfFileName = indexPrefix + "rapidx.jfhash";
             std::string txpNameFile = indexPrefix + "txpnames.bin";
             std::string txpLenFile = indexPrefix + "txplens.bin";
+	    std::string fwdJumpFile = indexPrefix + "fwdjump.bin";
+	    std::string revJumpFile = indexPrefix + "revjump.bin";
 
             // Load the kmer info list first --- this will
             // give us the # of unique k-mers
             std::ifstream kmerInfoStream(kmerInfosName, std::ios::binary);
             {
-                std::cerr << "loading k-mer info list . . .";
+                logger->info("loading k-mer info list . . .");
                 ScopedTimer timer;
                 cereal::BinaryInputArchive kmerInfoArchive(kmerInfoStream);
                 kmerInfoArchive(kmerInfos);
-                std::cerr << "done\n";
+                logger->info("done\n");
             }
             kmerInfoStream.close();
 
             size_t numDistinctKmers = kmerInfos.size();
             {
                 ScopedTimer timer;
-                std::cerr << "loading k-mer => id hash . . . \n";
+                logger->info("loading k-mer => id hash . . . ");
                 std::ifstream bis(jfFileName);
                 const SpecialHeader bh(bis);
                 // mapFile.reset(new jellyfish::mapped_file(jfFileName.c_str()));
                 const size_t sizeInBytes = bh.size_bytes();
                 // Load the hash from file
-                std::cerr << "\theader format = " << bh.format() << "\n";
-                std::cerr << "\t# distinct k-mers = " << numDistinctKmers << "\n";
-                std::cerr << "\thash key len = " << bh.key_len() << "\n";
-                std::cerr << "\tcounter len = " << bh.counter_len() << "\n";
-                std::cerr << "\tmax reprobe offset = " << bh.max_reprobe() << "\n";
-                std::cerr << "\tsize in bytes = " << sizeInBytes << "\n";
+               logger->info("\theader format = {}"      , bh.format());
+               logger->info("\t# distinct k-mers = {}"  , numDistinctKmers);
+               logger->info("\thash key len = {}"       , bh.key_len());
+               logger->info("\tcounter len = {}"        , bh.counter_len());
+               logger->info("\tmax reprobe offset = {}" , bh.max_reprobe());
+               logger->info("\tsize in bytes = {}"      , sizeInBytes);
 
                 // Allocate the actual storage
                 rawHashMem.reset(new char[sizeInBytes]);
@@ -86,62 +90,83 @@ class RapMapIndex {
                             bh.matrix()));
                 // Set the key size
                 rapmap::utils::my_mer::k(bh.key_len() / 2);
-                std::cerr << "done\n";
+                logger->info("done");
             }
 
 
             std::ifstream eqClassStream(eqClassListName, std::ios::binary);
             {
-                std::cerr << "loading eq classes . . . ";
+                logger->info("loading eq classes . . . ");
                 ScopedTimer timer;
                 cereal::BinaryInputArchive eqClassArchive(eqClassStream);
                 eqClassArchive(eqClassList);
-                std::cerr << " [" << eqClassList.size() << "] classes ";
-                std::cerr << "done\n";
+                logger->info("[{}] classes", eqClassList.size());
+                logger->info("done");
             }
             eqClassStream.close();
             std::ifstream eqLabelStream(eqLabelListName, std::ios::binary);
             {
-                std::cerr << "loading eq class labels . . . ";
+                logger->info("loading eq class labels . . . ");
                 ScopedTimer timer;
                 cereal::BinaryInputArchive eqLabelArchive(eqLabelStream);
                 eqLabelArchive(eqLabelList);
-                std::cerr << " [" << eqLabelList.size() << "] labels ";
-                std::cerr << "done\n";
+                logger->info("[{}] labels", eqLabelList.size());
+                logger->info("done");
             }
             eqLabelStream.close();
             std::ifstream posStream(posListName, std::ios::binary);
             {
-                std::cerr << "loading position list . . . ";
+                logger->info("loading position list . . . ");
                 ScopedTimer timer;
                 cereal::BinaryInputArchive posArchive(posStream);
                 posArchive(posList);
-                std::cerr << " [" << posList.size() << "] total k-mer positions ";
-                std::cerr << "done\n";
+                logger->info("[{}] total k-mer positions", posList.size());
+                logger->info("done");
             }
             posStream.close();
             std::ifstream txpNameStream(txpNameFile, std::ios::binary);
             {
-                std::cerr << "loading transcript names ";
+                logger->info("loading transcript names ");
                 ScopedTimer timer;
                 cereal::BinaryInputArchive txpNameArchive(txpNameStream);
                 txpNameArchive(txpNames);
-                std::cerr << " [" << txpNames.size() << "] transcripts in index ";
-                std::cerr << "done ";
+                logger->info("[{}] transcripts in index ", txpNames.size());
+                logger->info("done ");
             }
             txpNameStream.close();
 
             std::ifstream txpLenStream(txpLenFile, std::ios::binary);
             {
-                std::cerr << "loading transcript lengths";
+                logger->info("loading transcript lengths");
                 ScopedTimer timer;
                 cereal::BinaryInputArchive txpLenArchive(txpLenStream);
                 txpLenArchive(txpLens);
-                std::cerr << " [" << txpLens.size() << "] transcripts in index ";
-                std::cerr << "done ";
+                logger->info("[{}] transcripts in index", txpLens.size());
+                logger->info("done ");
             }
             txpLenStream.close();
 
+            std::ifstream fwdJumpStream(fwdJumpFile, std::ios::binary);
+            {
+                logger->info("loading forward jumps");
+                ScopedTimer timer;
+                cereal::BinaryInputArchive fwdJumpArchive(fwdJumpStream);
+                fwdJumpArchive(fwdJumpTable);
+                logger->info("[{}] forward jumps", fwdJumpTable.size());
+                logger->info("done ");
+            }
+            fwdJumpStream.close();
+
+            std::ifstream revJumpStream(revJumpFile, std::ios::binary);
+            {
+                logger->info("loading forward jumps");
+                ScopedTimer timer;
+                cereal::BinaryInputArchive revJumpArchive(revJumpStream);
+                revJumpArchive(revJumpTable);
+                logger->info("[{}] reverse jumps", revJumpTable.size());
+                logger->info("done ");
+            }
+            revJumpStream.close();
             return true;
         }
 
@@ -154,6 +179,8 @@ class RapMapIndex {
     PositionList posList;
     std::vector<std::string> txpNames;
     std::vector<uint32_t> txpLens;
+    std::vector<uint8_t> fwdJumpTable;
+    std::vector<uint8_t> revJumpTable;
 };
 
 #endif //__RAP_MAP_INDEX_HPP__

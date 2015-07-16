@@ -80,12 +80,21 @@ class VectorHasher {
 };
 
 struct PosInfo {
-    PosInfo(rapmap::utils::my_mer merIn, bool isRCIn, uint32_t posIn) :
-        mer(merIn), isRC(isRCIn), pos(posIn) {}
+    PosInfo(uint64_t merIDIn, bool isRCIn, uint32_t posIn) :
+        merID(merIDIn), isRC(isRCIn), pos(posIn) {}
 
-    rapmap::utils::my_mer mer;
+    uint64_t merID;
     bool isRC;
     uint32_t pos;
+};
+
+// maybe unify with the above?
+struct JumpCell {
+    JumpCell(uint32_t merIdxIn, int32_t posIn, bool isRCIn) :
+        merIdx(merIdxIn), pos(posIn), isRC(isRCIn) {}
+    uint32_t merIdx;
+    int32_t pos;
+    bool isRC;
 };
 
 template <typename T>
@@ -95,6 +104,58 @@ void printVec(std::vector<T>& vec) {
         std::cerr << e << ", ";
     }
     std::cerr << "}";
+}
+
+// There may be a better way to do this, but here we just check the
+// possible neighbors
+bool isBreakpoint(MerMapT& merIntMap, rapmap::utils::my_mer canonicalMer) {
+    uint32_t inDegree{0};
+    uint32_t outDegree{0};
+    const auto& ary = merIntMap.ary();
+    // extend forward
+    for (char b : {'A', 'C', 'G', 'T'}) {
+        auto newMer = canonicalMer;
+        newMer.shift_left(b);
+        newMer.canonicalize();
+        outDegree += ary->has_key(newMer) ? 1 : 0;
+        if (outDegree > 1) { return true; }
+    }
+    // extend backward
+    for (char b : {'A', 'C', 'G', 'T'}) {
+        auto newMer = canonicalMer;
+        newMer.shift_right(b);
+        newMer.canonicalize();
+        inDegree += ary->has_key(newMer) ? 1 : 0;
+        if (inDegree > 1) { return true; }
+    }
+    return false;
+}
+
+void emptyJumpQueue(std::vector<JumpCell>& jumpQueue, int32_t lastBreak,
+                    int32_t pos,
+                    MerMapT& merIntMap,
+                    std::vector<uint8_t>& fwdJump,
+                    std::vector<uint8_t>& revJump) {
+
+    // The maximum representable jump
+    constexpr auto maxJump =
+        std::numeric_limits<std::remove_reference<decltype(fwdJump[0])>::type>::max();
+
+    while (!jumpQueue.empty()) {
+        auto& jumpCell = jumpQueue.back();
+        uint8_t revJumpDist = static_cast<uint8_t>(
+                std::min(jumpCell.pos - lastBreak + 1,
+                static_cast<int32_t>(maxJump)));
+        uint8_t fwdJumpDist = static_cast<uint8_t>(
+                std::min(pos - jumpCell.pos + 1,
+                static_cast<int32_t>(maxJump)));
+        fwdJump[jumpCell.merIdx] =
+            std::min(fwdJumpDist, fwdJump[jumpCell.merIdx]);
+        revJump[jumpCell.merIdx] =
+            std::min(revJumpDist, revJump[jumpCell.merIdx]);
+        // Now that we marked the jump, no need to keep this around.
+        jumpQueue.pop_back();
+    }
 }
 
 // To use the parser in the following, we get "jobs" until none is
@@ -119,7 +180,7 @@ void processTranscripts(ParserT* parser,
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
 
     using TranscriptList = std::vector<uint32_t>;
-
+    using eager_iterator = MerMapT::array::eager_iterator;
     using KmerBinT = uint64_t;
     //create the hash
     size_t hashSize = 100000000;
@@ -208,23 +269,30 @@ void processTranscripts(ParserT* parser,
     transcriptLengths.clear();
     transcriptLengths.shrink_to_fit();
 
-    size_t vsize{0};
-    using eager_iterator = MerMapT::array::eager_iterator;
-    for (auto& kinfo : kmerInfos) {
-        vsize += kinfo.count;
-    }
-
     constexpr uint32_t uint32Invalid = std::numeric_limits<uint32_t>::max();
-    std::vector<uint32_t> transcriptIDs(vsize, uint32Invalid);
+    std::vector<uint32_t> transcriptIDs(numKmers, uint32Invalid);
 
     std::cerr << "\n[Step 2 of 4] : marking k-mers\n";
-    // Compute the equivalence classes for the k-mers
+    // Mark the transcript in which each occurence oc a k-mer appears
+    // in the transcriptIDs vector.
+
+
+    bool isRC{false};
+    int32_t pos{0};
+    int32_t lastBreak{0};
     uint32_t offset{0};
     uint32_t transcriptID{0};
     {
     ScopedTimer timer;
+
+
     for (auto& transcriptSeq : transcriptSeqs) {
         auto readLen = transcriptSeq.length();
+
+        // We can always jump to the beginning of a
+        // new transcript
+        lastBreak = 0;
+
         rapmap::utils::my_mer mer;
         mer.polyT();
         std::vector<KmerBinT> kmers;
@@ -233,11 +301,11 @@ void processTranscripts(ParserT* parser,
             mer.shift_left(c);
             if (b >= k) {
                 auto canonicalMer = mer.get_canonical();
-
                 uint64_t kmerIndex;
                 auto found = merIntMap.ary()->get_val_for_key(canonicalMer, &kmerIndex);
                 // Should ALWAYS find the key
                 assert(found);
+
 
                 auto& v = kmerInfos[kmerIndex];
                 // use the highest bit to mark if we've seen this k-mer yet or not
@@ -256,6 +324,8 @@ void processTranscripts(ParserT* parser,
                 transcriptIDs[lastOffset] = transcriptID;
                 v.count++;
             }
+
+
         }
         if (transcriptID % 10000 == 0) {
             std::cerr << "\r\rmarked kmers for " << transcriptID << " transcripts";
@@ -264,6 +334,7 @@ void processTranscripts(ParserT* parser,
     }
     	std::cerr << "\n";
     }
+
     //printVec(transcriptIDs);
     // A hash to quickly and easily determine the equivalence classes
     std::unordered_map<std::vector<uint32_t>, uint32_t, VectorHasher> eqClassMap;
@@ -278,6 +349,7 @@ void processTranscripts(ParserT* parser,
     uint32_t eqClassVecSize{0};
 
     std::cerr << "\n[Step 3 of 4] : building k-mers equivalence classes\n";
+    // Compute the equivalence classes for the k-mers
     {
         ScopedTimer timer;
         const auto ary = merIntMap.ary();
@@ -290,7 +362,7 @@ void processTranscripts(ParserT* parser,
             auto offset = val.offset;
             auto num = unmarked(val.count);
 
-	    tlist.clear();
+            tlist.clear();
             tlist.reserve(num);
 
             for (size_t idx = offset; idx < offset + num; ++idx) {
@@ -331,6 +403,13 @@ void processTranscripts(ParserT* parser,
     auto& posVec = transcriptIDs;
 
 
+    constexpr uint8_t maxJump = std::numeric_limits<uint8_t>::max();
+    // Also, attempt to build *jump* tables here!
+    // How far we can move "forward" before hitting a new eq. class
+    std::vector<uint8_t> fwdJump(numDistinctKmers, maxJump);
+    // How far we can move "forward" backward hitting a new eq. class
+    std::vector<uint8_t> revJump(numDistinctKmers, maxJump);
+
     std::cerr << "\n[Step 4 of 4] : finalizing index\n";
     transcriptID = 0;
     {
@@ -338,9 +417,19 @@ void processTranscripts(ParserT* parser,
         // Local vector to hold k-mers per transcript
         btree::btree_map<rapmap::utils::my_mer,
                          std::vector<PosInfo>> posHash;//std::vector<PosInfo> posInfos;
+
+        // k-mers in the forward orientation w.r.t the reference txp
+        std::vector<JumpCell> fwdJumpQueue;
+        // k-mers in the reverse orientation w.r.t the reference txp
+        std::vector<JumpCell> revJumpQueue;
+
         for (auto& transcriptSeq : transcriptSeqs) {
+            fwdJumpQueue.clear();
+            revJumpQueue.clear();
             posHash.clear();
             auto readLen = transcriptSeq.length();
+            uint32_t currEqClass;
+            uint32_t prevEqClass = std::numeric_limits<uint32_t>::max();
             rapmap::utils::my_mer mer;
             mer.polyT();
             for (size_t b = 0; b < readLen; ++b) {
@@ -349,30 +438,78 @@ void processTranscripts(ParserT* parser,
                 if (b >= k) {
                     auto canonicalMer = mer.get_canonical();
                     bool isRC = (mer != canonicalMer);
+
+                    uint64_t kmerIndex;
+                    auto found = merIntMap.ary()->get_val_for_key(
+                                            canonicalMer, &kmerIndex);
+
+                    auto& val = kmerInfos[kmerIndex];
+                    currEqClass = val.eqId;
+
                     // Record the position of this k-mer in the transcript
                     uint32_t pos = b - k;
                     if (pos > readLen) {
                         std::cerr << "Pos is " << pos << ", but transcript length is " << readLen << "\n";
                     }
+
+                    // === Jumping
+                    // if we hit a node with in-degree > 1 or out-degree > 1
+                    // then this defines the new breakpoint.  At this time, we
+                    // clear out the queues and mark the appropriate skips for
+                    // each k-mer we encountered.
+                    if ( currEqClass != prevEqClass ) {
+                        // For each k-mer in the forward direction, it can
+                        // skip forward to this breakpoint, which is at
+                        // position pos.
+                        emptyJumpQueue(fwdJumpQueue, lastBreak, pos, merIntMap,
+                                fwdJump, revJump);
+                        // The only difference here is that we reverse the
+                        // revJump and fwdJump arguments, since these are RC
+                        // mers.
+                        emptyJumpQueue(revJumpQueue, lastBreak, pos, merIntMap,
+                                revJump, fwdJump);
+                        lastBreak = pos;
+                    }
+                    // Does this k-mer exists in the table in the forward
+                    // or reverse complement direction.
+                    if (isRC) {
+                        revJumpQueue.emplace_back(kmerIndex, pos, isRC);
+                    } else {
+                        fwdJumpQueue.emplace_back(kmerIndex, pos, isRC);
+                    }
+                    prevEqClass = currEqClass;
+                    // === Jumping
+
                     //posInfos.emplace_back(canonicalMer, isRC, pos);
                     if (posHash[canonicalMer].size() > 0) {
                         if (pos < posHash[canonicalMer].back().pos) {
                             std::cerr << "NON-MONOTONIC POS\n";
                         }
                     }
-                    posHash[canonicalMer].emplace_back(canonicalMer, isRC, pos);
+                    posHash[canonicalMer].emplace_back(kmerIndex, isRC, pos);
                 }
             }
+
+            // === Jumping
+            // Empty anything remaining out of the jump queues
+            //
+            // The last k-mer in the transcript is, by definition a breakpoint.
+            // So, empty the queues.
+            emptyJumpQueue(fwdJumpQueue, lastBreak, pos, merIntMap,
+                    fwdJump, revJump);
+            // The only difference here is that we reverse the
+            // revJump and fwdJump arguments, since these are RC
+            // mers.
+            emptyJumpQueue(revJumpQueue, lastBreak, pos, merIntMap,
+                    revJump, fwdJump);
+            // === Jumping
 
             for (auto kv = posHash.begin(); kv != posHash.end(); ++kv) {
                     auto mer = kv->first;
                     auto& list = kv->second;
-                    uint64_t kmerIndex;
-                    auto found = merIntMap.ary()->get_val_for_key(
-                                            mer, &kmerIndex);
                     // Should ALWAYS find the key
                     assert(found);
-                    auto& val = kmerInfos[kmerIndex];
+                    auto& val = kmerInfos[list.front().merID];
                     uint32_t offset;
                     markNewTxpBit(list.front().pos);
                     for (auto& pi : list) {
@@ -473,6 +610,30 @@ void processTranscripts(ParserT* parser,
     fh.write(jfos);
     merIntMap.ary()->write(jfos);
     jfos.close();
+
+    // === Dump the jump tables to disk and reclaim the space
+    std::ofstream fwdJumpStream(outputDir + "fwdjump.bin", std::ios::binary);
+    {
+        cereal::BinaryOutputArchive fwdJumpArchive(fwdJumpStream);
+        fwdJumpArchive(fwdJump);
+    }
+    fwdJumpStream.close();
+    fwdJump.clear();
+    fwdJump.shrink_to_fit();
+
+    std::ofstream revJumpStream(outputDir + "revjump.bin", std::ios::binary);
+    {
+        cereal::BinaryOutputArchive revJumpArchive(revJumpStream);
+        revJumpArchive(revJump);
+    }
+    revJumpStream.close();
+    revJump.clear();
+    revJump.shrink_to_fit();
+    // === Done dumping the jump tables
+
+
+
+
 
     std::ofstream kinfoStream(outputDir + "kinfo.bin", std::ios::binary);
     {

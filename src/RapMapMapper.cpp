@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <thread>
+#include <tuple>
 #include <sstream>
 
 #include <cereal/types/unordered_map.hpp>
@@ -17,6 +18,7 @@
 #include <cereal/types/string.hpp>
 #include <cereal/archives/binary.hpp>
 
+#include "HitManager.hpp"
 #include "SIMDCompressionAndIntersection/intersection.h"
 #include "xxhash.h"
 
@@ -53,6 +55,10 @@
 #include "ScopedTimer.hpp"
 #include "SpinLock.hpp"
 
+// #define __DEBUG__
+// #define __TRACK_CORRECT__
+
+
 // STEP 1: declare the type of file handler and the read() function
 // KSEQ_INIT(int, read)
 
@@ -70,6 +76,7 @@ using OccList = std::vector<uint64_t>;
 using KmerInfoList = std::vector<rapmap::utils::KmerInfo>;
 using EqClassList = std::vector<rapmap::utils::EqClass>;
 using EqClassLabelVec = std::vector<uint32_t>;
+using PositionListHelper = rapmap::utils::PositionListHelper;
 #if defined __APPLE__
 using SpinLockT = SpinLock;
 #else
@@ -95,46 +102,14 @@ struct HitCounters {
     std::atomic<uint64_t> trueHits{0};
     std::atomic<uint64_t> totHits{0};
     std::atomic<uint64_t> numReads{0};
+    std::atomic<uint64_t> tooManyHits{0};
 };
 
-enum class MateStatus : uint8_t {
-    SINGLE_END = 0,
-    PAIRED_END_LEFT = 1,
-    PAIRED_END_RIGHT = 2,
-    PAIRED_END_PAIRED = 3 };
+using MateStatus = rapmap::utils::MateStatus;
+using HitInfo = rapmap::utils::HitInfo;
+using ProcessedHit = rapmap::utils::ProcessedHit;
+using QuasiAlignment = rapmap::utils::QuasiAlignment;
 
-struct QuasiAlignment {
-    QuasiAlignment(uint32_t tidIn, uint32_t posIn,
-                   bool fwdIn, uint32_t readLenIn,
-                   uint32_t fragLenIn = 0,
-                   bool isPairedIn = false) :
-           tid(tidIn), pos(posIn), fwd(fwdIn),
-           readLen(readLenIn), fragLen(fragLenIn),
-           isPaired(isPairedIn) {}
-    QuasiAlignment(QuasiAlignment&& other) = default;
-    QuasiAlignment& operator=(const QuasiAlignment&) = default;
-    // Only 1 since the mate must have the same tid
-    // we won't call *chimeric* alignments here.
-    uint32_t tid;
-    // Left-most position of the hit
-    int32_t pos;
-    // left-most position of the mate
-    int32_t matePos;
-    // Is the read from the forward strand
-    bool fwd;
-    // Is the mate from the forward strand
-    bool mateIsFwd;
-    // The fragment length (template length)
-    // This is 0 for single-end or orphaned reads.
-    uint32_t fragLen;
-    // The read's length
-    uint32_t readLen;
-    // The mate's length
-    uint32_t mateLen;
-    // Is this a paired *alignment* or not
-    bool isPaired;
-    MateStatus mateStatus;
-};
 
 // from https://github.com/cppformat/cppformat/issues/105
 class FixedBuffer : public fmt::Buffer<char> {
@@ -300,39 +275,6 @@ inline void getSamFlags(const QuasiAlignment& qaln,
 }
 
 
-// Wraps the standard iterator of the Position list to provide
-// some convenient functionality.  In the future, maybe this
-// should be a proper iterator adaptor.
-struct PositionListHelper{
-	using PLIt = PositionList::iterator;
-
-	PositionListHelper(PLIt itIn, PLIt endIn) :
-		it_(itIn), end_(endIn) {}
-        // The underlying iterator shouldn't be advanced further
-	inline bool done() { return it_ == end_; }
-
-	// The actual postion on the transcript
-	int32_t pos() { return static_cast<int32_t>((*it_) & 0x3FFFFFFF); }
-
-	// True if the position encoded was on the reverse complement strand
-	// of the reference transcript, false otherwise.
-	bool isRC() { return (*it_) & 0x40000000; }
-
-	// True if we hit the position list for a new transcript, false otherwise
-	bool isNewTxp() { return (*it_) & 0x80000000; }
-
-	void advanceToNextTranscript() {
-		if (it_ < end_) {
-			do {
-				++it_;
-			} while (!isNewTxp() and it_ != end_);
-
-		}
-	}
-
-	PLIt it_; // The underlying iterator
-	PLIt end_; // The end of the container
-};
 
 // Walks the position list for this transcript and puts all hits
 // on the back of the hits vector.
@@ -349,7 +291,9 @@ bool collectAllHits(uint32_t tid,
 	bool isRC;
 	int32_t pos;
 
-	while (canAdvance) {
+//	while (canAdvance) {
+    // only return the first hit for now
+    if (canAdvance) {
 		isRC = ph.isRC();
 		pos = ph.pos();
 		bool isReadRC = (isRC != hitRC);
@@ -357,9 +301,10 @@ bool collectAllHits(uint32_t tid,
         hits.back().mateStatus = mateStatus;
 		foundHit = true;
 		// If we can't advance the left but we need to, we're done
-		if (!canAdvance) { return foundHit; }
+		/*if (!canAdvance) { return foundHit; }
 		++(ph.it_);
 		canAdvance = !ph.isNewTxp();
+		*/
 	}
     if (canAdvance) { ph.advanceToNextTranscript(); }
 	return foundHit;
@@ -381,7 +326,7 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 		PositionListHelper& rightPH,
 		uint32_t maxDist,
 		std::vector<QuasiAlignment>& hits,
-        MateStatus mateStatus){
+		MateStatus mateStatus){
 	bool foundHit{false};
 	bool canAdvance = true, canAdvanceLeft = !leftPH.done(), canAdvanceRight = !rightPH.done();
 	// The first position should always be a nextTxp, but we don't care
@@ -390,23 +335,23 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 	// True if the k-mer thinks the read is from fwd, false if from rc
 	bool readStrandLeft, readStrandRight;
 	int32_t leftPos, rightPos;
-    std::vector<PositionListHelper> leftPosQueue, rightPosQueue;
+	std::vector<PositionListHelper> leftPosQueue, rightPosQueue;
 
 #ifdef __DEBUG__
-    if (!leftPH.isNewTxp()) {
-        std::cerr << "leftPH = (" << leftPH.pos()
-                  << ", " << leftPH.isNewTxp() << "), but should be start of "
-                  "new txp list";
-    }
+	if (!leftPH.isNewTxp()) {
+		std::cerr << "leftPH = (" << leftPH.pos()
+			<< ", " << leftPH.isNewTxp() << "), but should be start of "
+			"new txp list";
+	}
 
-    if (!rightPH.isNewTxp()) {
-        std::cerr << "rightPH = (" << rightPH.pos()
-                  << ", " << rightPH.isNewTxp() << "), but should be start of "
-                  "new txp list";
-    }
+	if (!rightPH.isNewTxp()) {
+		std::cerr << "rightPH = (" << rightPH.pos()
+			<< ", " << rightPH.isNewTxp() << "), but should be start of "
+			"new txp list";
+	}
 #endif // __DEBUG__
 
-    while (canAdvance) {
+	while (canAdvance) {
 		leftPos = leftPH.pos();
 		rightPos = rightPH.pos();
 		isRCLeft = leftPH.isRC();
@@ -419,9 +364,9 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 		if (fragLen < maxDist) {
 			bool isRC = (leftHitRC != isRCLeft);
 			int32_t hitPos = (leftPos < rightPos) ? leftPos - leftQueryPos :
-								                    rightPos - rightQueryPos;
+				rightPos - rightQueryPos;
 			hits.emplace_back(tid, hitPos, isRC, readLen);
-            hits.back().mateStatus = mateStatus;
+			hits.back().mateStatus = mateStatus;
 			foundHit = true;
 			break;
 		}
@@ -430,53 +375,457 @@ bool collectHitsWithPositionConstraint(uint32_t tid,
 			// If we can't advance the left but we need to, we're done
 			if (!canAdvanceLeft) { break; }
 			++(leftPH.it_);
-            if (leftPH.isNewTxp() or leftPH.done()) {
-                canAdvanceLeft = false;
-                break;
-            }
+			if (leftPH.isNewTxp() or leftPH.done()) {
+				canAdvanceLeft = false;
+				break;
+			}
 		} else if (posDiff < 0) { // leftPos > rightPos (advance right)
 			// If we can't advance the right but we need to, we're done
 			if (!canAdvanceRight) { break; }
 			++(rightPH.it_);
-            if (rightPH.isNewTxp() or rightPH.done()) {
-                canAdvanceRight = false;
-                break;
-            }
+			if (rightPH.isNewTxp() or rightPH.done()) {
+				canAdvanceRight = false;
+				break;
+			}
 		} else { // posDiff == 0 (advance both)
-            /**
-             * This is a strange case --- both k-mers (from different places)
-             * in the read map to the same position.  First, this should
-             * probably be a hit (i.e. < maxDist).  If not, is advancing
-             * both the right thing to do?
-             */
+			/**
+			 * This is a strange case --- both k-mers (from different places)
+			 * in the read map to the same position.  First, this should
+			 * probably be a hit (i.e. < maxDist).  If not, is advancing
+			 * both the right thing to do?
+			 */
 			// If we can't advance the left but we need to, we're done
 			if (!canAdvanceLeft) { break; }
 			++(leftPH.it_);
-            if (leftPH.isNewTxp() or leftPH.done()) {
-                canAdvanceLeft = false;
-                break;
-            }
-            if (leftPH.isNewTxp()) { --(leftPH.it_); }
+			if (leftPH.isNewTxp() or leftPH.done()) {
+				canAdvanceLeft = false;
+				break;
+			}
+			if (leftPH.isNewTxp()) { --(leftPH.it_); }
 			// If we can't advance the right but we need to, we're done
 			if (!canAdvanceRight) { break; }
 			++(rightPH.it_);
-            if (rightPH.isNewTxp() or rightPH.done()) {
-                canAdvanceRight = false;
-                break;
-            }
+			if (rightPH.isNewTxp() or rightPH.done()) {
+				canAdvanceRight = false;
+				break;
+			}
 		}
 
 		// We can continue if we can advance either the left or right position
 		canAdvance = (canAdvanceLeft or canAdvanceRight);
 	}
-    // Advance left and right until next txp
-    if ( canAdvanceLeft ) {
-        leftPH.advanceToNextTranscript();
+	// Advance left and right until next txp
+	if ( canAdvanceLeft ) {
+		leftPH.advanceToNextTranscript();
+	}
+	if ( canAdvanceRight ) {
+		rightPH.advanceToNextTranscript();
+	}
+	return foundHit;
+}
+
+
+class SkippingKmerIterator {
+    private:
+	std::string* qstr;
+	const char* qCharArray;
+	uint32_t qlen;
+	uint32_t k;
+	uint32_t klen;
+	uint32_t startPos;
+	uint32_t nextBaseIndex;
+	rapmap::utils::my_mer mer;
+	rapmap::utils::my_mer rcmer;
+	rapmap::utils::my_mer tempMer;
+	static constexpr uint32_t invalidIndex = std::numeric_limits<uint32_t>::max();
+
+    public:
+	SkippingKmerIterator(std::string& queryStr) :
+		qstr(&queryStr),
+		qCharArray(queryStr.c_str()),
+		qlen(queryStr.length()),
+		k(rapmap::utils::my_mer::k()),
+		klen(0),
+		startPos(0),
+		nextBaseIndex(0) {
+		    next();
+	}
+
+
+	// return the index of the current k-mer (start) in the query string
+	uint32_t queryIndex() { return startPos; }
+
+	rapmap::utils::my_mer getMer(bool& isRC) {
+	    tempMer = mer.get_canonical();
+	    isRC = (mer != tempMer);
+	    return tempMer;
+	}
+
+	bool backwardSearch(uint32_t searchPos) {
+	    // Perform a backward search starting from searchPos
+
+	    // If we're not at least k bases in, we can't do a
+	    // backward search
+	    if (searchPos < k) {
+	    	return false;
+	    }
+
+        // otherwise start a new k-mer at the jump position
+        while (!tempMer.from_chars(&qCharArray[searchPos])) {
+            // If it wasn't a valid k-mer, find the offending base
+            // and try to start k bases before it
+            uint32_t invalidLoc = qstr->find_last_not_of("aAcCgGtT", searchPos + k);
+            // Make sure we don't fall off the end
+            if (invalidLoc < k + 1) {
+                return false;
+            }
+            searchPos = invalidLoc - k - 1;
+        }
+
+	    // we found a hit, so make it the current k-mer
+	    klen = k;
+	    startPos = searchPos;
+	    nextBaseIndex = searchPos + k + 1;
+	    mer = tempMer;
+	    return true;
+	}
+
+	// move to the next valid k-mer that is at least skipVal past
+	// the current position.  If skipVal positions forward is past
+	// the end of the query, try and move to the last k-mer.
+	//
+	// If a valid k-mer is found, make it the current k-mer and
+	// return true and the k-mer position. Otherwise, return
+	// false.
+	std::tuple<bool, uint32_t> skipForward(uint32_t skipVal) {
+	   tempMer = mer;
+	   uint32_t tempKLen = klen;
+      	   uint32_t tempStartPos = startPos;
+	   uint32_t tempNextBaseIndex = nextBaseIndex;
+
+	   uint32_t jumpPos = startPos + skipVal;
+	   // Would we jump past the end of the read?
+	   // If so, just jump to the end.
+	   if (jumpPos > qlen - k) {
+	     jumpPos = qlen - k;
+	   }
+	   uint32_t initJumpPos = jumpPos;
+	   if (jumpPos == startPos) { return std::make_pair(false, 0); }
+
+	   // if the jumpPos is < k away, it's more efficient to just
+	   // walk there b/c it overlaps the current k-mer
+	   bool reachedGoal{false};
+	   if (jumpPos - startPos < k) {
+	       while (!reachedGoal and next()) {
+		   reachedGoal = (startPos >= jumpPos);
+	       }
+	   } else {
+	      // otherwise start a new k-mer at the jump position
+	      while (! (reachedGoal = mer.from_chars(&qCharArray[jumpPos])) ) {
+		  // If it wasn't a valid k-mer, find the offending base
+		  // and try to start after it
+		  jumpPos = qstr->find_first_not_of("aAcCgGtT", jumpPos) + 1;
+		  // Make sure we don't fall off the end
+		  if (jumpPos > qlen - k) {
+		      startPos = invalidIndex;
+		      reachedGoal = false;
+		      break;
+		  }
+	      }
+	      // If the search was successful
+	      if (reachedGoal) {
+		  // set startPos to the position we ended up jumping to
+		  klen = k;
+		  startPos = jumpPos;
+		  nextBaseIndex = startPos + k + 1;
+	      }
+	   }
+	   // If the search was un-successful, return the searcher to it's previous state
+	   // and report the failure and the position where the backward search should begin.
+	   if (!reachedGoal) {
+	       mer = tempMer;
+	       klen = tempKLen;
+	       startPos = tempStartPos;
+	       nextBaseIndex = tempNextBaseIndex;
+	       return std::make_pair(false, initJumpPos);
+	   }
+	   return std::make_pair(true, startPos);
+	}
+
+	// Move to the next *valid* k-mer.  If we found a k-mer, return true,
+	// If we can't move forward anymore, then return false.
+	bool next() {
+	    bool valid{false};
+	    while (!valid and nextBaseIndex < qlen) {
+		int c = jellyfish::mer_dna::code(qCharArray[nextBaseIndex]);
+		// If the next base isn't a valid nucleotide
+		if (jellyfish::mer_dna::not_dna(c)) {
+		    // reset the k-mer
+		    klen = 0;
+		    ++nextBaseIndex;
+		    if (qlen - nextBaseIndex < k) {
+			startPos = invalidIndex;
+			return false;
+		    } else {
+			continue;
+		    }
+		}
+		mer.shift_left(c);
+		//rcmer.shift_right(jellyfish::mer_dna::complement(c));
+		++klen;
+	        ++nextBaseIndex;
+		if (klen >= k) {
+		    startPos = nextBaseIndex - k;
+		    valid = true;
+		}
+	    }
+	    if (!valid) { startPos = invalidIndex; }
+	    return valid;
+	}
+
+	bool isValid() { return startPos != invalidIndex; }
+};
+
+struct JumpStats {
+    std::atomic<uint64_t> jumpSizes{0};
+    std::atomic<uint64_t> numJumps{0};
+};
+
+void collectHitsSkippy(RapMapIndex& rmi,
+                        std::string& readStr,
+                        std::vector<QuasiAlignment>& hits,
+                        MateStatus mateStatus,
+                        JumpStats& js) {
+
+    auto jfhash = rmi.merHash.get();
+    auto& kmerInfos = rmi.kmerInfos;
+    auto& eqClasses = rmi.eqClassList;
+    auto& eqClassLabels = rmi.eqLabelList;
+    auto& posList = rmi.posList;
+    auto& fwdJumpTable = rmi.fwdJumpTable;
+    auto& revJumpTable = rmi.revJumpTable;
+    auto posEnd = posList.end();
+
+    auto k = rapmap::utils::my_mer::k();
+    auto readLen = readStr.length();
+    uint32_t maxDist = static_cast<uint32_t>(readLen) * 1.5;
+
+    auto endIt = kmerInfos.end();
+
+    std::vector<HitInfo> kmerHits;
+    uint64_t merID;
+    size_t kID;
+    rapmap::utils::my_mer searchBuffer;
+
+    bool terminateSearch{false}; // terminate search after checking the *next* hit
+    bool validKmer{false};
+    uint32_t numAnchors{0};
+    uint32_t searchPos{0};
+    uint32_t jumpLen{0};
+    bool isRC;
+    SkippingKmerIterator ksearch(readStr);
+
+    while (ksearch.isValid()) {
+        auto searchMer = ksearch.getMer(isRC);
+        bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+                searchBuffer, &kID);
+        // OK --- we found a hit
+        if (foundMer) {
+            kmerHits.emplace_back(kmerInfos.begin() + merID,
+                    merID, ksearch.queryIndex(), !isRC);
+            ++numAnchors;
+            // If we decided to terminate the search in the last loop, then we're done.
+            if (terminateSearch) { break; }
+
+            jumpLen = isRC ? revJumpTable[merID] :
+                fwdJumpTable[merID];
+            js.jumpSizes += jumpLen;
+            ++js.numJumps;
+
+            if (jumpLen > 1) { // only jump if it's worth it
+                std::tie(validKmer, searchPos) = ksearch.skipForward(jumpLen);
+                if (!validKmer) {
+                    // There was no valid k-mer from the skip position to the end
+                    // of the read --- execute reverse search
+
+                    // But -- only do so if we don't have at least 2 anchors
+                    if (numAnchors >= 2) { break; }
+
+                    if (ksearch.backwardSearch(searchPos)) {
+                        // If we find something in the reverse search, it will
+                        // be the last thing we check.
+                        terminateSearch = true;
+                        continue;
+                    } else {
+                        // Otherwise, if we don't find anything in the reverse
+                        // search --- just give up and take what we have.
+                        break;
+                    }
+                } else {
+                    if (searchPos == readLen - k) {
+                        terminateSearch = true;
+                    }
+                    // The skip was successful --- continue the search normally
+                    // from here.
+                    continue;
+                }
+            }
+        } else {
+            if (terminateSearch) { break; }
+        }
+        ksearch.next();
     }
-    if ( canAdvanceRight ) {
-        rightPH.advanceToNextTranscript();
+
+    // found no hits in the entire read
+    if (kmerHits.size() == 0) { return; }
+
+    if (kmerHits.size() > 0) {
+	if (kmerHits.size() > 1) {
+	    //std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
+	    auto processedHits = rapmap::hit_manager::intersectHits(kmerHits, rmi);
+	    rapmap::hit_manager::collectHitsSimple(processedHits, readLen, maxDist, hits, mateStatus);
+	} else {
+	    // std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
+	    auto& kinfo = *kmerHits[0].kinfo;
+	    hits.reserve(kinfo.count);
+	    // Iterator into, length of and end of the transcript list
+	    auto& eqClassLeft = eqClasses[kinfo.eqId];
+	    // Iterator into, length of and end of the positon list
+	    auto leftPosIt = posList.begin() + kinfo.offset;
+	    auto leftPosLen = kinfo.count;
+	    auto leftPosEnd = leftPosIt + leftPosLen;
+	    PositionListHelper leftPosHelper(leftPosIt, posList.end());
+	    bool leftHitRC = kmerHits[0].queryRC;
+
+	    auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
+	    auto leftTxpListLen = eqClassLeft.txpListLen;
+	    auto leftTxpEnd = leftTxpIt + leftTxpListLen;
+
+	    for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
+		collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits, mateStatus);
+	    }
+	}
     }
-    return foundHit;
+
+}
+
+
+void collectHitsGeneral(RapMapIndex& rmi,
+                        std::string& readStr,
+                        std::vector<QuasiAlignment>& hits,
+                        MateStatus mateStatus) {
+
+    auto jfhash = rmi.merHash.get();
+    auto& kmerInfos = rmi.kmerInfos;
+    auto& eqClasses = rmi.eqClassList;
+    auto& eqClassLabels = rmi.eqLabelList;
+    auto& posList = rmi.posList;
+    auto posEnd = posList.end();
+
+    rapmap::utils::my_mer mer;
+    rapmap::utils::my_mer rcmer;
+    auto k = rapmap::utils::my_mer::k();
+    auto kbits = 2*k;
+    auto readLen = readStr.length();
+    uint32_t maxDist = static_cast<uint32_t>(readLen) * 1.5;
+    size_t leftQueryPos = std::numeric_limits<size_t>::max();
+    size_t rightQueryPos = std::numeric_limits<size_t>::max();
+    bool leftHitRC = false, rightHitRC = false;
+
+    auto endIt = kmerInfos.end();
+
+    std::vector<HitInfo> kmerHits;
+    bool leftFwd{true};
+    bool rightFwd{true};
+
+    uint64_t merID;
+    size_t kID;
+    rapmap::utils::my_mer searchBuffer;
+
+    size_t klen{0};
+    for (size_t i = 0; i < readLen; ++i) {
+	int c = jellyfish::mer_dna::code(readStr[i]);
+	// If the next base isn't a valid nucleotide
+	if (jellyfish::mer_dna::not_dna(c)) {
+	    // reset the k-mer
+	    klen = 0;
+	    continue;
+	}
+	mer.shift_left(c);
+	rcmer.shift_right(jellyfish::mer_dna::complement(c));
+	++klen;
+	if (klen >= k) {
+	    auto& searchMer = (mer < rcmer) ? mer : rcmer;
+	    bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+		    searchBuffer, &kID);
+	    if (foundMer) {
+		kmerHits.emplace_back(kmerInfos.begin() + merID,
+			merID,
+			i - k,
+			searchMer == rcmer);
+		leftQueryPos = i - k;
+		break;
+	    }
+	}
+    }
+
+    // found no hits in the entire read
+    if (kmerHits.size() == 0) { return; }
+
+    // Now, start from the right and move left
+	klen = 0;
+    for (size_t i = readLen - 1; i > leftQueryPos; --i) {
+        int c = jellyfish::mer_dna::code(readStr[i]);
+		// If the next base isn't a valid nucleotide
+        if (jellyfish::mer_dna::not_dna(c)) {
+			klen = 0;
+			continue;
+        }
+        mer.shift_right(c);
+        rcmer.shift_left(jellyfish::mer_dna::complement(c));
+		++klen;
+        if (klen >= k) {
+            auto& searchMer = (mer < rcmer) ? mer : rcmer;
+            bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
+                                                    searchBuffer, &kID);
+            if (foundMer) {
+                kmerHits.emplace_back(kmerInfos.begin() + merID,
+                                      merID,
+                                      readLen - (i + k),
+                                      searchMer == rcmer);
+                break;
+            }
+        }
+    }
+
+    if (kmerHits.size() > 0) {
+        if (kmerHits.size() > 1) {
+            //std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
+            auto processedHits = rapmap::hit_manager::intersectHits(kmerHits, rmi);
+            rapmap::hit_manager::collectHitsSimple(processedHits, readLen, maxDist, hits, mateStatus);
+        } else {
+            //std::cerr << "kmerHits.size() = " << kmerHits.size() << "\n";
+            auto& kinfo = *kmerHits[0].kinfo;
+            hits.reserve(kinfo.count);
+            // Iterator into, length of and end of the transcript list
+		    auto& eqClassLeft = eqClasses[kinfo.eqId];
+            // Iterator into, length of and end of the positon list
+            auto leftPosIt = posList.begin() + kinfo.offset;
+            auto leftPosLen = kinfo.count;
+            auto leftPosEnd = leftPosIt + leftPosLen;
+            PositionListHelper leftPosHelper(leftPosIt, posList.end());
+            leftHitRC = kmerHits[0].queryRC;
+
+            auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
+            auto leftTxpListLen = eqClassLeft.txpListLen;
+            auto leftTxpEnd = leftTxpIt + leftTxpListLen;
+
+            for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
+                collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits, mateStatus);
+            }
+        }
+    }
+
 }
 
 void collectHits(RapMapIndex& rmi, std::string& readStr,
@@ -516,16 +865,19 @@ void collectHits(RapMapIndex& rmi, std::string& readStr,
 
     uint64_t merID;
     size_t kID;
+	uint32_t klen{0};
     rapmap::utils::my_mer searchBuffer;
 
     for (size_t i = 0; i < readLen; ++i) {
         int c = jellyfish::mer_dna::code(readStr[i]);
         if (jellyfish::mer_dna::not_dna(c)) {
-            c = jellyfish::mer_dna::code('G');
+		    klen = 0;
+			continue;
         }
         mer.shift_left(c);
         rcmer.shift_right(jellyfish::mer_dna::complement(c));
-        if (i >= k) {
+		++klen;
+        if (klen >= k) {
             auto& searchMer = (mer < rcmer) ? mer : rcmer;
             bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
                                                     searchBuffer, &kID);
@@ -555,19 +907,24 @@ void collectHits(RapMapIndex& rmi, std::string& readStr,
     //}
 
     // Now, start from the right and move left
-    for (size_t i = readLen - 1; i >= leftQueryPos; --i) {
+	klen = 0;
+    for (size_t i = readLen - 1; i > leftQueryPos; --i) {
         int c = jellyfish::mer_dna::code(readStr[i]);
         if (jellyfish::mer_dna::not_dna(c)) {
-            c = jellyfish::mer_dna::code('G');
+		  //c = jellyfish::mer_dna::code('G');
+		  klen = 0;
+		  continue;
         }
         mer.shift_right(c);
         rcmer.shift_left(jellyfish::mer_dna::complement(c));
-        if (readLen - i >= k) {
+		++klen;
+        if (klen >= k) {
             auto& searchMer = (mer < rcmer) ? mer : rcmer;
             bool foundMer = jfhash->get_val_for_key(searchMer, &merID,
                                                     searchBuffer, &kID);
             if (foundMer) {
                 miniRightHits = kmerInfos.begin() + merID;
+				//if (miniLeftHits == miniRightHits) { continue; }
                 rightHitRC = (searchMer == rcmer);
                 // distance from the right end
                 rightQueryPos = readLen - (i + k);
@@ -576,107 +933,107 @@ void collectHits(RapMapIndex& rmi, std::string& readStr,
         }
     }
 
-	// Take the intersection of these two hit lists
-	// Adapted from : http://en.cppreference.com/w/cpp/algorithm/set_intersection
-	if (miniLeftHits != endIt) {
-		// Equiv. class for left hit
-		auto& eqClassLeft = eqClasses[miniLeftHits->eqId];
-		// Iterator into, length of and end of the positon list
-		auto leftPosIt = posList.begin() + miniLeftHits->offset;
-		auto leftPosLen = miniLeftHits->count;
-		auto leftPosEnd = leftPosIt + leftPosLen;
-		PositionListHelper leftPosHelper(leftPosIt, posList.end());
+    // Take the intersection of these two hit lists
+    // Adapted from : http://en.cppreference.com/w/cpp/algorithm/set_intersection
+    if (miniLeftHits != endIt) {
+	    // Equiv. class for left hit
+	    auto& eqClassLeft = eqClasses[miniLeftHits->eqId];
+	    // Iterator into, length of and end of the positon list
+	    auto leftPosIt = posList.begin() + miniLeftHits->offset;
+	    auto leftPosLen = miniLeftHits->count;
+	    auto leftPosEnd = leftPosIt + leftPosLen;
+	    PositionListHelper leftPosHelper(leftPosIt, posList.end());
 #ifdef __DEBUG__
-        if (!leftPosHelper.isNewTxp()) {
-            std::cerr << "\n Should definitely be new txp but "
-                      << "leftPosHelper = ( "
-                      << leftPosHelper.pos() << ", "
-                      << leftPosHelper.isNewTxp() << ")\n";
-        }
+	    if (!leftPosHelper.isNewTxp()) {
+		    std::cerr << "\n Should definitely be new txp but "
+			    << "leftPosHelper = ( "
+			    << leftPosHelper.pos() << ", "
+			    << leftPosHelper.isNewTxp() << ")\n";
+	    }
 #endif
-		// Iterator into, length of and end of the transcript list
-		auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
-		auto leftTxpListLen = eqClassLeft.txpListLen;
-		auto leftTxpEnd = leftTxpIt + leftTxpListLen;
+	    // Iterator into, length of and end of the transcript list
+	    auto leftTxpIt = eqClassLabels.begin() + eqClassLeft.txpListStart;
+	    auto leftTxpListLen = eqClassLeft.txpListLen;
+	    auto leftTxpEnd = leftTxpIt + leftTxpListLen;
 
-		if (miniRightHits != endIt) {
-			// Equiv. class for right hit
-			auto& eqClassRight = eqClasses[miniRightHits->eqId];
-			// Iterator into, length of and end of the positon list
-			auto rightPosIt = posList.begin() + miniRightHits->offset;
-			auto rightPosLen = miniRightHits->count;
-			auto rightPosEnd = rightPosIt + rightPosLen;
-			PositionListHelper rightPosHelper(rightPosIt, posList.end());
+	    if (miniRightHits != endIt) {
+		    // Equiv. class for right hit
+		    auto& eqClassRight = eqClasses[miniRightHits->eqId];
+		    // Iterator into, length of and end of the positon list
+		    auto rightPosIt = posList.begin() + miniRightHits->offset;
+		    auto rightPosLen = miniRightHits->count;
+		    auto rightPosEnd = rightPosIt + rightPosLen;
+		    PositionListHelper rightPosHelper(rightPosIt, posList.end());
 #ifdef __DEBUG__
-            if (!rightPosHelper.isNewTxp()) {
-                std::cerr << "\n Should definitely be new txp but "
-                    << "rightPosHelper = ( "
-                    << rightPosHelper.pos() << ", "
-                    << rightPosHelper.isNewTxp() << ")\n";
-            }
+		    if (!rightPosHelper.isNewTxp()) {
+			    std::cerr << "\n Should definitely be new txp but "
+				    << "rightPosHelper = ( "
+				    << rightPosHelper.pos() << ", "
+				    << rightPosHelper.isNewTxp() << ")\n";
+		    }
 #endif
-			// Iterator into, length of and end of the transcript list
-			auto rightTxpIt = eqClassLabels.begin() + eqClassRight.txpListStart;
-			auto rightTxpListLen = eqClassRight.txpListLen;
-			auto rightTxpEnd = rightTxpIt + rightTxpListLen;
+		    // Iterator into, length of and end of the transcript list
+		    auto rightTxpIt = eqClassLabels.begin() + eqClassRight.txpListStart;
+		    auto rightTxpListLen = eqClassRight.txpListLen;
+		    auto rightTxpEnd = rightTxpIt + rightTxpListLen;
 
-			//hits.resize(std::min(leftLen, rightLen));
-			//size_t intSize = SIMDCompressionLib::SIMDintersection(&tidList[leftIt], leftLen,
-			//                                                      &tidList[rightIt], rightLen,
-			//                                                      &hits[0]);
-			//hits.resize(intSize);
+		    //hits.resize(std::min(leftLen, rightLen));
+		    //size_t intSize = SIMDCompressionLib::SIMDintersection(&tidList[leftIt], leftLen,
+		    //                                                      &tidList[rightIt], rightLen,
+		    //                                                      &hits[0]);
+		    //hits.resize(intSize);
 
 
-			hits.reserve(std::min(leftPosLen, rightPosLen));
-			uint32_t leftTxp, rightTxp;
-			while (leftTxpIt != leftTxpEnd and rightTxpIt != rightTxpEnd) {
-				// Get the current transcript ID for the left and right eq class
-				leftTxp = *leftTxpIt;
-				rightTxp = *rightTxpIt;
-				// If we need to advance the left txp, do it
-				if (leftTxp < rightTxp) {
-                    // Advance to the next transcript in the
-                    // equivalence class label
-					++leftTxpIt;
-					// Advance in the position array to the next ranscript
-					leftPosHelper.advanceToNextTranscript();
-				} else {
-					// If the transcripts are equal (i.e. leftTxp >= rightTxp and !(rightTxp < leftTxp))
-					// Then see if there are any hits here.
-					if (!(rightTxp < leftTxp)) {
-                        // If the hits are on the same transcript, look for
-                        // a mapping position where they appear the appropriate
-                        // distance apart.
-                        // Note: The iterators into the *position* vector will
-                        // be advanced, and should be at the start of the
-                        // positions for the *next* transcript when this function
-                        // returns.
-						collectHitsWithPositionConstraint(leftTxp, readLen,
-                              leftHitRC, rightHitRC,
-                              leftQueryPos, rightQueryPos,
-							  leftPosHelper, rightPosHelper,
-                              maxDist, hits, mateStatus);
-						++leftTxpIt;
-						// advance pos
-						// leftPosHelper.advanceToNextTranscript();
-					} else {
-                      // If the right transcript id was less than the left
-                      // transcript id, then advance the right position
-                      // iterator to the next transcript.
-					  rightPosHelper.advanceToNextTranscript();
-					}
-                    // Advance the right transcript id regardless of whether
-                    // we looked for a hit or not.
-					++rightTxpIt;
-				}
-			}
-		} else { // If we had only hits from the left, then map this as an orphan
-			hits.reserve(miniLeftHits->count);
-			for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
-				collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits, mateStatus);
-			}
-		}
-	}
+		    hits.reserve(std::min(leftPosLen, rightPosLen));
+		    uint32_t leftTxp, rightTxp;
+		    while (leftTxpIt != leftTxpEnd and rightTxpIt != rightTxpEnd) {
+			    // Get the current transcript ID for the left and right eq class
+			    leftTxp = *leftTxpIt;
+			    rightTxp = *rightTxpIt;
+			    // If we need to advance the left txp, do it
+			    if (leftTxp < rightTxp) {
+				    // Advance to the next transcript in the
+				    // equivalence class label
+				    ++leftTxpIt;
+				    // Advance in the position array to the next ranscript
+				    leftPosHelper.advanceToNextTranscript();
+			    } else {
+				    // If the transcripts are equal (i.e. leftTxp >= rightTxp and !(rightTxp < leftTxp))
+				    // Then see if there are any hits here.
+				    if (!(rightTxp < leftTxp)) {
+					    // If the hits are on the same transcript, look for
+					    // a mapping position where they appear the appropriate
+					    // distance apart.
+					    // Note: The iterators into the *position* vector will
+					    // be advanced, and should be at the start of the
+					    // positions for the *next* transcript when this function
+					    // returns.
+					    collectHitsWithPositionConstraint(leftTxp, readLen,
+							    leftHitRC, rightHitRC,
+							    leftQueryPos, rightQueryPos,
+							    leftPosHelper, rightPosHelper,
+							    maxDist, hits, mateStatus);
+					    ++leftTxpIt;
+					    // advance pos
+					    // leftPosHelper.advanceToNextTranscript();
+				    } else {
+					    // If the right transcript id was less than the left
+					    // transcript id, then advance the right position
+					    // iterator to the next transcript.
+					    rightPosHelper.advanceToNextTranscript();
+				    }
+				    // Advance the right transcript id regardless of whether
+				    // we looked for a hit or not.
+				    ++rightTxpIt;
+			    }
+		    }
+	    } else { // If we had only hits from the left, then map this as an orphan
+		    hits.reserve(miniLeftHits->count);
+		    for (auto it = leftTxpIt; it < leftTxpEnd; ++it) {
+			    collectAllHits(*it, readLen, leftHitRC, leftPosHelper, hits, mateStatus);
+		    }
+	    }
+    }
 
 }
 
@@ -685,6 +1042,7 @@ void processReadsSingle(single_parser* parser,
         SpinLockT& iomutex,
         std::ostream& outStream,
         HitCounters& hctr,
+        size_t maxNumHits,
         bool noOutput) {
 
     auto& txpNames = rmi.txpNames;
@@ -699,7 +1057,7 @@ void processReadsSingle(single_parser* parser,
     std::vector<QuasiAlignment> hits;
 
     size_t readLen{0};
-    size_t maxNumHits{200};
+
     char cigarBuff[1000];
     std::string readTemp(1000, 'A');
     std::string qualTemp(1000, '~');
@@ -715,7 +1073,7 @@ void processReadsSingle(single_parser* parser,
             readLen = j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
-            collectHits(rmi, j->data[i].seq, hits, MateStatus::SINGLE_END);
+            collectHitsGeneral(rmi, j->data[i].seq, hits, MateStatus::SINGLE_END);
             /*
                std::set_intersection(leftHits.begin(), leftHits.end(),
                rightHits.begin(), rightHits.end(),
@@ -726,7 +1084,7 @@ void processReadsSingle(single_parser* parser,
 
             if (hits.size() > 0 and hits.size() < maxNumHits) {
                 auto& readName = j->data[i].header;
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                 auto before = readName.find_first_of(':');
                 before = readName.find_first_of(':', before+1);
                 auto after = readName.find_first_of(':', before+1);
@@ -758,7 +1116,7 @@ void processReadsSingle(single_parser* parser,
                         << *qstr << '\n';
                     ++alnCtr;
                     // === SAM
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                     if (txpNames[qa.tid] == txpName) { ++hctr.trueHits; }
 #endif //__DEBUG__
                 }
@@ -767,7 +1125,7 @@ void processReadsSingle(single_parser* parser,
             if (hctr.numReads % 1000000 == 0) {
                 if (iomutex.try_lock()){
                     if (hctr.numReads > 0) {
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                         std::cerr << "\033[F\033[F\033[F";
 #else
                         std::cerr << "\033[F\033[F";
@@ -776,7 +1134,7 @@ void processReadsSingle(single_parser* parser,
                     std::cerr << "saw " << hctr.numReads << " reads\n";
                     std::cerr << "# hits per read = "
                         << hctr.totHits / static_cast<float>(hctr.numReads) << "\n";
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                     std::cerr << "The true hit was in the returned set of hits "
                         << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
                         <<  "% of the time\n";
@@ -795,6 +1153,23 @@ void processReadsSingle(single_parser* parser,
     } // processed all reads
 }
 
+void printMateStatus(rapmap::utils::MateStatus ms) {
+		switch(ms) {
+				case rapmap::utils::MateStatus::SINGLE_END:
+						std::cerr << "SINGLE END";
+						break;
+				case rapmap::utils::MateStatus::PAIRED_END_LEFT:
+						std::cerr << "PAIRED END (LEFT)";
+						break;
+				case rapmap::utils::MateStatus::PAIRED_END_RIGHT:
+						std::cerr << "PAIRED END (RIGHT)";
+						break;
+				case rapmap::utils::MateStatus::PAIRED_END_PAIRED:
+						std::cerr << "PAIRED END (PAIRED)";
+						break;
+		}
+}
+
 // To use the parser in the following, we get "jobs" until none is
 // available. A job behaves like a pointer to the type
 // jellyfish::sequence_list (see whole_sequence_parser.hpp).
@@ -803,6 +1178,7 @@ void processReadsPair(paired_parser* parser,
         SpinLockT& iomutex,
         std::ostream& outStream,
         HitCounters& hctr,
+        size_t maxNumHits,
         bool noOutput) {
     auto& txpNames = rmi.txpNames;
     std::vector<uint32_t>& txpLens = rmi.txpLens;
@@ -811,6 +1187,8 @@ void processReadsPair(paired_parser* parser,
     std::vector<std::string> transcriptNames;
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
 
+    auto logger = spdlog::get("stderrLog");
+
     fmt::MemoryWriter sstream;
     size_t batchSize{1000};
     std::vector<QuasiAlignment> leftHits;
@@ -818,7 +1196,7 @@ void processReadsPair(paired_parser* parser,
     std::vector<QuasiAlignment> jointHits;
 
     size_t readLen{0};
-    size_t maxNumHits{200};
+	bool tooManyHits{false};
     uint16_t flags1, flags2;
     // 1000-bp reads are max here (get rid of hard limit later).
     std::string read1Temp(1000, 'A');
@@ -831,6 +1209,7 @@ void processReadsPair(paired_parser* parser,
     FixedWriter cigarStr1(buff1, 1000);
     FixedWriter cigarStr2(buff2, 1000);
 
+    JumpStats js;
     // 0 means properly aligned
     // 0x1 means only alignments for left read
     // 0x2 means only alignments for right read
@@ -841,15 +1220,16 @@ void processReadsPair(paired_parser* parser,
         typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of read (at most max_read_group)
         if(j.is_empty()) break;           // If got nothing, quit
         for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
+		    tooManyHits = false;
             readLen = j->data[i].first.seq.length();
             ++hctr.numReads;
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
-            collectHits(rmi, j->data[i].first.seq,
-                        leftHits, MateStatus::PAIRED_END_LEFT);
-        	collectHits(rmi, j->data[i].second.seq,
-                        rightHits, MateStatus::PAIRED_END_RIGHT);
+            collectHitsSkippy(rmi, j->data[i].first.seq,
+                        leftHits, MateStatus::PAIRED_END_LEFT, js);
+            collectHitsSkippy(rmi, j->data[i].second.seq,
+                        rightHits, MateStatus::PAIRED_END_RIGHT, js);
             /*
                std::set_intersection(leftHits.begin(), leftHits.end(),
                rightHits.begin(), rightHits.end(),
@@ -865,9 +1245,10 @@ void processReadsPair(paired_parser* parser,
                     auto rightLen = std::distance(rightIt, rightEnd);
                     size_t numHits{0};
                     jointHits.reserve(std::min(leftLen, rightLen));
+					uint32_t leftTxp, rightTxp;
                     while (leftIt != leftEnd && rightIt != rightEnd) {
-                        uint32_t leftTxp = leftIt->tid;
-                        uint32_t rightTxp = rightIt->tid;
+                        leftTxp = leftIt->tid;
+                        rightTxp = rightIt->tid;
                         if (leftTxp < rightTxp) {
                             ++leftIt;
                         } else {
@@ -890,32 +1271,36 @@ void processReadsPair(paired_parser* parser,
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
 
                                 ++numHits;
-                                if (numHits > maxNumHits) { break; }
+                                if (numHits > maxNumHits) { tooManyHits = true; break; }
                                 ++leftIt;
                             }
                             ++rightIt;
                         }
                     }
-                    if (numHits > maxNumHits) { jointHits.clear(); }
                 }
+				if (tooManyHits) { jointHits.clear(); ++hctr.tooManyHits; }
             }
 
+			// If we had proper paired hits
             if (jointHits.size() > 0) {
                 hctr.peHits += jointHits.size();
                 orphanStatus = 0;
-            } else if (leftHits.size() + rightHits.size() > 0) {
-                auto numHits = leftHits.size() + rightHits.size();
-                hctr.seHits += numHits;
-                orphanStatus = 0;
-                orphanStatus |= (leftHits.size() > 0) ? 0x1 : 0;
-                orphanStatus |= (rightHits.size() > 0) ? 0x2 : 0;
-                jointHits.insert(jointHits.end(),
-                        std::make_move_iterator(leftHits.begin()),
-                        std::make_move_iterator(leftHits.end()));
-                jointHits.insert(jointHits.end(),
-                        std::make_move_iterator(rightHits.begin()),
-                        std::make_move_iterator(rightHits.end()));
-            }
+            } else if (leftHits.size() + rightHits.size() > 0 and !tooManyHits) {
+		    // If there weren't proper paired hits, then either
+			// there were too many hits, and we forcibly discarded the read
+			// or we take the single end hits.
+					auto numHits = leftHits.size() + rightHits.size();
+					hctr.seHits += numHits;
+					orphanStatus = 0;
+					orphanStatus |= (leftHits.size() > 0) ? 0x1 : 0;
+					orphanStatus |= (rightHits.size() > 0) ? 0x2 : 0;
+					jointHits.insert(jointHits.end(),
+									std::make_move_iterator(leftHits.begin()),
+									std::make_move_iterator(leftHits.end()));
+					jointHits.insert(jointHits.end(),
+									std::make_move_iterator(rightHits.begin()),
+									std::make_move_iterator(rightHits.end()));
+			}
 
             if (jointHits.size() > 0 and !noOutput) {
                 auto& readName = j->data[i].first.header;
@@ -931,13 +1316,15 @@ void processReadsPair(paired_parser* parser,
                 }
 
 
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                 auto before = readName.find_first_of(':');
                 before = readName.find_first_of(':', before+1);
                 auto after = readName.find_first_of(':', before+1);
-                const auto& txpName = readName.substr(before+1, after-before-1);
+                const auto& trueTxpName = readName.substr(before+1, after-before-1);
 #endif //__DEBUG__
                 uint32_t alnCtr{0};
+				uint32_t trueHitCtr{0};
+				QuasiAlignment* firstTrueHit{nullptr};
                 for (auto& qa : jointHits) {
                     auto& transcriptName = txpNames[qa.tid];
                     // === SAM
@@ -1084,8 +1471,28 @@ void processReadsPair(paired_parser* parser,
                         << '\t' << qa.fragLen << '\t'
                         << (qa.isPaired ? "Paired" : "Orphan") << '\n';
                     */
-#ifdef __DEBUG__
-                    if (txpNames[qa.tid] == txpName) { ++hctr.trueHits; }
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
+                    if (transcriptName == trueTxpName) {
+							if (trueHitCtr == 0) {
+									++hctr.trueHits;
+									++trueHitCtr;
+									firstTrueHit = &qa;
+							} else {
+									++trueHitCtr;
+									std::cerr << "Found true hit " << trueHitCtr << " times!\n";
+									std::cerr << transcriptName << '\t' << firstTrueHit->pos
+											<< '\t' << firstTrueHit->fwd << '\t' << firstTrueHit->fragLen
+											<< '\t' << (firstTrueHit->isPaired ? "Paired" : "Orphan") << '\t';
+								    printMateStatus(firstTrueHit->mateStatus);
+								    std::cerr << '\n';
+									std::cerr << transcriptName << '\t' << qa.pos
+											  << '\t' << qa.fwd << '\t' << qa.fragLen
+										      << '\t' << (qa.isPaired ? "Paired" : "Orphan") << '\t';
+								    printMateStatus(qa.mateStatus);
+								    std::cerr << '\n';
+
+							}
+					}
 #endif //__DEBUG__
                 }
             }
@@ -1093,8 +1500,8 @@ void processReadsPair(paired_parser* parser,
             if (hctr.numReads % 1000000 == 0) {
                 if (iomutex.try_lock()) {
                     if (hctr.numReads > 0) {
-#ifdef __DEBUG__
-                        std::cerr << "\033[F\033[F\033[F\033[F";
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
+                        std::cerr << "\033[F\033[F\033[F\033[F\033[F";
 #else
                         std::cerr << "\033[F\033[F\033[F";
 #endif // __DEBUG__
@@ -1104,10 +1511,12 @@ void processReadsPair(paired_parser* parser,
                         << hctr.peHits / static_cast<float>(hctr.numReads) << "\n";
                     std::cerr << "# se hits per read = "
                         << hctr.seHits / static_cast<float>(hctr.numReads) << "\n";
-#ifdef __DEBUG__
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                     std::cerr << "The true hit was in the returned set of hits "
                         << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
                         <<  "% of the time\n";
+                    std::cerr << "Average jump size = "
+                              << js.jumpSizes / static_cast<double>(js.numJumps) << "\n";
 #endif // __DEBUG__
                     iomutex.unlock();
                 }
@@ -1116,13 +1525,14 @@ void processReadsPair(paired_parser* parser,
 
         // DUMP OUTPUT
         if (!noOutput) {
-        iomutex.lock();
-        outStream << sstream.str();
-        iomutex.unlock();
-        sstream.clear();
+            iomutex.lock();
+            outStream << sstream.str();
+            iomutex.unlock();
+            sstream.clear();
         }
 
     } // processed all reads
+
 }
 
 void writeSAMHeader(RapMapIndex& rmi, std::ostream& outStream) {
@@ -1179,10 +1589,13 @@ int rapMapMap(int argc, char* argv[]) {
     cmd.add(numThreads);
     cmd.parse(argc, argv);
 
+    auto consoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
+    auto consoleLog = spdlog::create("stderrLog", {consoleSink});
+
     bool pairedEnd = (read1.isSet() or read2.isSet());
     if (pairedEnd and (read1.isSet() != read2.isSet())) {
-        std::cerr << "You must set both the -1 and -2 arguments to align "
-                  << "paired end reads!\n";
+        consoleLog->error("You must set both the -1 and -2 arguments to align "
+                          "paired end reads!");
         std::exit(1);
     }
 
@@ -1192,15 +1605,17 @@ int rapMapMap(int argc, char* argv[]) {
     }
 
     if (!rapmap::fs::DirExists(indexPrefix.c_str())) {
-        std::cerr << "It looks like the index you provided ["
-                  << indexPrefix << "] doesn't exist\n";
+        consoleLog->error("It looks like the index you provided [{}] "
+                          "doesn't exist", indexPrefix);
         std::exit(1);
     }
 
     RapMapIndex rmi;
     rmi.load(indexPrefix);
 
-    std::cerr << "\n\n";
+    size_t maxNumHits{200};
+
+    std::cerr << "\n\n\n\n";
 
     // from: http://stackoverflow.com/questions/366955/obtain-a-stdostream-either-from-stdcout-or-stdofstreamfile
     // set either a file or cout as the output stream
@@ -1230,15 +1645,15 @@ int rapMapMap(int argc, char* argv[]) {
     {
         ScopedTimer timer;
         HitCounters hctrs;
-        std::cerr << "mapping reads . . . ";
+        consoleLog->info("mapping reads . . . ");
         if (pairedEnd) {
             std::vector<std::thread> threads;
             std::vector<std::string> read1Vec = tokenize(read1.getValue(), ',');
             std::vector<std::string> read2Vec = tokenize(read2.getValue(), ',');
 
             if (read1Vec.size() != read2Vec.size()) {
-                std::cerr << "The number of provided files for -1 and -2 must "
-                    << "be the same!\n";
+                consoleLog->error("The number of provided files for "
+                                  "-1 and -2 must be the same!");
                 std::exit(1);
             }
 
@@ -1261,6 +1676,7 @@ int rapMapMap(int argc, char* argv[]) {
                         std::ref(iomutex),
                         std::ref(outStream),
                         std::ref(hctrs),
+                        maxNumHits,
                         noout.getValue());
             }
 
@@ -1285,11 +1701,15 @@ int rapMapMap(int argc, char* argv[]) {
                         std::ref(iomutex),
                         std::ref(outStream),
                         std::ref(hctrs),
+                        maxNumHits,
                         noout.getValue());
             }
             for (auto& t : threads) { t.join(); }
         }
-        std::cerr << "done mapping reads\n";
+        consoleLog->info("done mapping reads.");
+        consoleLog->info("Discarded {} reads because they had > {} alignments",
+                         hctrs.tooManyHits, maxNumHits);
+
     }
 
     if (haveOutputFile) {
