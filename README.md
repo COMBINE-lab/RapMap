@@ -8,9 +8,7 @@ transcript quantification) that is less "heavyweight" than what is provided by t
 only need to know the transcripts / contigs to which a read aligns and, perhaps, the position within those transcripts rather
 than the optimal alignment and base-for-base `CIGAR` string that aligns the read and substring of the transcript.
 
-RapMap will explore different ideas in how to most rapidly determine all *feasible* / *compatible* locations for a read within 
-the transcriptome.  In this sense, it is like an *all-mapper*; the alignments it outputs are intended to be (eventually) 
-disambiguated (*Really, it's more like an "all-best" mapper, since it returns all hits in the top "stratum" of lightweight/pseudo/quasi alignments*).  If there is a need for it, *best-mapper* functionality may be added in the future.
+There are a number of different ways to collect such information, and the idea of RapMap (as the repository grows) will be to explore multiple different strategies in how to most rapidly determine all *feasible* / *compatible* locations for a read within the transcriptome.  In this sense, it is like an *all-mapper*; the alignments it outputs are intended to be (eventually) disambiguated (*Really, it's more like an "all-best" mapper, since it returns all hits in the top "stratum" of lightweight/pseudo/quasi alignments*).  If there is a need for it, *best-mapper* functionality may be added in the future.
 
 # Can I use RapMap for genomic alignment?
 
