@@ -10,7 +10,7 @@ than the optimal alignment and base-for-base `CIGAR` string that aligns the read
 
 RapMap will explore different ideas in how to most rapidly determine all *feasible* / *compatible* locations for a read within 
 the transcriptome.  In this sense, it is like an *all-mapper*; the alignments it outputs are intended to be (eventually) 
-disambiguated.  If there is a need for it, *best-mapper* functionality may be added in the future.
+disambiguated (*Really, it's more like an "all-best" mapper, since it returns all hits in the top "stratum" of lightweight/pseudo/quasi alignments*).  If there is a need for it, *best-mapper* functionality may be added in the future.
 
 # Can I use RapMap for genomic alignment?
 
