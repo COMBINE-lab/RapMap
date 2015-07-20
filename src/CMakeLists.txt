@@ -15,6 +15,12 @@ set (RAPMAP_ALIGN_SRCS
 set (RAPMAP_LIB_SRCS
 )
 
+#set (RSDICT_LIB_SRCS
+#    EnumCoder.cpp
+#    RSDic.cpp
+#    RSDicBuilder.cpp
+#)
+
 include_directories( 
 ${GAT_SOURCE_DIR}/include
 #${GAT_SOURCE_DIR}/include/eigen3
@@ -49,8 +55,8 @@ endif()
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 
-# Build the rapmap library
-# add_library(rapmap_core STATIC ${SALMON_LIB_SRCS} )
+# Build the rsdic library
+# add_library(rsdic STATIC ${RSDICT_LIB_SRCS} )
 
 # Build the rapmap executable
 add_executable(rapmap ${RAPMAP_MAIN_SRCS})

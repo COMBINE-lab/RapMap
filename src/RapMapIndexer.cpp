@@ -196,8 +196,6 @@ void processTranscripts(ParserT* parser,
 
     std::cerr << "\n[Step 1 of 4] : counting k-mers\n";
 
-    std::chrono::time_point<std::chrono::system_clock> start, end;
-    std::chrono::duration<double> elapsedNS;
     {
         ScopedTimer timer;
         while(true) {
@@ -208,9 +206,9 @@ void processTranscripts(ParserT* parser,
                 std::string& readStr = j->data[i].seq;
 
 		// Do Kallisto-esque clipping of polyA tails
-		if (readStr.size() > polyAClipLength and 
+		if (readStr.size() > polyAClipLength and
 		    readStr.substr(readStr.length() - polyAClipLength) == polyA) {
-		
+
 		    auto newEndPos = readStr.find_last_not_of("Aa");
 		    // If it was all As
 		    if (newEndPos == std::string::npos) {
@@ -241,10 +239,7 @@ void processTranscripts(ParserT* parser,
                         auto key = canonicalMer.get_bits(0, 2*k);
 
                         uint64_t val;
-                        start = std::chrono::high_resolution_clock::now();
                         auto found = merIntMap.ary()->get_val_for_key(canonicalMer, &val);
-                        end = std::chrono::high_resolution_clock::now();
-                        elapsedNS += end - start;
                         if (!found) {
                             merIntMap.add(canonicalMer, numDistinctKmers);
                             kmerInfos.emplace_back(txpIndex, 0, 1);
