@@ -4,6 +4,16 @@
 
 namespace rapmap {
     namespace utils {
+        std::vector<std::string> tokenize(const std::string &s, char delim) {
+            std::stringstream ss(s);
+            std::string item;
+            std::vector<std::string> elems;
+            while (std::getline(ss, item, delim)) {
+                elems.push_back(item);
+            }
+            return elems;
+        }
+
 
 		// positions are stored in a packed format, where the highest
 		// 2-bits encode if this position refers to a new transcript
@@ -16,7 +26,7 @@ namespace rapmap {
 			isRC = (highBits & 0x2);
 		}
 
-				   				   
+
         // Is there a smarter way to do save / load here?
         /*
         template <typename Archive, typename MerT>

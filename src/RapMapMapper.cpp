@@ -106,41 +106,14 @@ std::default_random_engine eng(rd());
 
 std::uniform_int_distribution<> dis(0, 3);
 
-struct HitCounters {
-    std::atomic<uint64_t> peHits{0};
-    std::atomic<uint64_t> seHits{0};
-    std::atomic<uint64_t> trueHits{0};
-    std::atomic<uint64_t> totHits{0};
-    std::atomic<uint64_t> numReads{0};
-    std::atomic<uint64_t> tooManyHits{0};
-    std::atomic<uint64_t> lastPrint{0};
-};
-
+using HitCounters = rapmap::utils::HitCounters;
 using MateStatus = rapmap::utils::MateStatus;
 using HitInfo = rapmap::utils::HitInfo;
 using ProcessedHit = rapmap::utils::ProcessedHit;
 using QuasiAlignment = rapmap::utils::QuasiAlignment;
+using FixedWriter = rapmap::utils::FixedWriter;
 
 
-// from https://github.com/cppformat/cppformat/issues/105
-class FixedBuffer : public fmt::Buffer<char> {
- public:
-  FixedBuffer(char *array, std::size_t size)
-    : fmt::Buffer<char>(array, size) {}
-
- protected:
-  void grow(std::size_t size) {
-    throw std::runtime_error("buffer overflow");
-  }
-};
-
-class FixedWriter : public fmt::Writer {
- private:
-  FixedBuffer buffer_;
- public:
-  FixedWriter(char *array, std::size_t size)
-    : fmt::Writer(buffer_), buffer_(array, size) {}
-};
 
 inline void adjustOverhang(int32_t& pos, uint32_t readLen,
                            uint32_t txpLen, FixedWriter& cigarStr) {
@@ -485,7 +458,7 @@ class SkippingKmerSearcher{
 	    if (searchPos + k > qlen) {
 		searchPos = qlen - k;
 	    }
-		
+
 
 	    // otherwise start a new k-mer at the jump position
 	    while (!tempMer.from_chars(&qCharArray[searchPos])) {
@@ -709,7 +682,7 @@ class SkippingCollector {
 			    // from here.
 			    continue;
 			}
-		    } 
+		    }
 		} else {
 		    if (terminateSearch) { break; }
 		}
@@ -879,7 +852,7 @@ class EndCollector {
 template <typename CollectorT, typename MutexT>
 void processReadsSingle(single_parser* parser,
         RapMapIndex& rmi,
-	CollectorT& hitCollector,	
+	CollectorT& hitCollector,
         MutexT* iomutex,
         std::ostream& outStream,
         HitCounters& hctr,
@@ -1398,17 +1371,6 @@ void writeSAMHeader(RapMapIndex& rmi, std::ostream& outStream) {
     outStream << hd.str();
 }
 
-// from http://stackoverflow.com/questions/9435385/split-a-string-using-c11
-std::vector<std::string> tokenize(const std::string &s, char delim) {
-  std::stringstream ss(s);
-  std::string item;
-  std::vector<std::string> elems;
-  while (std::getline(ss, item, delim)) {
-    elems.push_back(item);
-  }
-  return elems;
-}
-
 int rapMapMap(int argc, char* argv[]) {
     std::cerr << "RapMap Mapper\n";
 
@@ -1451,7 +1413,7 @@ int rapMapMap(int argc, char* argv[]) {
 		    "paired end reads!");
 	    std::exit(1);
 	}
-	
+
 	if (pairedEnd and unmatedReads.isSet()) {
 	    consoleLog->error("You cannot specify both paired-end and unmated "
 		    "reads in the input!");
@@ -1512,8 +1474,8 @@ int rapMapMap(int argc, char* argv[]) {
 	    consoleLog->info("mapping reads . . . \n\n\n");
 	    if (pairedEnd) {
 		std::vector<std::thread> threads;
-		std::vector<std::string> read1Vec = tokenize(read1.getValue(), ',');
-		std::vector<std::string> read2Vec = tokenize(read2.getValue(), ',');
+		std::vector<std::string> read1Vec = rapmap::utils::tokenize(read1.getValue(), ',');
+		std::vector<std::string> read2Vec = rapmap::utils::tokenize(read2.getValue(), ',');
 
 		if (read1Vec.size() != read2Vec.size()) {
 		    consoleLog->error("The number of provided files for "
@@ -1544,7 +1506,7 @@ int rapMapMap(int argc, char* argv[]) {
 				&iomutex,
 				std::ref(outStream),
 				std::ref(hctrs),
-				maxNumHits.getValue(), 
+				maxNumHits.getValue(),
 				noout.getValue());
 		    }
 		} else {
@@ -1557,7 +1519,7 @@ int rapMapMap(int argc, char* argv[]) {
 				&iomutex,
 				std::ref(outStream),
 				std::ref(hctrs),
-				maxNumHits.getValue(), 
+				maxNumHits.getValue(),
 				noout.getValue());
 		    }
 		}
@@ -1566,7 +1528,7 @@ int rapMapMap(int argc, char* argv[]) {
 		delete [] pairFileList;
 	    } else {
 		std::vector<std::thread> threads;
-		std::vector<std::string> unmatedReadVec = tokenize(unmatedReads.getValue(), ',');
+		std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(unmatedReads.getValue(), ',');
 		size_t maxReadGroup{1000}; // Number of reads in each "job"
 		size_t concurrentFile{1};
 		stream_manager streams( unmatedReadVec.begin(), unmatedReadVec.end(),
@@ -1589,7 +1551,7 @@ int rapMapMap(int argc, char* argv[]) {
 				std::ref(hctrs),
 				maxNumHits.getValue(),
 				noout.getValue());
-		    } 
+		    }
 		} else {
 		    SkippingCollector skippingCollector(&rmi);
 		    for (size_t i = 0; i < nthread; ++i) {

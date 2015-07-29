@@ -1,11 +1,15 @@
 set (RAPMAP_MAIN_SRCS
     RapMap.cpp
     RapMapIndexer.cpp
+    RapMapSAIndexer.cpp
     RapMapUtils.cpp
     RapMapMapper.cpp
     RapMapFileSystem.cpp
+    HitManager.cpp
     intersection.cpp
     stringpiece.cc
+    sais.c
+    SAQuery.cpp
     xxhash.c
 )
 
@@ -15,11 +19,11 @@ set (RAPMAP_ALIGN_SRCS
 set (RAPMAP_LIB_SRCS
 )
 
-#set (RSDICT_LIB_SRCS
-#    EnumCoder.cpp
-#    RSDic.cpp
-#    RSDicBuilder.cpp
-#)
+set (RSDICT_LIB_SRCS
+    EnumCoder.cpp
+    RSDic.cpp
+    RSDicBuilder.cpp
+)
 
 include_directories( 
 ${GAT_SOURCE_DIR}/include
@@ -56,7 +60,7 @@ endif()
 set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 
 # Build the rsdic library
-# add_library(rsdic STATIC ${RSDICT_LIB_SRCS} )
+add_library(rsdic STATIC ${RSDICT_LIB_SRCS} )
 
 # Build the rapmap executable
 add_executable(rapmap ${RAPMAP_MAIN_SRCS})
@@ -65,6 +69,7 @@ add_executable(rapmap ${RAPMAP_MAIN_SRCS})
 
 # Link the executable
 target_link_libraries(rapmap
+    rsdic
     gff
     ${PTHREAD_LIB}
     #${Boost_LIBRARIES} 

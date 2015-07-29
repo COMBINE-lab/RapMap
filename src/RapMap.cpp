@@ -2,7 +2,9 @@
 #include <vector>
 
 int rapMapIndex(int argc, char* argv[]);
+int rapMapSAIndex(int argc, char* argv[]);
 int rapMapMap(int argc, char* argv[]);
+int rapMapSAMap(int argc, char* argv[]);
 
 int main(int argc, char* argv[]) {
 
@@ -13,9 +15,13 @@ int main(int argc, char* argv[]) {
     }
 
     if (std::string(argv[1]) == "index") {
-        return rapMapIndex(argc - 1, args.data()); 
+        return rapMapIndex(argc - 1, args.data());
     } else if (std::string(argv[1]) == "map") {
-        return rapMapMap(argc - 1, args.data()); 
+        return rapMapMap(argc - 1, args.data());
+    } else if (std::string(argv[1]) == "saindex") {
+        return rapMapSAIndex(argc - 1, args.data());
+    } else if (std::string(argv[1]) == "query") {
+        return rapMapSAMap(argc - 1, args.data());
     } else {
         std::cerr << "the command " << argv[1]
                   << " is not yet implemented\n";

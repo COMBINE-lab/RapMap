@@ -1,9 +1,14 @@
 #ifndef __RAP_MAP_UTILS_HPP__
 #define __RAP_MAP_UTILS_HPP__
 
+#include <atomic>
 #include "xxhash.h"
 #include <cereal/archives/binary.hpp>
 #include "jellyfish/mer_dna.hpp"
+#include "spdlog/spdlog.h"
+#include "spdlog/details/format.h"
+
+
 namespace rapmap {
     namespace utils {
 
@@ -17,6 +22,61 @@ namespace rapmap {
     // and whether or not the k-mer from the hash matches this txp
     // in the forward or RC direction.
     void decodePosition(uint32_t p, uint32_t& pout, bool& newTxp, bool& isRC);
+
+    // from http://stackoverflow.com/questions/9435385/split-a-string-using-c11
+    std::vector<std::string> tokenize(const std::string &s, char delim);
+
+    // from https://github.com/cppformat/cppformat/issues/105
+    class FixedBuffer : public fmt::Buffer<char> {
+        public:
+            FixedBuffer(char *array, std::size_t size)
+                : fmt::Buffer<char>(array, size) {}
+
+        protected:
+            void grow(std::size_t size) {
+                throw std::runtime_error("buffer overflow");
+            }
+    };
+
+    class FixedWriter : public fmt::Writer {
+        private:
+            FixedBuffer buffer_;
+        public:
+            FixedWriter(char *array, std::size_t size)
+                : fmt::Writer(buffer_), buffer_(array, size) {}
+    };
+
+
+
+    struct SAInterval {
+        uint32_t begin;
+        uint32_t end;
+        template <typename Archive>
+            void load(Archive& ar) { ar(begin, end); }
+
+        template <typename Archive>
+            void save(Archive& ar) const { ar(begin, end); }
+    };
+
+
+    struct HitCounters {
+        std::atomic<uint64_t> peHits{0};
+        std::atomic<uint64_t> seHits{0};
+        std::atomic<uint64_t> trueHits{0};
+        std::atomic<uint64_t> totHits{0};
+        std::atomic<uint64_t> numReads{0};
+        std::atomic<uint64_t> tooManyHits{0};
+        std::atomic<uint64_t> lastPrint{0};
+    };
+
+    class JFMerKeyHasher{
+        public:
+            size_t operator()(const my_mer& m) const {
+                auto k = rapmap::utils::my_mer::k();
+                auto v = m.get_bits(0, 2*k);
+                return XXH64(static_cast<void*>(&v), 8, 0);
+            }
+    };
 
     class KmerKeyHasher {
         public:
