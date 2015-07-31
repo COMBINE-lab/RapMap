@@ -128,8 +128,8 @@ namespace rapmap {
 
         }
 
-	void intersectSAIntervalWithOutput(SAIntervalHit& h, 
-   				           RapMapSAIndex& rmi, 
+	void intersectSAIntervalWithOutput(SAIntervalHit& h,
+   				           RapMapSAIndex& rmi,
 				           std::unordered_map<int, std::vector<SATxpQueryPos>>& outHits) {
             // Convenient bindings for variables we'll use
             auto& SA = rmi.SA;
@@ -266,27 +266,28 @@ namespace rapmap {
                 ) {
 
             // Each inHit is a SAIntervalHit structure that contains
-            // an SA interval with all hits for a particuar query location 
+            // an SA interval with all hits for a particuar query location
 	    // on the read.
-	    // 
+	    //
 	    // We want to find the transcripts that appear in *every*
             // interavl.  Further, for each transcript, we want to
             // know the positions within this txp.
 
             // Check this --- we should never call this function
             // with less than 2 hits.
+	        std::unordered_map<int, std::vector<SATxpQueryPos>> outHits;
             if (inHits.size() < 2) {
                 std::cerr << "intersectHitsSA() called with < 2 k-mer "
                     " hits; this shouldn't happen\n";
-                return {};
+                return outHits;
             }
 
 	    auto& SA = rmi.SA;
 	    auto& txpStarts = rmi.txpOffsets;
 	    auto& txpIDs = rmi.positionIDs;
 
-            // Start with the smallest interval 
-            // i.e. interval with the fewest hits. 
+            // Start with the smallest interval
+            // i.e. interval with the fewest hits.
             SAIntervalHit* minHit = &inHits[0];
             for (auto& h : inHits) {
                 if (h.span() < minHit->span()) {
@@ -294,7 +295,6 @@ namespace rapmap {
                 }
             }
 
-	    std::unordered_map<int, std::vector<SATxpQueryPos>> outHits;
             outHits.reserve(minHit->span());
             // =========
             { // Add the info from minHit to outHits
@@ -316,7 +316,7 @@ namespace rapmap {
             }
 
             size_t requiredNumHits = inHits.size();
-	    // Mark as active any transcripts with the required number of hits. 
+	    // Mark as active any transcripts with the required number of hits.
 	    for (auto it = outHits.begin(); it != outHits.end(); ++it) {
 	        if (it->second.size() >= requiredNumHits) {
 		    it->second.front().active = true;
