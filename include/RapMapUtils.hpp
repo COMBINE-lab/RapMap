@@ -8,6 +8,14 @@
 #include "spdlog/spdlog.h"
 #include "spdlog/details/format.h"
 
+#ifdef __GNUC__
+#define LIKELY(x) __builtin_expect((x),1)
+#define UNLIKELY(x) __builtin_expect((x),0)
+#else
+#define LIKELY(x) (x)
+#define UNLIKELY(x) (x)
+#endif
+
 
 namespace rapmap {
     namespace utils {
@@ -178,6 +186,14 @@ namespace rapmap {
 
 
     struct QuasiAlignment {
+  	QuasiAlignment() :
+		tid(std::numeric_limits<uint32_t>::max()),
+		pos(std::numeric_limits<uint32_t>::max()),
+		fwd(true),
+		readLen(std::numeric_limits<uint32_t>::max()),
+		fragLen(std::numeric_limits<uint32_t>::max()),
+		isPaired(false) {}
+
         QuasiAlignment(uint32_t tidIn, uint32_t posIn,
                 bool fwdIn, uint32_t readLenIn,
                 uint32_t fragLenIn = 0,
@@ -220,6 +236,45 @@ namespace rapmap {
         uint32_t merID;
         int32_t queryPos;
         bool queryRC;
+    };
+
+    struct SAIntervalHit {
+        SAIntervalHit(int beginIn, int endIn, uint32_t lenIn, uint32_t queryPosIn, bool queryRCIn) :
+            begin(beginIn), end(endIn), len(lenIn), queryPos(queryPosIn), queryRC(queryRCIn) {}
+
+	int span() { return end - begin; }
+        int begin, end;
+        uint32_t len, queryPos;
+        bool queryRC;
+    };
+
+    struct SATxpQueryPos {
+	SATxpQueryPos(uint32_t posIn, uint32_t qposIn, bool queryRCIn, bool activeIn = false) :
+		pos(posIn), queryPos(qposIn), queryRC(queryRCIn), active(activeIn) {}
+	uint32_t pos, queryPos;
+	bool queryRC, active;
+    };
+
+    struct ProcessedSAHit {
+	    ProcessedSAHit() : tid(std::numeric_limits<uint32_t>::max()) {}
+
+	    ProcessedSAHit(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t queryPosIn, bool queryRCIn) :
+		    tid(txpIDIn)  
+	    {
+		tqvec.emplace_back(txpPosIn, queryPosIn, queryRCIn);
+	    }
+
+	    uint32_t tid;
+	    std::vector<SATxpQueryPos> tqvec;
+    };
+
+    struct SAHitInfo {
+	    SAHitInfo(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t queryPosIn, bool queryRCIn) :
+		    tid(txpIDIn), pos(txpPosIn), queryPos(queryPosIn), queryRC(queryRCIn) {}
+	    uint32_t tid;
+	    uint32_t pos;
+	    uint32_t queryPos;
+	    bool queryRC;
     };
 
     struct TxpQueryPos {
@@ -270,6 +325,115 @@ namespace rapmap {
     };
 
 
+    // Declarations for functions dealing with SAM formatting and output
+    //
+    inline void adjustOverhang(int32_t& pos, uint32_t readLen,
+		    uint32_t txpLen, FixedWriter& cigarStr) {
+	    cigarStr.clear();
+	    if (pos < 0) {
+		    int32_t clipLen = -pos;
+		    int32_t matchLen = readLen + pos;
+		    cigarStr.write("{}S{}M", clipLen, matchLen);
+		    // Now adjust the mapping position
+		    pos = 0;
+	    } else if (pos + readLen > txpLen) {
+		    int32_t matchLen = txpLen - pos;
+		    int32_t clipLen = pos + readLen - matchLen;
+		    cigarStr.write("{}M{}S", matchLen, clipLen);
+	    } else {
+		    cigarStr.write("{}M", readLen);
+	    }
+    }
+
+    inline void adjustOverhang(QuasiAlignment& qa, uint32_t txpLen,
+		    FixedWriter& cigarStr1, FixedWriter& cigarStr2) {
+	    if (qa.isPaired) { // both mapped
+		    adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr1);
+		    adjustOverhang(qa.matePos, qa.mateLen, txpLen, cigarStr1);
+	    } else if (qa.mateStatus == MateStatus::PAIRED_END_LEFT ) {
+		    // left read mapped
+		    adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr1);
+	    } else if (qa.mateStatus == MateStatus::PAIRED_END_RIGHT) {
+		    // right read mapped
+		    adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr2);
+	    }
+    }
+
+
+
+        // get the sam flags for the quasialignment qaln.
+        // peinput is true if the read is paired in *sequencing*; false otherwise
+        // the sam flags for mate 1 are written into flags1 and for mate2 into flags2
+        inline void getSamFlags(const QuasiAlignment& qaln,
+                uint16_t& flags) {
+            constexpr uint16_t pairedInSeq = 0x1;
+            constexpr uint16_t properlyAligned = 0x2;
+            constexpr uint16_t unmapped = 0x4;
+            constexpr uint16_t mateUnmapped = 0x8;
+            constexpr uint16_t isRC = 0x10;
+            constexpr uint16_t mateIsRC = 0x20;
+            constexpr uint16_t isRead1 = 0x40;
+            constexpr uint16_t isRead2 = 0x80;
+            constexpr uint16_t isSecondaryAlignment = 0x100;
+            constexpr uint16_t failedQC = 0x200;
+            constexpr uint16_t isPCRDup = 0x400;
+            constexpr uint16_t supplementaryAln = 0x800;
+
+            flags = 0;
+            // Not paired in sequencing
+            // flags1 = (peInput) ? pairedInSeq : 0;
+            flags |= properlyAligned;
+            // we don't output unmapped yet
+            // flags |= unmapped
+            // flags |= mateUnmapped
+            flags |= (qaln.fwd) ? 0 : isRC;
+            // Mate flag meaningless
+            // flags1 |= (qaln.mateIsFwd) ? 0 : mateIsRC;
+            flags |= isRead1;
+            //flags2 |= isRead2;
+        }
+
+        // get the sam flags for the quasialignment qaln.
+        // peinput is true if the read is paired in *sequencing*; false otherwise
+        // the sam flags for mate 1 are written into flags1 and for mate2 into flags2
+        inline void getSamFlags(const QuasiAlignment& qaln,
+                bool peInput,
+                uint16_t& flags1,
+                uint16_t& flags2) {
+            constexpr uint16_t pairedInSeq = 0x1;
+            constexpr uint16_t properlyAligned = 0x2;
+            constexpr uint16_t unmapped = 0x4;
+            constexpr uint16_t mateUnmapped = 0x8;
+            constexpr uint16_t isRC = 0x10;
+            constexpr uint16_t mateIsRC = 0x20;
+            constexpr uint16_t isRead1 = 0x40;
+            constexpr uint16_t isRead2 = 0x80;
+            constexpr uint16_t isSecondaryAlignment = 0x100;
+            constexpr uint16_t failedQC = 0x200;
+            constexpr uint16_t isPCRDup = 0x400;
+            constexpr uint16_t supplementaryAln = 0x800;
+
+            flags1 = flags2 = 0;
+            flags1 = (peInput) ? pairedInSeq : 0;
+            flags1 |= (qaln.isPaired) ? properlyAligned : 0;
+            flags2 = flags1;
+            // we don't output unmapped yet
+            flags1 |= (qaln.mateStatus == MateStatus::PAIRED_END_RIGHT) ? unmapped : 0;
+            flags2 |= (qaln.mateStatus == MateStatus::PAIRED_END_LEFT) ? mateUnmapped : 0;
+            flags1 |= (qaln.fwd) ? 0 : isRC;
+            flags1 |= (qaln.mateIsFwd) ? 0 : mateIsRC;
+            flags2 |= (qaln.mateIsFwd) ? 0 : isRC;
+            flags2 |= (qaln.fwd) ? 0 : mateIsRC;
+            flags1 |= isRead1;
+            flags2 |= isRead2;
+        }
+
+	// Adapted from
+        // https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library/blob/8c9933a1685e0ab50c7d8b7926c9068bc0c9d7d2/src/main.c#L36
+        void reverseRead(std::string& seq,
+                std::string& qual,
+                std::string& readWork,
+                std::string& qualWork);
 
     /*
     template <typename Archive>

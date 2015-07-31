@@ -4,12 +4,12 @@ set (RAPMAP_MAIN_SRCS
     RapMapSAIndexer.cpp
     RapMapUtils.cpp
     RapMapMapper.cpp
+    RapMapSAMapper.cpp
     RapMapFileSystem.cpp
     HitManager.cpp
     intersection.cpp
     stringpiece.cc
     sais.c
-    SAQuery.cpp
     xxhash.c
 )
 

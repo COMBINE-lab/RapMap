@@ -25,7 +25,7 @@
 #include <cereal/types/string.hpp>
 #include <cereal/archives/binary.hpp>
 
-//#include "HitManager.hpp"
+#include "HitManager.hpp"
 #include "SIMDCompressionAndIntersection/intersection.h"
 #include "xxhash.h"
 
@@ -44,14 +44,6 @@
 #include "kseq.h"
 }
 */
-#ifdef __GNUC__
-#define LIKELY(x) __builtin_expect((x),1)
-#define UNLIKELY(x) __builtin_expect((x),0)
-#else
-#define LIKELY(x) (x)
-#define UNLIKELY(x) (x)
-#endif
-
 #include "stringpiece.h"
 
 #include "PairSequenceParser.hpp"
@@ -61,6 +53,8 @@
 #include "RapMapConfig.hpp"
 #include "ScopedTimer.hpp"
 #include "SpinLock.hpp"
+
+#define __TRACK_CORECT__
 
 using paired_parser = pair_sequence_parser<char**>;
 using stream_manager = jellyfish::stream_manager<std::vector<std::string>::const_iterator>;
@@ -501,15 +495,19 @@ class SACollector {
     public:
     SACollector(RapMapSAIndex* rmi) : rmi_(rmi) {}
     bool operator()(std::string& read,
-                    std::vector<QuasiAlignment>& hits,
-                    SASearcher& saSearcher,
-                    MateStatus ms,
-                    std::atomic<uint64_t>& diffCount) {
+            std::vector<QuasiAlignment>& hits,
+            SASearcher& saSearcher,
+            MateStatus mateStatus,
+            std::atomic<uint64_t>& diffCount) {
 
         auto& posIDs = rmi_->positionIDs;
+        auto& txpStarts = rmi_->txpOffsets;
         auto& SA = rmi_->SA;
         auto& khash = rmi_->khash;
         auto salen = SA.size();
+
+        auto readLen = read.length();
+        auto maxDist = 1.5 * readLen;
         auto k = rapmap::utils::my_mer::k();
         auto readStartIt = read.begin();
         auto readEndIt = read.end();
@@ -533,6 +531,12 @@ class SACollector {
         bool isRev = false;
         rapmap::utils::my_mer mer;
         rapmap::utils::my_mer rcMer;
+
+        using rapmap::utils::SAIntervalHit;
+
+        std::vector<SAIntervalHit> fwdSAInts;
+        std::vector<SAIntervalHit> rcSAInts;
+
         std::vector<uint32_t> leftTxps, leftTxpsRC;
         std::vector<uint32_t> rightTxps, rightTxpsRC;
         int maxInterval{1000};
@@ -540,10 +544,10 @@ class SACollector {
         // Find a hit within the read
         // While we haven't fallen off the end
         while (re < read.end()) {
+
             // Get the k-mer at the current start position.
-
+            // And make sure that it's valid (contains no Ns).
             auto pos = std::distance(readStartIt, rb);
-
             auto invalidPos = read.find_first_of("nN", pos);
             if (invalidPos <= pos + k) {
                 rb = read.begin() + invalidPos + 1;
@@ -551,102 +555,75 @@ class SACollector {
                 continue;
             }
 
+            // If the next k-bases are valid, get the k-mer and
+            // reverse complement k-mer
             mer = rapmap::utils::my_mer(read.c_str() + pos);
             rcMer = mer.get_reverse_complement();
+
             // See if we can find this k-mer in the hash
             auto merIt = khash.find(mer.get_bits(0, 2*k));
             auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
 
+            // If we can find the k-mer in the hash, get its SA interval
             if (merIt != khash.end()) {
                 int lb = merIt->second.begin;
                 int ub = merIt->second.end;
 
+
                 // lb must be 1 *less* then the current lb
                 auto lbRestart = std::max(static_cast<int>(0), lb-1);
-                //std::cerr << "before extend search . . . ";
+                // Extend the SA interval using the read sequence as far as
+                // possible
                 std::tie(lbLeftFwd, ubLeftFwd, matchedLen) =
                     saSearcher.extendSearch(lbRestart, ub, k, rb, readEndIt);
-                //std::cerr << "after extend search\n";
 
-                bool verbose{false};
-                if (verbose) {
-                    if (lb == lbLeftFwd and ub == ubLeftFwd) {
-                        //std::cerr << "couldn't narrow interval at all!\n";
-                    } else {
-			diffCount += 1;
-                        int lbNaive, ubNaive, blah;
-
-                        //std::cerr << "before naive search . . . ";
-                        std::tie(lbNaive, ubNaive, blah) =
-                            saSearcher.extendSearch(0, SA.size(), 0, rb, readEndIt);
-                        //std::cerr << "after naive search\n";
-
-                        if (ubNaive - lbNaive > ubLeftFwd - lbLeftFwd and blah >= matchedLen) {//lbLeftFwd != lbNaive or ubLeftFwd != ubNaive) {
-                            diffCount += 1;
-                        //}
-                        //if (ubNaive - lbNaive > ubLeftFwd - lbLeftFwd and !verbose) {
-                            std::cerr << "narrowed interval from "
-                                << "[ " << lb << ", " << ub << ") to "
-                                << "[ "<< lbLeftFwd << ", " << ubLeftFwd << ")\n";
-
-                            std::cerr << "mer is    : " << mer << "\n";
-                            std::cerr << "string is : ";
-                            for (auto it = rb; it != rb + matchedLen; ++it) {
-                                std::cerr << *it;
-                            } std::cerr << "\n";
-                            std::cerr << "read is   : " << read << "\n";
-
-                            std::cerr << "narrowed len = " << matchedLen << "\n";
-                            std::cerr << "naive len = " << blah << "\n";
-
-                            std::cerr << "entries at narrowed interval:\n";
-                            for (auto x = lbLeftFwd - 1; x < ubLeftFwd + 1; ++x) {
-                                std::cerr << "\tT[SA[" << x << "] = "
-                                    << rmi_->seq.substr(SA[x], matchedLen) << "\n";
-                            }
-
-                            std::cerr << "naive interval is [" << lbNaive << ", " << ubNaive << ")\n";
-
-                            std::cerr << "entries at naive interval:\n";
-                            for (auto x = lbNaive - 1; x < ubNaive + 1; ++x) {
-                                std::cerr << "\tT[SA[" << x << "] = "
-                                    << rmi_->seq.substr(SA[x], blah) << "\n";
-                            }
-                            std::exit(1);
-                        }
-                    }
-
-                }
+                // If the SA interval is valid, and not too wide, then record
+                // the hit.
                 int diff = ubLeftFwd - lbLeftFwd;
                 if (ubLeftFwd > lbLeftFwd and diff < maxInterval) {
+                    auto queryStart = std::distance(read.begin(), rb);
+                    fwdSAInts.emplace_back(lbLeftFwd, ubLeftFwd, matchedLen, queryStart, false);
                     leftFwdHit = true;
                 }
             }
 
+            // See if the reverse complement k-mer is in the hash
             if (rcMerIt != khash.end()) {
                 lbLeftRC = rcMerIt->second.begin;
                 ubLeftRC = rcMerIt->second.end;
                 int diff = ubLeftRC - lbLeftRC;
                 if (ubLeftRC > lbLeftRC and diff < maxInterval) {
+                    auto queryStart = std::distance(read.begin(), rb);
+                    rcSAInts.emplace_back(lbLeftRC, ubLeftRC, k, queryStart, true);
                     leftRCHit = true;
                 }
             }
 
-
+            // If we had a hit with either k-mer then we can
+            // break out of this loop to look for the next informative position
             if (leftFwdHit or leftRCHit) {
                 leftHit = true;
                 break;
             }
-           ++rb; ++re;
+            ++rb; ++re;
         }
 
+        // If we went the entire length of the read without finding a hit
+        // then we can bail.
         if (!leftHit) { return false; }
 
+        // If we had a hit on the forward strand
         if (leftFwdHit) {
-            // Find the longest common extension between the suffixes
-            // at lb and ub.
+
+            // [lb, ub) is the suffix array interval for the MMP (maximum mappable prefix)
+            // of the k-mer we found.  The NIP (next informative position) in the sequence
+            // is the position after the LCE (longest common extension) of
+            // T[SA[lb]:] and T[SA[ub-1]:]
             auto lce = saSearcher.lce(lbLeftFwd, ubLeftFwd-1, k, read.length() - k);
 
+            // If the longest common extension takes us off the end of the read, then
+            // just check the last k-mer (actually, we shouldn't bother with this if the MMP
+            // extends to within k bases of the end).
             if (lce > read.length() - k) {
                 size_t pos{0};
                 auto invalidPos = read.length() - k - 1;
@@ -668,25 +645,32 @@ class SACollector {
                         lbRightFwd = std::max(0, lbRightFwd - 1);
                         std::tie(lbRightFwd, ubRightFwd, matchedLen) =
                             saSearcher.extendSearch(lbRightFwd, ubRightFwd,
-                                                    k, rb, readEndIt);
+                                    k, rb, readEndIt);
                         int diff = ubRightFwd - lbRightFwd;
                         if (ubRightFwd > lbRightFwd and diff < maxInterval) {
+                            auto queryStart = std::distance(read.begin(), rb);
+                            fwdSAInts.emplace_back(lbRightFwd, ubRightFwd, matchedLen, queryStart, false);
                             rightFwdHit = true;
                         }
                     }
 
                 }
             } else {
+                // If the LCE was shorter than the read, then the next position
+                // we should check starts k-1 bases before the end of the LCE.
                 size_t pos{0};
                 auto invalidPos = std::max(static_cast<int>(0),
-                                           static_cast<int>(lce) - static_cast<int>(k));
+                        static_cast<int>(lce) - static_cast<int>(k));
                 do {
+                    // While the k-mer start here would be invalid,
+                    // jump to the next potential start location
                     rb = read.begin() + invalidPos + 1;
                     re = rb + k;
                     pos = std::distance(readStartIt, rb);
                     invalidPos = read.find_first_of("nN", pos);
                 } while (invalidPos <= pos + k and re <= readEndIt);
 
+                // If we found a valid k-mer start position
                 if (re <= readEndIt) {
                     mer = rapmap::utils::my_mer(read.c_str() + pos);
 
@@ -701,6 +685,8 @@ class SACollector {
                             saSearcher.extendSearch(lbRightFwd, ubRightFwd, k, rb, readEndIt);
                         int diff = ubRightFwd - lbRightFwd;
                         if (ubRightFwd > lbRightFwd and diff < maxInterval) {
+                            auto queryStart = std::distance(read.begin(), rb);
+                            fwdSAInts.emplace_back(lbRightFwd, ubRightFwd, matchedLen, queryStart, false);
                             rightFwdHit = true;
                         }
                     }
@@ -709,33 +695,140 @@ class SACollector {
         }
 
         if (leftRCHit) {
-            rb = read.end() - k;
-            re = rb + k;
-            auto pos = std::distance(readStartIt, rb);
-            mer = rapmap::utils::my_mer(read.c_str() + pos);
-            rcMer = mer.get_reverse_complement();
+            size_t pos{read.length() - k};
 
-            auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
+            auto revReadEndIt = read.rend();
+            size_t invalidPos{1};
 
-            if (rcMerIt != khash.end()) {
-                lbRightRC = rcMerIt->second.begin;
-                ubRightRC = rcMerIt->second.end;
-                // lb must be 1 *less* then the current lb
-                // We can't move any further in the reverse complement direction
-                lbRightRC = std::max(0, lbRightRC - 1);
-                auto queryBeg = read.rbegin();
-                auto queryEnd = read.rend();
+            auto revRB = read.rbegin();
+            auto revRE = read.rend();
 
-                std::tie(lbRightRC, ubRightRC, matchedLen) =
-                    saSearcher.extendSearch(lbRightRC, ubRightRC, k,
-                                            queryBeg, queryEnd, true);
-                int diff = ubRightRC - lbRightRC;
-                if (ubRightRC > lbRightRC and diff < maxInterval) {
-                    rightRCHit = true;
+            do {
+                // While the k-mer start here would be invalid,
+                // jump to the next potential start location
+                revRB = read.rbegin() + invalidPos - 1;
+                revRE = revRB + k;
+                // Distance from the reverse-end (i.e. beginning) of the k-mer to
+                // the reverse-end (i.e. beginning) of the read.
+                pos = std::distance(revRE, revReadEndIt);
+                invalidPos = read.find_first_of("nN", pos);
+            } while (pos >= k and invalidPos <= pos + k);
+
+            if (pos >= k) {
+                mer = rapmap::utils::my_mer(read.c_str() + pos);
+                rcMer = mer.get_reverse_complement();
+
+                auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
+
+                if (rcMerIt != khash.end()) {
+                    lbRightRC = rcMerIt->second.begin;
+                    ubRightRC = rcMerIt->second.end;
+                    // lb must be 1 *less* then the current lb
+                    // We can't move any further in the reverse complement direction
+                    lbRightRC = std::max(0, lbRightRC - 1);
+
+                    std::tie(lbRightRC, ubRightRC, matchedLen) =
+                        saSearcher.extendSearch(lbRightRC, ubRightRC, k,
+                                revRB, revRE, true);
+                    int diff = ubRightRC - lbRightRC;
+                    if (ubRightRC > lbRightRC and diff < maxInterval) {
+                        auto queryStart = std::distance(revRE + matchedLen, revReadEndIt);
+                        rcSAInts.emplace_back(lbRightRC, ubRightRC, matchedLen, queryStart, true);
+                        rightRCHit = true;
+                    }
                 }
             }
         }
 
+        auto fwdHitsStart = hits.size();
+        // If we had > 1 forward hit
+        if (fwdSAInts.size() > 1) {
+            auto processedHits = rapmap::hit_manager::intersectSAHits(fwdSAInts, *rmi_);
+            rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, mateStatus);
+        } else if (fwdSAInts.size() == 1) { // only 1 hit!
+            auto& saIntervalHit = fwdSAInts.front();
+            auto initialSize = hits.size();
+            for (int i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
+                auto globalPos = SA[i];
+                auto txpID = posIDs[globalPos];
+                // the offset into this transcript
+                auto pos = globalPos - txpStarts[txpID];
+                hits.emplace_back(txpID, pos, true, readLen);
+            }
+            // Now sort by transcript ID (then position) and eliminate
+            // duplicates
+            auto sortStartIt = hits.begin() + initialSize;
+            auto sortEndIt = hits.end();
+            std::sort(sortStartIt, sortEndIt,
+                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                    if (a.tid == b.tid) {
+                    return a.pos < b.pos;
+                    } else {
+                    return a.tid < b.tid;
+                    }
+                    });
+            auto newEnd = std::unique(hits.begin() + initialSize, hits.end(),
+                    [] (const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                    return a.tid == b.tid;
+                    });
+            hits.resize(std::distance(hits.begin(), newEnd));
+        }
+        auto fwdHitsEnd = hits.size();
+
+        auto rcHitsStart = fwdHitsEnd;
+        // If we had > 1 rc hit
+        if (rcSAInts.size() > 1) {
+            auto processedHits = rapmap::hit_manager::intersectSAHits(rcSAInts, *rmi_);
+            rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, mateStatus);
+        } else if (rcSAInts.size() == 1) { // only 1 hit!
+            auto& saIntervalHit = rcSAInts.front();
+            auto initialSize = hits.size();
+            for (int i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
+                auto globalPos = SA[i];
+                auto txpID = posIDs[globalPos];
+                // the offset into this transcript
+                auto pos = globalPos - txpStarts[txpID];
+                hits.emplace_back(txpID, pos, true, readLen);
+            }
+            // Now sort by transcript ID (then position) and eliminate
+            // duplicates
+            auto sortStartIt = hits.begin() + rcHitsStart;
+            auto sortEndIt = hits.end();
+            std::sort(sortStartIt, sortEndIt,
+                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                    if (a.tid == b.tid) {
+                    return a.pos < b.pos;
+                    } else {
+                    return a.tid < b.tid;
+                    }
+                    });
+            auto newEnd = std::unique(sortStartIt, sortEndIt,
+                    [] (const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                    return a.tid == b.tid;
+                    });
+            hits.resize(std::distance(hits.begin(), newEnd));
+        }
+        auto rcHitsEnd = hits.size();
+
+        // If we had both forward and RC hits, then merge them
+        if ((fwdHitsEnd > fwdHitsStart) and (rcHitsEnd > rcHitsStart)) {
+            // Merge the forward and reverse hits
+            std::inplace_merge(hits.begin() + fwdHitsStart, hits.begin() + fwdHitsEnd, hits.begin() + rcHitsEnd,
+                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                    return a.tid < b.tid;
+                    });
+            // And get rid of duplicate transcript IDs
+            auto newEnd = std::unique(hits.begin() + fwdHitsStart, hits.begin() + rcHitsEnd,
+                    [] (const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                    return a.tid == b.tid;
+                    });
+            hits.resize(std::distance(hits.begin(), newEnd));
+        }
+        // Return true if we had any valid hits and false otherwise.
+        return (rcHitsEnd > fwdHitsStart);
+
+
+	/*
         std::vector<uint32_t> jointTxps;
         if (leftFwdHit and rightFwdHit) {
             for (auto i = lbLeftFwd; i < ubLeftFwd; ++i) {
@@ -816,8 +909,9 @@ class SACollector {
 		rightTxpsRC.resize(std::distance(rightTxpsRC.begin(), newEnd));
 		jointTxps.insert(jointTxps.end(), rightTxpsRC.begin(), rightTxpsRC.end());
 	}
-
+	
         return jointTxps.size() > 0;
+	*/
     }
 
     private:
@@ -847,6 +941,7 @@ void processReadsPairSA(paired_parser* parser,
         bool noOutput) {
     auto& txpNames = rmi.txpNames;
     std::vector<uint32_t>& txpOffsets = rmi.txpOffsets;
+    auto& txpLens = rmi.txpLens;
     uint32_t n{0};
     //uint32_t k = rapmap::utils::my_mer::k();
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
@@ -903,6 +998,7 @@ void processReadsPairSA(paired_parser* parser,
             bool rh = hitCollector(j->data[i].second.seq,
                         rightHits, saSearcher,
                         MateStatus::PAIRED_END_RIGHT, diffCount);
+            /*
 	    bool peHit = (lh and rh);
 	    if (peHit) {
 	    	hctr.peHits += 1;
@@ -910,9 +1006,13 @@ void processReadsPairSA(paired_parser* parser,
 		std::cerr << "WHAT?!\n";
 		hctr.seHits += 1;
 	    }
-        /*
+        */
+            /* 
             hitCollector(j->data[i].second.seq,
-                        rightHits, MateStatus::PAIRED_END_RIGHT);
+                        rightHits, MateStatus::PAIRED_END_RIGHT, diffCount);
+
+            */
+
             if (leftHits.size() > 0) {
                 auto leftIt = leftHits.begin();
                 auto leftEnd = leftHits.end();
@@ -1007,24 +1107,24 @@ void processReadsPairSA(paired_parser* parser,
                     auto& transcriptName = txpNames[qa.tid];
                     // === SAM
                     if (qa.isPaired) {
-                        getSamFlags(qa, true, flags1, flags2);
+                        rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
                             flags1 |= 0x900; flags2 |= 0x900;
                         } else {
                             flags2 |= 0x900;
                         }
-                        adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
+                        rapmap::utils::adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
 
                         // Reverse complement the read and reverse
                         // the quality string if we need to
                         if (!qa.fwd) {
-                            reverseRead(j->data[i].first.seq,
+                            rapmap::utils::reverseRead(j->data[i].first.seq,
                                         j->data[i].first.qual,
                                         read1Temp,
                                         qual1Temp);
                         }
                         if (!qa.mateIsFwd) {
-                            reverseRead(j->data[i].second.seq,
+                            rapmap::utils::reverseRead(j->data[i].second.seq,
                                         j->data[i].second.qual,
                                         read2Temp,
                                         qual2Temp);
@@ -1054,7 +1154,7 @@ void processReadsPairSA(paired_parser* parser,
                                 << j->data[i].second.seq << '\t' // SEQ
                                 << j->data[i].first.qual << '\n';
                     } else {
-                        getSamFlags(qa, true, flags1, flags2);
+                        rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
                             flags1 |= 0x900; flags2 |= 0x900;
                         } else {
@@ -1109,11 +1209,11 @@ void processReadsPairSA(paired_parser* parser,
                         // Reverse complement the read and reverse
                         // the quality string if we need to
                         if (!qa.fwd) {
-                            reverseRead(*readSeq, *qstr,
+                            rapmap::utils::reverseRead(*readSeq, *qstr,
                                         read1Temp, qual1Temp);
                         }
 
-                        adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
+                        rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
                         sstream << readName.c_str() << '\t' // QNAME
                                 << flags << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
@@ -1166,7 +1266,7 @@ void processReadsPairSA(paired_parser* parser,
 #endif //__DEBUG__
                 }
             }
-*/
+
             if (hctr.numReads > hctr.lastPrint + 100000) {
 		hctr.lastPrint.store(hctr.numReads.load());
                 if (iomutex->try_lock()) {
@@ -1182,11 +1282,11 @@ void processReadsPairSA(paired_parser* parser,
                         << hctr.peHits / static_cast<float>(hctr.numReads) << "\n";
                     std::cerr << "# se hits per read = "
                         << hctr.seHits / static_cast<float>(hctr.numReads) << "\n";
-#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
+//#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                     std::cerr << "The true hit was in the returned set of hits "
                         << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
                         <<  "% of the time\n";
-#endif // __DEBUG__
+//#endif // __DEBUG__
                     iomutex->unlock();
                 }
             }
@@ -1460,6 +1560,59 @@ int rapMapSAMap(int argc, char* argv[]) {
     }
 
 }
+
+
+/*
+bool verbose{false};
+if (verbose) {
+    if (lb == lbLeftFwd and ub == ubLeftFwd) {
+	//std::cerr << "couldn't narrow interval at all!\n";
+    } else {
+	diffCount += 1;
+	int lbNaive, ubNaive, blah;
+
+	//std::cerr << "before naive search . . . ";
+	std::tie(lbNaive, ubNaive, blah) =
+	    saSearcher.extendSearch(0, SA.size(), 0, rb, readEndIt);
+	//std::cerr << "after naive search\n";
+
+	if (ubNaive - lbNaive > ubLeftFwd - lbLeftFwd and blah >= matchedLen) {//lbLeftFwd != lbNaive or ubLeftFwd != ubNaive) {
+	    diffCount += 1;
+	//}
+	//if (ubNaive - lbNaive > ubLeftFwd - lbLeftFwd and !verbose) {
+	    std::cerr << "narrowed interval from "
+		<< "[ " << lb << ", " << ub << ") to "
+		<< "[ "<< lbLeftFwd << ", " << ubLeftFwd << ")\n";
+
+	    std::cerr << "mer is    : " << mer << "\n";
+	    std::cerr << "string is : ";
+	    for (auto it = rb; it != rb + matchedLen; ++it) {
+		std::cerr << *it;
+	    } std::cerr << "\n";
+	    std::cerr << "read is   : " << read << "\n";
+
+	    std::cerr << "narrowed len = " << matchedLen << "\n";
+	    std::cerr << "naive len = " << blah << "\n";
+
+	    std::cerr << "entries at narrowed interval:\n";
+	    for (auto x = lbLeftFwd - 1; x < ubLeftFwd + 1; ++x) {
+		std::cerr << "\tT[SA[" << x << "] = "
+		    << rmi_->seq.substr(SA[x], matchedLen) << "\n";
+	    }
+
+	    std::cerr << "naive interval is [" << lbNaive << ", " << ubNaive << ")\n";
+
+	    std::cerr << "entries at naive interval:\n";
+	    for (auto x = lbNaive - 1; x < ubNaive + 1; ++x) {
+		std::cerr << "\tT[SA[" << x << "] = "
+		    << rmi_->seq.substr(SA[x], blah) << "\n";
+	    }
+	    std::exit(1);
+	}
+    }
+
+}
+*/
 
 
 

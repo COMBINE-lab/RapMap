@@ -37,14 +37,6 @@
 #include "kseq.h"
 }
 */
-#ifdef __GNUC__
-#define LIKELY(x) __builtin_expect((x),1)
-#define UNLIKELY(x) __builtin_expect((x),0)
-#else
-#define LIKELY(x) (x)
-#define UNLIKELY(x) (x)
-#endif
-
 #include "stringpiece.h"
 
 #include "PairSequenceParser.hpp"
@@ -113,150 +105,6 @@ using ProcessedHit = rapmap::utils::ProcessedHit;
 using QuasiAlignment = rapmap::utils::QuasiAlignment;
 using FixedWriter = rapmap::utils::FixedWriter;
 
-
-
-inline void adjustOverhang(int32_t& pos, uint32_t readLen,
-                           uint32_t txpLen, FixedWriter& cigarStr) {
-    cigarStr.clear();
-    if (pos < 0) {
-        int32_t clipLen = -pos;
-        int32_t matchLen = readLen + pos;
-        cigarStr.write("{}S{}M", clipLen, matchLen);
-        // Now adjust the mapping position
-        pos = 0;
-    } else if (pos + readLen > txpLen) {
-        int32_t matchLen = txpLen - pos;
-        int32_t clipLen = pos + readLen - matchLen;
-        cigarStr.write("{}M{}S", matchLen, clipLen);
-    } else {
-        cigarStr.write("{}M", readLen);
-    }
-}
-
-inline void adjustOverhang(QuasiAlignment& qa, uint32_t txpLen,
-                           FixedWriter& cigarStr1, FixedWriter& cigarStr2) {
-    if (qa.isPaired) { // both mapped
-        adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr1);
-        adjustOverhang(qa.matePos, qa.mateLen, txpLen, cigarStr1);
-    } else if (qa.mateStatus == MateStatus::PAIRED_END_LEFT ) {
-        // left read mapped
-        adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr1);
-    } else if (qa.mateStatus == MateStatus::PAIRED_END_RIGHT) {
-        // right read mapped
-        adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr2);
-    }
-}
-
-
-static constexpr int8_t rc_table[128] = {
-    78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 15
-    78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 31
-    78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 787
-    78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 63
-    78, 84, 78, 71, 78,  78,  78, 67, 78, 78, 78, 78,  78, 78, 78, 78, // 79
-    78, 78,  78, 78,  65, 65, 78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 95
-    78, 84, 78, 71, 78,  78,  78, 67, 78, 78, 78, 78,  78, 78, 78, 78, // 101
-    78, 78,  78, 78,  65, 65, 78, 78,  78, 78, 78, 78,  78, 78, 78, 78  // 127
-};
-
-// Adapted from
-// https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library/blob/8c9933a1685e0ab50c7d8b7926c9068bc0c9d7d2/src/main.c#L36
-void reverseRead(std::string& seq,
-                 std::string& qual,
-                 std::string& readWork,
-                 std::string& qualWork) {
-
-    readWork.resize(seq.length());
-    qualWork.resize(qual.length());
-    int32_t end = seq.length(), start = 0;
- 	//readWork[end] = '\0';
-    //qualWork[end] = '\0';
-	-- end;
-	while (LIKELY(start < end)) {
-		readWork[start] = (char)rc_table[(int8_t)seq[end]];
-		readWork[end] = (char)rc_table[(int8_t)seq[start]];
-        qualWork[start] = qual[end];
-        qualWork[end] = qual[start];
-		++ start;
-		-- end;
-	}
-    // If odd # of bases, we still have to complement the middle
-	if (start == end) {
-        readWork[start] = (char)rc_table[(int8_t)seq[start]];
-        // but don't need to mess with quality
-        // qualWork[start] = qual[start];
-    }
-    std::swap(seq, readWork);
-    std::swap(qual, qualWork);
-}
-
-
-// get the sam flags for the quasialignment qaln.
-// peinput is true if the read is paired in *sequencing*; false otherwise
-// the sam flags for mate 1 are written into flags1 and for mate2 into flags2
-inline void getSamFlags(const QuasiAlignment& qaln,
-                        uint16_t& flags) {
-    constexpr uint16_t pairedInSeq = 0x1;
-    constexpr uint16_t properlyAligned = 0x2;
-    constexpr uint16_t unmapped = 0x4;
-    constexpr uint16_t mateUnmapped = 0x8;
-    constexpr uint16_t isRC = 0x10;
-    constexpr uint16_t mateIsRC = 0x20;
-    constexpr uint16_t isRead1 = 0x40;
-    constexpr uint16_t isRead2 = 0x80;
-    constexpr uint16_t isSecondaryAlignment = 0x100;
-    constexpr uint16_t failedQC = 0x200;
-    constexpr uint16_t isPCRDup = 0x400;
-    constexpr uint16_t supplementaryAln = 0x800;
-
-    flags = 0;
-    // Not paired in sequencing
-    // flags1 = (peInput) ? pairedInSeq : 0;
-    flags |= properlyAligned;
-    // we don't output unmapped yet
-    // flags |= unmapped
-    // flags |= mateUnmapped
-    flags |= (qaln.fwd) ? 0 : isRC;
-    // Mate flag meaningless
-    // flags1 |= (qaln.mateIsFwd) ? 0 : mateIsRC;
-    flags |= isRead1;
-    //flags2 |= isRead2;
-}
-
-// get the sam flags for the quasialignment qaln.
-// peinput is true if the read is paired in *sequencing*; false otherwise
-// the sam flags for mate 1 are written into flags1 and for mate2 into flags2
-inline void getSamFlags(const QuasiAlignment& qaln,
-                        bool peInput,
-                        uint16_t& flags1,
-                        uint16_t& flags2) {
-    constexpr uint16_t pairedInSeq = 0x1;
-    constexpr uint16_t properlyAligned = 0x2;
-    constexpr uint16_t unmapped = 0x4;
-    constexpr uint16_t mateUnmapped = 0x8;
-    constexpr uint16_t isRC = 0x10;
-    constexpr uint16_t mateIsRC = 0x20;
-    constexpr uint16_t isRead1 = 0x40;
-    constexpr uint16_t isRead2 = 0x80;
-    constexpr uint16_t isSecondaryAlignment = 0x100;
-    constexpr uint16_t failedQC = 0x200;
-    constexpr uint16_t isPCRDup = 0x400;
-    constexpr uint16_t supplementaryAln = 0x800;
-
-    flags1 = flags2 = 0;
-    flags1 = (peInput) ? pairedInSeq : 0;
-    flags1 |= (qaln.isPaired) ? properlyAligned : 0;
-    flags2 = flags1;
-    // we don't output unmapped yet
-    flags1 |= (qaln.mateStatus == MateStatus::PAIRED_END_RIGHT) ? unmapped : 0;
-    flags2 |= (qaln.mateStatus == MateStatus::PAIRED_END_LEFT) ? mateUnmapped : 0;
-    flags1 |= (qaln.fwd) ? 0 : isRC;
-    flags1 |= (qaln.mateIsFwd) ? 0 : mateIsRC;
-    flags2 |= (qaln.mateIsFwd) ? 0 : isRC;
-    flags2 |= (qaln.fwd) ? 0 : mateIsRC;
-    flags1 |= isRead1;
-    flags2 |= isRead2;
-}
 
 
 
@@ -908,14 +756,14 @@ void processReadsSingle(single_parser* parser,
                 for (auto& qa : hits) {
                     auto& transcriptName = txpNames[qa.tid];
                     // === SAM
-                    getSamFlags(qa, flags);
+                    rapmap::utils::getSamFlags(qa, flags);
                     if (alnCtr != 0) {
                         flags |= 0x900;
                     }
 
                     std::string* readSeq = &(j->data[i].seq);
                     std::string* qstr = &(j->data[i].qual);
-                    adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], cigarStr);
+                    rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], cigarStr);
 
                     sstream << readName << '\t' // QNAME
                         << flags << '\t' // FLAGS
@@ -1146,24 +994,24 @@ void processReadsPair(paired_parser* parser,
                     auto& transcriptName = txpNames[qa.tid];
                     // === SAM
                     if (qa.isPaired) {
-                        getSamFlags(qa, true, flags1, flags2);
+                        rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
                             flags1 |= 0x900; flags2 |= 0x900;
                         } else {
                             flags2 |= 0x900;
                         }
-                        adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
+                        rapmap::utils::adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
 
                         // Reverse complement the read and reverse
                         // the quality string if we need to
                         if (!qa.fwd) {
-                            reverseRead(j->data[i].first.seq,
+                            rapmap::utils::reverseRead(j->data[i].first.seq,
                                         j->data[i].first.qual,
                                         read1Temp,
                                         qual1Temp);
                         }
                         if (!qa.mateIsFwd) {
-                            reverseRead(j->data[i].second.seq,
+                            rapmap::utils::reverseRead(j->data[i].second.seq,
                                         j->data[i].second.qual,
                                         read2Temp,
                                         qual2Temp);
@@ -1193,7 +1041,7 @@ void processReadsPair(paired_parser* parser,
                                 << j->data[i].second.seq << '\t' // SEQ
                                 << j->data[i].first.qual << '\n';
                     } else {
-                        getSamFlags(qa, true, flags1, flags2);
+                        rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
                             flags1 |= 0x900; flags2 |= 0x900;
                         } else {
@@ -1248,11 +1096,11 @@ void processReadsPair(paired_parser* parser,
                         // Reverse complement the read and reverse
                         // the quality string if we need to
                         if (!qa.fwd) {
-                            reverseRead(*readSeq, *qstr,
+                            rapmap::utils::reverseRead(*readSeq, *qstr,
                                         read1Temp, qual1Temp);
                         }
 
-                        adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
+                        rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
                         sstream << readName.c_str() << '\t' // QNAME
                                 << flags << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME

@@ -50,6 +50,20 @@ class RapMapSAIndex {
                 seqArchive(seq);
             }
             seqStream.close();
+           
+            { 
+                logger->info("Computing transcript lengths");
+                txpLens.resize(txpOffsets.size());
+                if (txpOffsets.size() > 1) {
+                    for(size_t i = 0; i < txpOffsets.size() - 1; ++i) {
+                        auto nextOffset = txpOffsets[i+1];
+                        auto currentOffset = txpOffsets[i];
+                        txpLens[i] = (nextOffset - 1) - currentOffset;
+                    }
+                }
+                // The last length is just the length of the suffix array - the last offset
+                txpLens[txpOffsets.size()-1] = (SA.size() - 1) - txpOffsets[txpOffsets.size() - 1];
+            }
 
             logger->info("Done loading index");
             return true;
@@ -60,6 +74,7 @@ class RapMapSAIndex {
     std::string seq;
     std::vector<std::string> txpNames;
     std::vector<uint32_t> txpOffsets;
+    std::vector<uint32_t> txpLens;
     std::vector<uint32_t> positionIDs;
     std::unordered_map<uint64_t,
                        rapmap::utils::SAInterval,
