@@ -11,7 +11,6 @@ namespace rapmap {
                 std::vector<QuasiAlignment>& hits,
                 MateStatus mateStatus){
             bool foundHit{false};
-	    auto startOffset = hits.size();
             // One processed hit per transcript
             for (auto& ph : processedHits) {
                 auto tid = ph.tid;
@@ -29,40 +28,45 @@ namespace rapmap {
                 hits.emplace_back(tid, hitPos, isFwd, readLen);
                 hits.back().mateStatus = mateStatus;
             }
-	    std::sort(hits.begin() + startOffset, hits.end(),
-		      [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-		      	return a.tid < b.tid;
-		      });
+
             return true;
         }
 
 
-	// Return hits from processedHits where position constraints
+        // Return hits from processedHits where position constraints
         // match maxDist
-        bool collectHitsSimpleSA(std::unordered_map<int, std::vector<SATxpQueryPos>>& processedHits,
-                uint32_t readLen,
-                uint32_t maxDist,
-                std::vector<QuasiAlignment>& hits,
-                MateStatus mateStatus){
-            bool foundHit{false};
-            // One processed hit per transcript
-            for (auto& ph : processedHits) {
-		// If this is an *active* position list
-		if (ph.second.front().active) {
-		    auto tid = ph.first;
-		    std::sort(ph.second.begin(), ph.second.end(),
-				    [](const SATxpQueryPos& x, const SATxpQueryPos& y) -> bool {
-				    	return x.pos < y.pos;
-				    });
-		    auto& firstHit = ph.second.front();
-		    bool hitRC = firstHit.queryRC;
-		    int32_t hitPos = firstHit.pos - firstHit.queryPos;
-		    bool isFwd = !hitRC;
-		    hits.emplace_back(tid, hitPos, isFwd, readLen);
-		    hits.back().mateStatus = mateStatus;
-		}
-            }
-            return true;
+        bool collectHitsSimpleSA(SAHitMap& processedHits,
+                        uint32_t readLen,
+                        uint32_t maxDist,
+                        std::vector<QuasiAlignment>& hits,
+                        MateStatus mateStatus){
+                bool foundHit{false};
+                // One processed hit per transcript
+	            auto startOffset = hits.size();
+                for (auto& ph : processedHits) {
+                        // If this is an *active* position list
+                        if (ph.second.front().active) {
+                                auto tid = ph.first;
+                                std::sort(ph.second.begin(), ph.second.end(),
+                                                [](const SATxpQueryPos& x, const SATxpQueryPos& y) -> bool {
+                                                return x.pos < y.pos;
+                                                });
+                                auto& firstHit = ph.second.front();
+                                bool hitRC = firstHit.queryRC;
+                                int32_t hitPos = firstHit.pos - firstHit.queryPos;
+                                bool isFwd = !hitRC;
+                                hits.emplace_back(tid, hitPos, isFwd, readLen);
+                                hits.back().mateStatus = mateStatus;
+                        }
+                }
+                // if SAHitMap is sorted, no need to sort here
+                /*
+                std::sort(hits.begin() + startOffset, hits.end(),
+                                [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                                return a.tid < b.tid;
+                                });
+                                */
+                return true;
         }
 
 
@@ -128,26 +132,26 @@ namespace rapmap {
 
         }
 
-	void intersectSAIntervalWithOutput(SAIntervalHit& h,
-   				           RapMapSAIndex& rmi,
-				           std::unordered_map<int, std::vector<SATxpQueryPos>>& outHits) {
-            // Convenient bindings for variables we'll use
-            auto& SA = rmi.SA;
-            auto& txpIDs = rmi.positionIDs;
-            auto& txpStarts = rmi.txpOffsets;
+        void intersectSAIntervalWithOutput(SAIntervalHit& h,
+                        RapMapSAIndex& rmi,
+                        SAHitMap& outHits) {
+                // Convenient bindings for variables we'll use
+                auto& SA = rmi.SA;
+                auto& txpIDs = rmi.positionIDs;
+                auto& txpStarts = rmi.txpOffsets;
 
-	    // Walk through every hit in the new interval 'h'
-	    for (int i = h.begin; i != h.end; ++i) {
-	        auto txpID = txpIDs[SA[i]];
-	    	auto txpListIt = outHits.find(txpID);
-		// If we found this transcript
-		// Add this position to the list
-		if (txpListIt != outHits.end()) {
-		    auto globalPos = SA[i];
-		    auto localPos = globalPos - txpStarts[txpID];
-		    txpListIt->second.emplace_back(localPos, h.queryPos, h.queryRC);
-		}
-	    }
+                // Walk through every hit in the new interval 'h'
+                for (int i = h.begin; i != h.end; ++i) {
+                        auto txpID = txpIDs[SA[i]];
+                        auto txpListIt = outHits.find(txpID);
+                        // If we found this transcript
+                        // Add this position to the list
+                        if (txpListIt != outHits.end()) {
+                                auto globalPos = SA[i];
+                                auto localPos = globalPos - txpStarts[txpID];
+                                txpListIt->second.emplace_back(localPos, h.queryPos, h.queryRC);
+                        }
+                }
         }
 
 
@@ -260,31 +264,31 @@ namespace rapmap {
 
 
 
-	std::unordered_map<int, std::vector<SATxpQueryPos>> intersectSAHits(
+        SAHitMap intersectSAHits(
                 std::vector<SAIntervalHit>& inHits,
                 RapMapSAIndex& rmi
                 ) {
 
             // Each inHit is a SAIntervalHit structure that contains
             // an SA interval with all hits for a particuar query location
-	    // on the read.
-	    //
-	    // We want to find the transcripts that appear in *every*
+            // on the read.
+            //
+            // We want to find the transcripts that appear in *every*
             // interavl.  Further, for each transcript, we want to
             // know the positions within this txp.
 
             // Check this --- we should never call this function
             // with less than 2 hits.
-	        std::unordered_map<int, std::vector<SATxpQueryPos>> outHits;
+            SAHitMap outHits;
             if (inHits.size() < 2) {
                 std::cerr << "intersectHitsSA() called with < 2 k-mer "
                     " hits; this shouldn't happen\n";
                 return outHits;
             }
 
-	    auto& SA = rmi.SA;
-	    auto& txpStarts = rmi.txpOffsets;
-	    auto& txpIDs = rmi.positionIDs;
+            auto& SA = rmi.SA;
+            auto& txpStarts = rmi.txpOffsets;
+            auto& txpIDs = rmi.positionIDs;
 
             // Start with the smallest interval
             // i.e. interval with the fewest hits.
@@ -295,15 +299,15 @@ namespace rapmap {
                 }
             }
 
-            outHits.reserve(minHit->span());
+            //outHits.reserve(minHit->span());
             // =========
             { // Add the info from minHit to outHits
-		for (int i = minHit->begin; i < minHit->end; ++i) {
-		    auto globalPos = SA[i];
-		    auto tid = txpIDs[globalPos];
-		    auto txpPos = globalPos - txpStarts[tid];
-		    outHits[tid].emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
-		}
+                for (int i = minHit->begin; i < minHit->end; ++i) {
+                    auto globalPos = SA[i];
+                    auto tid = txpIDs[globalPos];
+                    auto txpPos = globalPos - txpStarts[tid];
+                    outHits[tid].emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
+                }
             }
             // =========
 
@@ -316,12 +320,12 @@ namespace rapmap {
             }
 
             size_t requiredNumHits = inHits.size();
-	    // Mark as active any transcripts with the required number of hits.
-	    for (auto it = outHits.begin(); it != outHits.end(); ++it) {
-	        if (it->second.size() >= requiredNumHits) {
-		    it->second.front().active = true;
-		}
-	    }
+            // Mark as active any transcripts with the required number of hits.
+            for (auto it = outHits.begin(); it != outHits.end(); ++it) {
+                if (it->second.size() >= requiredNumHits) {
+                    it->second.front().active = true;
+                }
+            }
             return outHits;
         }
 

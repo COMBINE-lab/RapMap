@@ -259,7 +259,7 @@ namespace rapmap {
 	    ProcessedSAHit() : tid(std::numeric_limits<uint32_t>::max()) {}
 
 	    ProcessedSAHit(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t queryPosIn, bool queryRCIn) :
-		    tid(txpIDIn)  
+		    tid(txpIDIn)
 	    {
 		tqvec.emplace_back(txpPosIn, queryPosIn, queryRCIn);
 	    }
@@ -323,6 +323,23 @@ namespace rapmap {
         uint32_t txpListStart;
         uint32_t txpListLen;
     };
+
+    inline void printMateStatus(rapmap::utils::MateStatus ms) {
+        switch(ms) {
+            case rapmap::utils::MateStatus::SINGLE_END:
+                std::cerr << "SINGLE END";
+                break;
+            case rapmap::utils::MateStatus::PAIRED_END_LEFT:
+                std::cerr << "PAIRED END (LEFT)";
+                break;
+            case rapmap::utils::MateStatus::PAIRED_END_RIGHT:
+                std::cerr << "PAIRED END (RIGHT)";
+                break;
+            case rapmap::utils::MateStatus::PAIRED_END_PAIRED:
+                std::cerr << "PAIRED END (PAIRED)";
+                break;
+        }
+    }
 
 
     // Declarations for functions dealing with SAM formatting and output

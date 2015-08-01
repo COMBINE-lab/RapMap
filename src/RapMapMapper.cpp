@@ -816,23 +816,6 @@ void processReadsSingle(single_parser* parser,
     } // processed all reads
 }
 
-void printMateStatus(rapmap::utils::MateStatus ms) {
-    switch(ms) {
-	case rapmap::utils::MateStatus::SINGLE_END:
-	    std::cerr << "SINGLE END";
-	    break;
-	case rapmap::utils::MateStatus::PAIRED_END_LEFT:
-	    std::cerr << "PAIRED END (LEFT)";
-	    break;
-	case rapmap::utils::MateStatus::PAIRED_END_RIGHT:
-	    std::cerr << "PAIRED END (RIGHT)";
-	    break;
-	case rapmap::utils::MateStatus::PAIRED_END_PAIRED:
-	    std::cerr << "PAIRED END (PAIRED)";
-	    break;
-    }
-}
-
 // To use the parser in the following, we get "jobs" until none is
 // available. A job behaves like a pointer to the type
 // jellyfish::sequence_list (see whole_sequence_parser.hpp).

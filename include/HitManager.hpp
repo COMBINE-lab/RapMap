@@ -7,6 +7,8 @@
 
 #include <vector>
 #include <algorithm>
+#include <map>
+#include <unordered_map>
 
 namespace rapmap {
     namespace hit_manager {
@@ -16,8 +18,9 @@ namespace rapmap {
         using PositionListHelper = rapmap::utils::PositionListHelper;
         using QuasiAlignment = rapmap::utils::QuasiAlignment;
         using TxpQueryPos = rapmap::utils::TxpQueryPos;
-	using SATxpQueryPos = rapmap::utils::SATxpQueryPos;
-	using SAIntervalHit = rapmap::utils::SAIntervalHit;
+        using SATxpQueryPos = rapmap::utils::SATxpQueryPos;
+        using SAIntervalHit = rapmap::utils::SAIntervalHit;
+        using SAHitMap = std::map<int, std::vector<SATxpQueryPos>>;
 
         // Return hits from processedHits where position constraints
         // match maxDist
@@ -26,10 +29,10 @@ namespace rapmap {
                 uint32_t maxDist,
                 std::vector<QuasiAlignment>& hits,
                 MateStatus mateStatus);
-	
-	// Return hits from processedHits where position constraints
+
+        // Return hits from processedHits where position constraints
         // match maxDist
-        bool collectHitsSimpleSA(std::unordered_map<int, std::vector<SATxpQueryPos>>& processedHits,
+        bool collectHitsSimpleSA(SAHitMap& processedHits,
                 uint32_t readLen,
                 uint32_t maxDist,
                 std::vector<QuasiAlignment>& hits,
@@ -41,17 +44,17 @@ namespace rapmap {
         // which h2 appears will have an iterator to the beginning of
         // the position list for h2.
         void intersectWithOutput(HitInfo& h2, RapMapIndex& rmi,
-                std::vector<ProcessedHit>& outHits); 
+                std::vector<ProcessedHit>& outHits);
 
-	void intersectSAIntervalWithOutput(SAIntervalHit& h, 
-			RapMapSAIndex& rmi, 
-			std::unordered_map<int, std::vector<SATxpQueryPos>>& outHits);
+        void intersectSAIntervalWithOutput(SAIntervalHit& h,
+                RapMapSAIndex& rmi,
+                SAHitMap& outHits);
 
         std::vector<ProcessedHit> intersectHits(
                 std::vector<HitInfo>& inHits,
-                RapMapIndex& rmi); 
-	
-	std::unordered_map<int, std::vector<SATxpQueryPos>> intersectSAHits(
+                RapMapIndex& rmi);
+
+        SAHitMap intersectSAHits(
                 std::vector<SAIntervalHit>& inHits,
                 RapMapSAIndex& rmi);
     }

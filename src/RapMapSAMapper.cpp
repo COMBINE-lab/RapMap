@@ -54,7 +54,7 @@
 #include "ScopedTimer.hpp"
 #include "SpinLock.hpp"
 
-#define __TRACK_CORECT__
+//#define __TRACK_CORRECT__
 
 using paired_parser = pair_sequence_parser<char**>;
 using stream_manager = jellyfish::stream_manager<std::vector<std::string>::const_iterator>;
@@ -222,17 +222,19 @@ class SASearcher {
                     }
 
                     ++i;
-                }
-                if (i > prevILow) {
-                    prevILow = i;
-                    validBoundLow = c;
-                } else if (i == prevILow) {
-                    validBoundLow = c < validBoundLow ? c : validBoundLow;
-                }
+		}
+		if (i == m or SA[c] + i == n) {
+			if (i > prevIHigh) {
+				prevIHigh = i;
+				validBoundHigh = c;
+			} else if (i == prevIHigh) {
+				validBoundHigh = c < validBoundHigh ? c : validBoundHigh;
+			}
+		}
 
                 if (plt) {
                     if (c == l + 1) {
-                        //std::cerr << "path 1\n";
+                        std::cerr << "path 1\n";
                         auto maxI = std::max(std::max(i, prevILow), prevIHigh);
                         res1.maxLen = maxI;
                         if (maxI == m) {
@@ -249,7 +251,7 @@ class SASearcher {
                     lcpRP = i;
                 } else {
                     if (c == r - 1) {
-                        //std::cerr << "path 2\n";
+                        std::cerr << "path 2\n";
                         maxI = std::max(std::max(i, prevILow), prevIHigh);
                         res1.maxLen = maxI;
                         validBound = (prevILow >= prevIHigh) ? validBoundLow : validBoundHigh;
@@ -280,13 +282,15 @@ class SASearcher {
                     sentinel = '#';
                     r = res1.bound;
                     l = lbIn;
-                    //std::cerr << "direction was UP; lb = " << l << ", ub = " << r << "\n";
+                    std::cerr << "direction was UP; lb = " << l << ", ub = " << r << "\n";
+                    std::cerr << "direction was UP; origLb = " << lbIn << ", origUb = " << ubIn << "\n";
                     break;
                 case SearchDirection::DOWN:
                     sentinel = '{';
                     r = ubIn;
                     l = res1.bound;
-                    //std::cerr << "direction was DOWN; lb = " << l << ", ub = " << r << "\n";
+                    std::cerr << "direction was DOWN; lb = " << l << ", ub = " << r << "\n";
+                    std::cerr << "direction was UP; origLb = " << lbIn << ", origUb = " << ubIn << "\n";
                     break;
             }
 
@@ -311,7 +315,6 @@ class SASearcher {
             validBoundHigh = lbIn;
             while (true) {
                 c = (l + r) / 2;
-                //prevI = std::max(lcpLP, lcpRP);
                 plt = true;
                 i = std::min(lcpLP, lcpRP);
                 while (i < m and SA[c] + i < n) {
@@ -322,20 +325,8 @@ class SASearcher {
                     }
 
                     if ( queryChar < *(sb + SA[c] + i) ) {
-                        if (i > prevILow) {
-                            prevILow = i;
-                            validBoundLow = c;
-                        } else if (i == prevILow) {
-                            validBoundLow = c < validBoundLow ? c : validBoundLow;
-                        }
-                        break;
+                     	break;
                     } else if ( queryChar > *(sb + SA[c] + i)) {
-                        if (i > prevIHigh) {
-                            prevIHigh = i;
-                            validBoundHigh = c;
-                        } else if (i == prevIHigh) {
-                            validBoundHigh = c > validBoundHigh ? c : validBoundHigh;
-                        }
                         plt = false;
                         break;
                     }
@@ -343,32 +334,15 @@ class SASearcher {
                 }
                 if (plt) {
                     if (c == l + 1) {
-                        auto maxI = std::max(std::max(i, prevILow), prevIHigh);
-                        res2.maxLen = maxI;
-                        if (maxI == m) {
-                            res2.dir = SearchDirection::DOWN;
-                            res2.bound = c;
-                        } else {
-                            validBound = (prevILow >= prevIHigh) ? validBoundLow : validBoundHigh;
-                            res2.bound = validBound;
-                            res2.dir = (res2.bound == validBoundLow) ? SearchDirection::DOWN : SearchDirection::UP;
-                        }
+                        res2.dir = SearchDirection::DOWN;
+                        res2.bound = c;
                         break;
                     }
                     r = c;
                     lcpRP = i;
                 } else {
                     if (c == r - 1) {
-                        //std::cerr << "path 2\n";
-                        maxI = std::max(i, prevI);
-                        res2.maxLen = maxI;
-                        validBound = (prevILow >= prevIHigh) ? validBoundLow : validBoundHigh;
-                        if (maxI == m) {
-                            res2.bound = r;
-                        } else {
-                            res2.bound = validBound;
-                        }
-                        res2.dir = (res2.bound == validBoundLow) ? SearchDirection::DOWN : SearchDirection::UP;
+                        res2.bound = r;
                         break;
                     }
                     l = c;
@@ -383,6 +357,238 @@ class SASearcher {
             return std::make_tuple(bound1, bound2, res1.maxLen);
         }
 
+	/**
+	 * OK!  It should be (is) possible to figure out what we need with only two binary
+	 * searches.  However, that seems to have some tricky corner cases and has been
+	 * somewhat illusive so far.  This "naive" version performs *3* binary searches.
+	 * The first determines the length of the maximum mappable prefix (MMP).  The second
+	 * finds the lower bound for the query interval and the third finds the upper bound.
+	 * The final binary search *is* optimized (it has a lower bound given by the value)
+	 * returned by second search.  However, this method is likely a bit slower than the
+	 * one above (when it can be made to work correctly at all times).
+	 */
+        template <typename IteratorT>
+        std::tuple<int, int, int> extendSearchNaive(
+                int lbIn, // The lower bound for the search
+                int ubIn, // The upper bound for the search
+                int startAt, // The offset at which to start looking
+                IteratorT qb, // Iterator to the beginning of the query
+                IteratorT qe, // Iterator to the end of the query
+                bool complementBases=false // True if bases should be complemented
+                                           // before comparison
+                ) {
+
+            std::vector<int>& SA = *sa_;
+            std::string& seq = *seq_;
+
+            int m = std::distance(qb, qe);
+            size_t n = seq.length();
+
+            auto sb = seq.begin();
+            auto se = seq.end();
+
+            // If the bounds are already trivial, just figure how long
+            // of a prefix we share and return the interval.
+            if (ubIn - lbIn == 2) {
+                lbIn += 1;
+                auto i = startAt;
+                while (i < m and SA[lbIn] + i < n) {
+                    char queryChar = ::toupper(*(qb + i));
+                    // If we're reverse complementing
+                    if (complementBases) {
+                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                    }
+                    if ( queryChar < *(sb + SA[lbIn] + i) ) {
+                        break;
+                    } else if ( queryChar > *(sb + SA[lbIn] + i)) {
+                        break;
+                    }
+                    ++i;
+                }
+                return std::make_tuple(lbIn, ubIn, i);
+            }
+
+            BoundSearchResult res1, res2;
+
+            char smallest = '#';
+            char largest = '}';
+            char sentinel = smallest;
+
+            int l = lbIn, r = ubIn;
+            int lcpLP = startAt, lcpRP = startAt;
+            int c{0};
+            int i{0};
+
+            int maxI{startAt};
+            int prevI = startAt;
+            int prevILow = startAt;
+            int prevIHigh = startAt;
+            int validBoundLow = ubIn;
+            int validBoundHigh = lbIn;
+            int validBound = 0;
+            bool plt{true};
+            // Reduce the search interval until we hit a border
+            // i.e. until c == r - 1 or c == l + 1
+            while (true) {
+                c = (l + r) / 2;
+                plt = true;
+                i = std::min(lcpLP, lcpRP);
+                while (i < m and SA[c] + i < n) {
+                    char queryChar = ::toupper(*(qb + i));
+                    // If we're reverse complementing
+                    if (complementBases) {
+                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                    }
+
+                    if ( queryChar < *(sb + SA[c] + i) ) {
+                        if (i > prevIHigh) {
+                            prevIHigh = i;
+                            validBoundHigh = c;
+                        } else if (i == prevIHigh) {
+                            validBoundHigh = c < validBoundHigh ? c : validBoundHigh;
+                        }
+
+                        break;
+                    } else if ( queryChar > *(sb + SA[c] + i)) {
+                        if (i > prevILow) {
+                            prevILow = i;
+                            validBoundLow = c;
+                        } else if (i == prevILow) {
+                            validBoundLow = c > validBoundLow ? c : validBoundLow;
+                        }
+                        plt = false;
+                        break;
+                    }
+
+                    ++i;
+		}
+		if (i == m or SA[c] + i == n) {
+			if (i > prevIHigh) {
+				prevIHigh = i;
+				validBoundHigh = c;
+			} else if (i == prevIHigh) {
+				validBoundHigh = c < validBoundHigh ? c : validBoundHigh;
+			}
+		}
+
+                if (plt) {
+                    if (c == l + 1) {
+                        auto maxI = std::max(std::max(i, prevILow), prevIHigh);
+                        res1.maxLen = maxI;
+                        break;
+                    }
+                    r = c;
+                    lcpRP = i;
+                } else {
+                    if (c == r - 1) {
+                        maxI = std::max(std::max(i, prevILow), prevIHigh);
+			res1.maxLen = maxI;
+                        break;
+                    }
+                    l = c;
+                    lcpLP = i;
+                }
+            }
+
+            bool knownValid{true};
+            m = res1.maxLen + 1;
+
+	    // first search for the lower bound
+            sentinel = '#';
+	    l = lbIn;
+	    r = ubIn;
+
+            lcpLP = startAt;
+            lcpRP = startAt;
+            c = 0;
+            plt = true;
+            i = startAt;
+            while (true) {
+                c = (l + r) / 2;
+                plt = true;
+                i = std::min(lcpLP, lcpRP);
+                while (i < m and SA[c] + i < n) {
+                    char queryChar = (i < m - 1) ? ::toupper(*(qb + i)) : sentinel;
+                    // If we're reverse complementing
+                    if (queryChar != sentinel and complementBases) {
+                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                    }
+
+                    if ( queryChar < *(sb + SA[c] + i) ) {
+                     	break;
+                    } else if ( queryChar > *(sb + SA[c] + i)) {
+                        plt = false;
+                        break;
+                    }
+                    ++i;
+                }
+                if (plt) {
+                    if (c == l + 1) {
+                        res1.bound = c;
+                        break;
+                    }
+                    r = c;
+                    lcpRP = i;
+                } else {
+                    if (c == r - 1) {
+                        res1.bound = r;
+                        break;
+                    }
+                    l = c;
+                    lcpLP = i;
+                }
+            }
+
+	    // then search for the upper bound
+            sentinel = '{';
+	    l = res1.bound - 1;
+	    r = ubIn;
+
+            lcpLP = startAt;
+            lcpRP = startAt;
+            c = 0;
+            plt = true;
+            i = startAt;
+            while (true) {
+                c = (l + r) / 2;
+                plt = true;
+                i = std::min(lcpLP, lcpRP);
+                while (i < m and SA[c] + i < n) {
+                    char queryChar = (i < m - 1) ? ::toupper(*(qb + i)) : sentinel;
+                    // If we're reverse complementing
+                    if (queryChar != sentinel and complementBases) {
+                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                    }
+
+                    if ( queryChar < *(sb + SA[c] + i) ) {
+                     	break;
+                    } else if ( queryChar > *(sb + SA[c] + i)) {
+                        plt = false;
+                        break;
+                    }
+                    ++i;
+                }
+                if (plt) {
+                    if (c == l + 1) {
+                        res2.bound = c;
+                        break;
+                    }
+                    r = c;
+                    lcpRP = i;
+                } else {
+                    if (c == r - 1) {
+                        res2.bound = r;
+                        break;
+                    }
+                    l = c;
+                    lcpLP = i;
+                }
+            }
+
+            // Must occur at least once!
+            if (res1.bound == res2.bound) { res2.bound += 1; }
+            return std::make_tuple(res1.bound, res2.bound, res1.maxLen);
+        }
 
 
         // http://www.cs.jhu.edu/~langmea/resources/lecture_notes/suffix_arrays.pdf
@@ -464,22 +670,15 @@ class SASearcher {
                      bool verbose=false) {
             std::string& seq = *seq_;
             std::vector<int>& SA = *sa_;
-            size_t len{0};
+            size_t len{startAt};
             auto o1 = SA[p1] + startAt;
             auto o2 = SA[p2] + startAt;
             auto maxIndex = std::max(o1, o2);
-            //std::stringstream ext;
             while (maxIndex + len < textLen_ and seq[o1+len] == seq[o2+len]) {
                 if (seq[o1+len] == '$') { break; }
                 if (len >= stopAt) { break; }
-               // ext << seq[o1+len];
                 ++len;
             }
-            /*
-            if (verbose) {
-                std::cerr << "lce is " << ext.str() << "\n";
-            }
-            */
             return len;
         }
     private:
@@ -504,6 +703,7 @@ class SACollector {
         auto& txpStarts = rmi_->txpOffsets;
         auto& SA = rmi_->SA;
         auto& khash = rmi_->khash;
+        auto& text = rmi_->seq;
         auto salen = SA.size();
 
         auto readLen = read.length();
@@ -522,6 +722,7 @@ class SACollector {
         int lbRightFwd = 0, ubRightFwd = 0;
         int lbRightRC = 0, ubRightRC = 0;
         int matchedLen;
+
         bool leftFwdHit = false;
         bool leftRCHit = false;
         bool leftHit = false;
@@ -569,13 +770,32 @@ class SACollector {
                 int lb = merIt->second.begin;
                 int ub = merIt->second.end;
 
-
                 // lb must be 1 *less* then the current lb
                 auto lbRestart = std::max(static_cast<int>(0), lb-1);
                 // Extend the SA interval using the read sequence as far as
                 // possible
                 std::tie(lbLeftFwd, ubLeftFwd, matchedLen) =
-                    saSearcher.extendSearch(lbRestart, ub, k, rb, readEndIt);
+                    saSearcher.extendSearchNaive(lbRestart, ub, k, rb, readEndIt);
+                /*
+                   if (read.substr(pos, matchedLen) == text.substr(SA[lbLeftFwd - 1], matchedLen)) {
+                   std::cerr << "INTERVAL LOOKS WRONG!\n";
+                   std::cerr << "Start interval - 2 = " << text.substr(SA[lbLeftFwd - 2], matchedLen) << '\n';
+                   std::cerr << "Start interval - 1 = " << text.substr(SA[lbLeftFwd - 1], matchedLen) << '\n';
+                   std::cerr << "Interval start     = " << text.substr(SA[lbLeftFwd], matchedLen) << '\n';
+                   }
+
+                   if (read.substr(pos, matchedLen) == text.substr(SA[ubLeftFwd], matchedLen)) {
+                   std::cerr << "INTERVAL LOOKS WRONG!\n";
+                   std::cerr << "kmer                = " << mer << '\n';
+                   std::cerr << "read substring      = " << read.substr(pos, matchedLen) << '\n';
+                   std::cerr << "Before interval end = " << text.substr(SA[ubLeftFwd - 1], matchedLen) << '\n';
+                   std::cerr << "Interval end        = " << text.substr(SA[ubLeftFwd], matchedLen) << '\n';
+                   std::cerr << "Interval end + 1    = " << text.substr(SA[ubLeftFwd + 1], matchedLen) << '\n';
+                   std::exit(1);
+                   }
+                //matchedLen = k;
+                //lbLeftFwd = lb; ubLeftFwd = ub;
+                */
 
                 // If the SA interval is valid, and not too wide, then record
                 // the hit.
@@ -615,80 +835,82 @@ class SACollector {
         // If we had a hit on the forward strand
         if (leftFwdHit) {
 
+            // The length of this match
+            auto matchLen = fwdSAInts.front().len;
+            // The iterator to where this match began
+            rb = read.begin() + fwdSAInts.front().queryPos;
+
             // [lb, ub) is the suffix array interval for the MMP (maximum mappable prefix)
             // of the k-mer we found.  The NIP (next informative position) in the sequence
             // is the position after the LCE (longest common extension) of
             // T[SA[lb]:] and T[SA[ub-1]:]
-            auto lce = saSearcher.lce(lbLeftFwd, ubLeftFwd-1, k, read.length() - k);
+            auto remainingLength = std::distance(rb, readEndIt);
+            auto lce = saSearcher.lce(lbLeftFwd, ubLeftFwd-1, matchLen, remainingLength);
 
-            // If the longest common extension takes us off the end of the read, then
-            // just check the last k-mer (actually, we shouldn't bother with this if the MMP
-            // extends to within k bases of the end).
-            if (lce > read.length() - k) {
-                size_t pos{0};
-                auto invalidPos = read.length() - k - 1;
-                do {
-                    rb = read.begin() + invalidPos + 1;
+            size_t nextInformativePosition = std::min(
+                    std::max(0, static_cast<int>(readLen)- static_cast<int>(k)),
+                    static_cast<int>(std::distance(readStartIt, rb) + lce)
+                    );
+
+            rb = read.begin() + nextInformativePosition;
+            re = rb + k;
+
+            while (re <= readEndIt) {
+                // The offset into the string
+                auto pos = std::distance(readStartIt, rb);
+                //std::cerr << "readLen = " << readLen << ", lce = " << lce << "\n";
+                //std::cerr << "here; pos = " << pos << "\n";
+                // The position of the first N in the k-mer (if there is one)
+                auto invalidPos = read.find_first_of("nN", pos);
+
+                // If the first N is within k bases, then this k-mer is invalid
+                if (invalidPos < pos + k) {
+                    // A valid k-mer can't start until after the 'N'
+                    nextInformativePosition = invalidPos + 1;
+                    rb = read.begin() + nextInformativePosition;
                     re = rb + k;
-                    pos = std::distance(readStartIt, rb);
-                    invalidPos = read.find_first_of("nN", pos);
-                } while (invalidPos <= pos + k and re <= readEndIt);
-
-                if (re <= readEndIt) {
-                    mer = rapmap::utils::my_mer(read.c_str() + pos);
-                    auto merIt = khash.find(mer.get_bits(0, 2*k));
-
-                    if (merIt != khash.end()) {
-                        lbRightFwd = merIt->second.begin;
-                        ubRightFwd = merIt->second.end;
-                        // lb must be 1 *less* then the current lb
-                        lbRightFwd = std::max(0, lbRightFwd - 1);
-                        std::tie(lbRightFwd, ubRightFwd, matchedLen) =
-                            saSearcher.extendSearch(lbRightFwd, ubRightFwd,
-                                    k, rb, readEndIt);
-                        int diff = ubRightFwd - lbRightFwd;
-                        if (ubRightFwd > lbRightFwd and diff < maxInterval) {
-                            auto queryStart = std::distance(read.begin(), rb);
-                            fwdSAInts.emplace_back(lbRightFwd, ubRightFwd, matchedLen, queryStart, false);
-                            rightFwdHit = true;
-                        }
-                    }
-
+                    // Go to the next iteration of the while loop
+                    continue;
                 }
-            } else {
-                // If the LCE was shorter than the read, then the next position
-                // we should check starts k-1 bases before the end of the LCE.
-                size_t pos{0};
-                auto invalidPos = std::max(static_cast<int>(0),
-                        static_cast<int>(lce) - static_cast<int>(k));
-                do {
-                    // While the k-mer start here would be invalid,
-                    // jump to the next potential start location
-                    rb = read.begin() + invalidPos + 1;
-                    re = rb + k;
-                    pos = std::distance(readStartIt, rb);
-                    invalidPos = read.find_first_of("nN", pos);
-                } while (invalidPos <= pos + k and re <= readEndIt);
 
-                // If we found a valid k-mer start position
+                // If the current end position is valid
                 if (re <= readEndIt) {
-                    mer = rapmap::utils::my_mer(read.c_str() + pos);
 
+                    mer = rapmap::utils::my_mer(read.c_str() + pos);
                     auto merIt = khash.find(mer.get_bits(0, 2*k));
 
                     if (merIt != khash.end()) {
                         lbRightFwd = merIt->second.begin;
                         ubRightFwd = merIt->second.end;
+
                         // lb must be 1 *less* then the current lb
                         lbRightFwd = std::max(0, lbRightFwd - 1);
                         std::tie(lbRightFwd, ubRightFwd, matchedLen) =
-                            saSearcher.extendSearch(lbRightFwd, ubRightFwd, k, rb, readEndIt);
+                            saSearcher.extendSearchNaive(lbRightFwd, ubRightFwd,
+                                    k, rb, readEndIt);
+
                         int diff = ubRightFwd - lbRightFwd;
                         if (ubRightFwd > lbRightFwd and diff < maxInterval) {
                             auto queryStart = std::distance(read.begin(), rb);
                             fwdSAInts.emplace_back(lbRightFwd, ubRightFwd, matchedLen, queryStart, false);
                             rightFwdHit = true;
+                            break;
                         }
+
+                        rb += matchedLen;
+                        re = rb + k;
+
+                        if (re <= readEndIt) {
+                            rb -= matchedLen;
+                            auto remainingDistance = std::distance(rb, readEndIt);
+                            auto lce = saSearcher.lce(lbRightFwd, ubRightFwd-1, matchedLen, remainingDistance);
+                            rb += lce;
+                            re = rb + k;
+                        }
+
+                    } else {
+                        rb = re;
+                        re = rb + k;
                     }
                 }
             }
@@ -698,44 +920,54 @@ class SACollector {
             size_t pos{read.length() - k};
 
             auto revReadEndIt = read.rend();
-            size_t invalidPos{1};
+            size_t invalidPos{0};
 
             auto revRB = read.rbegin();
-            auto revRE = read.rend();
+            auto revRE = revRB + k;
 
-            do {
-                // While the k-mer start here would be invalid,
-                // jump to the next potential start location
-                revRB = read.rbegin() + invalidPos - 1;
+            while (revRE <= revReadEndIt){
+
                 revRE = revRB + k;
-                // Distance from the reverse-end (i.e. beginning) of the k-mer to
-                // the reverse-end (i.e. beginning) of the read.
-                pos = std::distance(revRE, revReadEndIt);
-                invalidPos = read.find_first_of("nN", pos);
-            } while (pos >= k and invalidPos <= pos + k);
+                if (revRE >= revReadEndIt) { break; }
 
-            if (pos >= k) {
+                // See if this k-mer would contain an N
+                auto invalidPosIt = std::find_if(revRB, revRE,
+                                                 [](const char c) -> bool {
+                                                     return c == 'n' or c == 'N';
+                                                 });
+                if (invalidPosIt < revRE) {
+                    revRB = invalidPosIt + 1;
+                    continue;
+                }
+
+                pos = std::distance(revRE, revReadEndIt);
+
                 mer = rapmap::utils::my_mer(read.c_str() + pos);
                 rcMer = mer.get_reverse_complement();
-
                 auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
 
                 if (rcMerIt != khash.end()) {
                     lbRightRC = rcMerIt->second.begin;
                     ubRightRC = rcMerIt->second.end;
+
                     // lb must be 1 *less* then the current lb
                     // We can't move any further in the reverse complement direction
                     lbRightRC = std::max(0, lbRightRC - 1);
-
                     std::tie(lbRightRC, ubRightRC, matchedLen) =
-                        saSearcher.extendSearch(lbRightRC, ubRightRC, k,
+                        saSearcher.extendSearchNaive(lbRightRC, ubRightRC, k,
                                 revRB, revRE, true);
+
+                    //matchedLen = k;
                     int diff = ubRightRC - lbRightRC;
                     if (ubRightRC > lbRightRC and diff < maxInterval) {
                         auto queryStart = std::distance(revRE + matchedLen, revReadEndIt);
                         rcSAInts.emplace_back(lbRightRC, ubRightRC, matchedLen, queryStart, true);
                         rightRCHit = true;
+                        break;
                     }
+                    revRB += matchedLen;
+                } else {
+                    revRB = revRE;
                 }
             }
         }
@@ -743,35 +975,36 @@ class SACollector {
         auto fwdHitsStart = hits.size();
         // If we had > 1 forward hit
         if (fwdSAInts.size() > 1) {
-            auto processedHits = rapmap::hit_manager::intersectSAHits(fwdSAInts, *rmi_);
-            rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, mateStatus);
+                auto processedHits = rapmap::hit_manager::intersectSAHits(fwdSAInts, *rmi_);
+                rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, mateStatus);
         } else if (fwdSAInts.size() == 1) { // only 1 hit!
-            auto& saIntervalHit = fwdSAInts.front();
-            auto initialSize = hits.size();
-            for (int i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
-                auto globalPos = SA[i];
-                auto txpID = posIDs[globalPos];
-                // the offset into this transcript
-                auto pos = globalPos - txpStarts[txpID];
-                hits.emplace_back(txpID, pos, true, readLen);
-            }
-            // Now sort by transcript ID (then position) and eliminate
-            // duplicates
-            auto sortStartIt = hits.begin() + initialSize;
-            auto sortEndIt = hits.end();
-            std::sort(sortStartIt, sortEndIt,
-                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                    if (a.tid == b.tid) {
-                    return a.pos < b.pos;
-                    } else {
-                    return a.tid < b.tid;
-                    }
-                    });
-            auto newEnd = std::unique(hits.begin() + initialSize, hits.end(),
-                    [] (const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                    return a.tid == b.tid;
-                    });
-            hits.resize(std::distance(hits.begin(), newEnd));
+                auto& saIntervalHit = fwdSAInts.front();
+                auto initialSize = hits.size();
+                for (int i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
+                        auto globalPos = SA[i];
+                        auto txpID = posIDs[globalPos];
+                        // the offset into this transcript
+                        auto pos = globalPos - txpStarts[txpID];
+                        hits.emplace_back(txpID, pos, true, readLen);
+                        hits.back().mateStatus = mateStatus;
+                }
+                // Now sort by transcript ID (then position) and eliminate
+                // duplicates
+                auto sortStartIt = hits.begin() + initialSize;
+                auto sortEndIt = hits.end();
+                std::sort(sortStartIt, sortEndIt,
+                                [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                                if (a.tid == b.tid) {
+                                return a.pos < b.pos;
+                                } else {
+                                return a.tid < b.tid;
+                                }
+                                });
+                auto newEnd = std::unique(hits.begin() + initialSize, hits.end(),
+                                [] (const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                                return a.tid == b.tid;
+                                });
+                hits.resize(std::distance(hits.begin(), newEnd));
         }
         auto fwdHitsEnd = hits.size();
 
@@ -788,7 +1021,8 @@ class SACollector {
                 auto txpID = posIDs[globalPos];
                 // the offset into this transcript
                 auto pos = globalPos - txpStarts[txpID];
-                hits.emplace_back(txpID, pos, true, readLen);
+                hits.emplace_back(txpID, pos, false, readLen);
+                hits.back().mateStatus = mateStatus;
             }
             // Now sort by transcript ID (then position) and eliminate
             // duplicates
@@ -826,92 +1060,6 @@ class SACollector {
         }
         // Return true if we had any valid hits and false otherwise.
         return (rcHitsEnd > fwdHitsStart);
-
-
-	/*
-        std::vector<uint32_t> jointTxps;
-        if (leftFwdHit and rightFwdHit) {
-            for (auto i = lbLeftFwd; i < ubLeftFwd; ++i) {
-                size_t txpNum = posIDs[SA[i]];
-                leftTxps.push_back(txpNum);
-            }
-            std::sort(leftTxps.begin(), leftTxps.end());
-            auto newEnd = std::unique(leftTxps.begin(), leftTxps.end());
-            leftTxps.resize(std::distance(leftTxps.begin(), newEnd));
-
-            for (auto i = lbRightFwd; i < ubRightFwd; ++i) {
-                size_t txpNum = posIDs[SA[i]];
-                rightTxps.push_back(txpNum);
-            }
-            std::sort(rightTxps.begin(), rightTxps.end());
-            newEnd = std::unique(rightTxps.begin(), rightTxps.end());
-            rightTxps.resize(std::distance(rightTxps.begin(), newEnd));
-
-            std::set_intersection(leftTxps.begin(), leftTxps.end(),
-                    rightTxps.begin(), rightTxps.end(),
-                    std::back_inserter(jointTxps));
-        } else if (leftFwdHit) {
-		for (auto i = lbLeftFwd; i < ubLeftFwd; ++i) {
-			size_t txpNum = posIDs[SA[i]];
-			leftTxps.push_back(txpNum);
-		}
-		std::sort(leftTxps.begin(), leftTxps.end());
-		auto newEnd = std::unique(leftTxps.begin(), leftTxps.end());
-		leftTxps.resize(std::distance(leftTxps.begin(), newEnd));
-		jointTxps = std::move(leftTxps);
-	} else if (rightFwdHit) {
-		for (auto i = lbRightFwd; i < ubRightFwd; ++i) {
-			size_t txpNum = posIDs[SA[i]];
-			rightTxps.push_back(txpNum);
-		}
-		std::sort(rightTxps.begin(), rightTxps.end());
-		auto newEnd = std::unique(rightTxps.begin(), rightTxps.end());
-		rightTxps.resize(std::distance(rightTxps.begin(), newEnd));
-		jointTxps = std::move(rightTxps);
-	}
-
-        if (leftRCHit and rightRCHit) {
-            for (auto i = lbLeftRC; i < ubLeftRC; ++i) {
-                size_t txpNum = posIDs[SA[i]];
-                leftTxpsRC.push_back(txpNum);
-            }
-            std::sort(leftTxpsRC.begin(), leftTxpsRC.end());
-            auto newEnd = std::unique(leftTxpsRC.begin(), leftTxpsRC.end());
-            leftTxpsRC.resize(std::distance(leftTxpsRC.begin(), newEnd));
-
-            for (auto i = lbRightRC; i < ubRightRC; ++i) {
-                size_t txpNum = posIDs[SA[i]];
-                rightTxpsRC.push_back(txpNum);
-            }
-            std::sort(rightTxpsRC.begin(), rightTxpsRC.end());
-            newEnd = std::unique(rightTxpsRC.begin(), rightTxpsRC.end());
-            rightTxpsRC.resize(std::distance(rightTxpsRC.begin(), newEnd));
-
-            std::set_intersection(leftTxpsRC.begin(), leftTxpsRC.end(),
-                    rightTxpsRC.begin(), rightTxpsRC.end(),
-                    std::back_inserter(jointTxps));
-        } else if (leftRCHit) {
-		for (auto i = lbLeftRC; i < ubLeftRC; ++i) {
-			size_t txpNum = posIDs[SA[i]];
-			leftTxpsRC.push_back(txpNum);
-		}
-		std::sort(leftTxpsRC.begin(), leftTxpsRC.end());
-		auto newEnd = std::unique(leftTxpsRC.begin(), leftTxpsRC.end());
-		leftTxpsRC.resize(std::distance(leftTxpsRC.begin(), newEnd));
-		jointTxps .insert(jointTxps.end(), leftTxpsRC.begin(), leftTxpsRC.end());
-	} else if (rightRCHit) {
-		for (auto i = lbRightRC; i < ubRightRC; ++i) {
-			size_t txpNum = posIDs[SA[i]];
-			rightTxpsRC.push_back(txpNum);
-		}
-		std::sort(rightTxpsRC.begin(), rightTxpsRC.end());
-		auto newEnd = std::unique(rightTxpsRC.begin(), rightTxpsRC.end());
-		rightTxpsRC.resize(std::distance(rightTxpsRC.begin(), newEnd));
-		jointTxps.insert(jointTxps.end(), rightTxpsRC.begin(), rightTxpsRC.end());
-	}
-	
-        return jointTxps.size() > 0;
-	*/
     }
 
     private:
@@ -988,97 +1136,83 @@ void processReadsPairSA(paired_parser* parser,
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
-            //std::string query(j->data[i].first.seq.substr(0,31));
-            //std::tie(lb, ub) = saSearcher.query(query);
-            //query = j->data[i].second.seq.substr(0,31);
-            //std::tie(lb, ub) = saSearcher.query(query);
-    	    bool lh = hitCollector(j->data[i].first.seq,
+
+            bool lh = hitCollector(j->data[i].first.seq,
                         leftHits, saSearcher,
                         MateStatus::PAIRED_END_LEFT, diffCount);
             bool rh = hitCollector(j->data[i].second.seq,
                         rightHits, saSearcher,
                         MateStatus::PAIRED_END_RIGHT, diffCount);
-            /*
-	    bool peHit = (lh and rh);
-	    if (peHit) {
-	    	hctr.peHits += 1;
-	    } else if (lh or rh) {
-		std::cerr << "WHAT?!\n";
-		hctr.seHits += 1;
+	    if (leftHits.size() > 0) {
+		    auto leftIt = leftHits.begin();
+		    auto leftEnd = leftHits.end();
+		    auto leftLen = std::distance(leftIt, leftEnd);
+		    if (rightHits.size() > 0) {
+			    auto rightIt = rightHits.begin();
+			    auto rightEnd = rightHits.end();
+			    auto rightLen = std::distance(rightIt, rightEnd);
+			    size_t numHits{0};
+			    jointHits.reserve(std::min(leftLen, rightLen));
+			    uint32_t leftTxp, rightTxp;
+			    while (leftIt != leftEnd && rightIt != rightEnd) {
+				    // The left and right transcipt ids
+				    leftTxp = leftIt->tid;
+				    rightTxp = rightIt->tid;
+
+				    // They don't point to the same transcript
+				    if (leftTxp < rightTxp) {
+					    ++leftIt;
+				    } else {
+
+					    // The left and right iterators point to the same transcript
+					    if (!(rightTxp < leftTxp)) {
+						    int32_t startRead1 = leftIt->pos;
+						    int32_t startRead2 = rightIt->pos;
+						    int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
+						    int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
+						    uint32_t fragLen = fragEndPos - fragStartPos;
+						    jointHits.emplace_back(leftTxp,
+								    startRead1,
+								    leftIt->fwd,
+								    leftIt->readLen,
+								    fragLen, true);
+						    // Fill in the mate info
+						    auto& qaln = jointHits.back();
+						    qaln.mateLen = rightIt->readLen;
+						    qaln.matePos = startRead2;
+						    qaln.mateIsFwd = rightIt->fwd;
+						    jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
+						    ++numHits;
+						    if (numHits > maxNumHits) { tooManyHits = true; break; }
+						    ++leftIt;
+					    }
+					    ++rightIt;
+				    }
+			    }
+		    }
+		    if (tooManyHits) { jointHits.clear(); ++hctr.tooManyHits; }
 	    }
-        */
-            /* 
-            hitCollector(j->data[i].second.seq,
-                        rightHits, MateStatus::PAIRED_END_RIGHT, diffCount);
 
-            */
-
-            if (leftHits.size() > 0) {
-                auto leftIt = leftHits.begin();
-                auto leftEnd = leftHits.end();
-                auto leftLen = std::distance(leftIt, leftEnd);
-                if (rightHits.size() > 0) {
-                    auto rightIt = rightHits.begin();
-                    auto rightEnd = rightHits.end();
-                    auto rightLen = std::distance(rightIt, rightEnd);
-                    size_t numHits{0};
-                    jointHits.reserve(std::min(leftLen, rightLen));
-					uint32_t leftTxp, rightTxp;
-                    while (leftIt != leftEnd && rightIt != rightEnd) {
-                        leftTxp = leftIt->tid;
-                        rightTxp = rightIt->tid;
-                        if (leftTxp < rightTxp) {
-                            ++leftIt;
-                        } else {
-                            if (!(rightTxp < leftTxp)) {
-                                int32_t startRead1 = leftIt->pos;
-                                int32_t startRead2 = rightIt->pos;
-                                int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
-                                int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
-                                uint32_t fragLen = fragEndPos - fragStartPos;
-                                jointHits.emplace_back(leftTxp,
-                                                       startRead1,
-                                                       leftIt->fwd,
-                                                       leftIt->readLen,
-                                                       fragLen, true);
-                                // Fill in the mate info
-                                auto& qaln = jointHits.back();
-                                qaln.mateLen = rightIt->readLen;
-                                qaln.matePos = startRead2;
-                                qaln.mateIsFwd = rightIt->fwd;
-                                jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
-
-                                ++numHits;
-                                if (numHits > maxNumHits) { tooManyHits = true; break; }
-                                ++leftIt;
-                            }
-                            ++rightIt;
-                        }
-                    }
-                }
-				if (tooManyHits) { jointHits.clear(); ++hctr.tooManyHits; }
-            }
-
-			// If we had proper paired hits
-            if (jointHits.size() > 0) {
-                hctr.peHits += jointHits.size();
-                orphanStatus = 0;
-            } else if (leftHits.size() + rightHits.size() > 0 and !tooManyHits) {
+	    // If we had proper paired hits
+	    if (jointHits.size() > 0) {
+		    hctr.peHits += jointHits.size();
+		    orphanStatus = 0;
+	    } else if (leftHits.size() + rightHits.size() > 0 and !tooManyHits) {
 		    // If there weren't proper paired hits, then either
-			// there were too many hits, and we forcibly discarded the read
-			// or we take the single end hits.
-					auto numHits = leftHits.size() + rightHits.size();
-					hctr.seHits += numHits;
-					orphanStatus = 0;
-					orphanStatus |= (leftHits.size() > 0) ? 0x1 : 0;
-					orphanStatus |= (rightHits.size() > 0) ? 0x2 : 0;
-					jointHits.insert(jointHits.end(),
-									std::make_move_iterator(leftHits.begin()),
-									std::make_move_iterator(leftHits.end()));
-					jointHits.insert(jointHits.end(),
-									std::make_move_iterator(rightHits.begin()),
-									std::make_move_iterator(rightHits.end()));
-			}
+		    // there were too many hits, and we forcibly discarded the read
+		    // or we take the single end hits.
+		    auto numHits = leftHits.size() + rightHits.size();
+		    hctr.seHits += numHits;
+		    orphanStatus = 0;
+		    orphanStatus |= (leftHits.size() > 0) ? 0x1 : 0;
+		    orphanStatus |= (rightHits.size() > 0) ? 0x2 : 0;
+		    jointHits.insert(jointHits.end(),
+				    std::make_move_iterator(leftHits.begin()),
+				    std::make_move_iterator(leftHits.end()));
+		    jointHits.insert(jointHits.end(),
+				    std::make_move_iterator(rightHits.begin()),
+				    std::make_move_iterator(rightHits.end()));
+	    }
 
             if (jointHits.size() > 0 and !noOutput) {
                 auto& readName = j->data[i].first.header;
@@ -1271,22 +1405,14 @@ void processReadsPairSA(paired_parser* parser,
 		hctr.lastPrint.store(hctr.numReads.load());
                 if (iomutex->try_lock()) {
                     if (hctr.numReads > 0) {
-#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
-                        std::cerr << "\033[F\033[F\033[F\033[F";
-#else
-                        std::cerr << "\033[F\033[F\033[F";
-#endif // __DEBUG__
+                        std::cerr << "\r\r";
                     }
-                    std::cerr << "saw " << hctr.numReads << " reads (diffCount = " << diffCount << ")\n";
-                    std::cerr << "# pe hits per read = "
-                        << hctr.peHits / static_cast<float>(hctr.numReads) << "\n";
-                    std::cerr << "# se hits per read = "
-                        << hctr.seHits / static_cast<float>(hctr.numReads) << "\n";
-//#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
-                    std::cerr << "The true hit was in the returned set of hits "
-                        << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
-                        <<  "% of the time\n";
-//#endif // __DEBUG__
+                    std::cerr << "saw " << hctr.numReads << " reads (diffCount = " << diffCount << ") : "
+                              << "pe / read = " << hctr.peHits / static_cast<float>(hctr.numReads)
+                              << " : se / read = " << hctr.seHits / static_cast<float>(hctr.numReads) << ' ';
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
+                    std::cerr << ": true hit \% = " << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads));
+#endif // __DEBUG__
                     iomutex->unlock();
                 }
             }
