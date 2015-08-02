@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
         return rapMapMap(argc - 1, args.data());
     } else if (std::string(argv[1]) == "saindex") {
         return rapMapSAIndex(argc - 1, args.data());
-    } else if (std::string(argv[1]) == "query") {
+    } else if (std::string(argv[1]) == "samap") {
         return rapMapSAMap(argc - 1, args.data());
     } else {
         std::cerr << "the command " << argv[1]
