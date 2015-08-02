@@ -1186,21 +1186,7 @@ void processReadsPair(paired_parser* parser,
 
 }
 
-void writeSAMHeader(RapMapIndex& rmi, std::ostream& outStream) {
-    fmt::MemoryWriter hd;
-    hd.write("@HD\tVN:0.1\tSO:unknown\n");
 
-    auto& txpNames = rmi.txpNames;
-    auto& txpLens = rmi.txpLens;
-
-    auto numRef = txpNames.size();
-    for (size_t i = 0; i < numRef; ++i) {
-        hd.write("@SQ\tSN:{}\tLN:{:d}\n", txpNames[i], txpLens[i]);
-    }
-    // Eventuall output a @PG line
-    //hd.format("@PG\t");
-    outStream << hd.str();
-}
 
 int rapMapMap(int argc, char* argv[]) {
     std::cerr << "RapMap Mapper\n";
@@ -1295,7 +1281,7 @@ int rapMapMap(int argc, char* argv[]) {
 	std::unique_ptr<single_parser> singleParserPtr{nullptr};
 
 	if (!noout.getValue()) {
-	    writeSAMHeader(rmi, outStream);
+        rapmap::utils::writeSAMHeader(rmi, outStream);
 	}
 
 	SpinLockT iomutex;

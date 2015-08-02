@@ -9,6 +9,7 @@
 #include "spdlog/spdlog.h"
 #include "spdlog/details/format.h"
 //#include "RSDic.hpp"
+#include "google/dense_hash_map"
 
 #include <vector>
 
@@ -29,13 +30,18 @@ class RapMapSAIndex {
             }
             saStream.close();
 
+            khash.set_empty_key(std::numeric_limits<uint64_t>::max());
             uint32_t k;
             std::ifstream hashStream(indDir + "hash.bin");
             {
                 logger->info("Loading Position Hash");
                 cereal::BinaryInputArchive hashArchive(hashStream);
                 hashArchive(k);
-                hashArchive(khash);
+                khash.unserialize(google::dense_hash_map<uint64_t,
+                        rapmap::utils::SAInterval,
+                        rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
+
+                //hashArchive(khash);
             }
             hashStream.close();
             rapmap::utils::my_mer::k(k);
@@ -50,8 +56,8 @@ class RapMapSAIndex {
                 seqArchive(seq);
             }
             seqStream.close();
-           
-            { 
+
+            {
                 logger->info("Computing transcript lengths");
                 txpLens.resize(txpOffsets.size());
                 if (txpOffsets.size() > 1) {
@@ -76,8 +82,14 @@ class RapMapSAIndex {
     std::vector<uint32_t> txpOffsets;
     std::vector<uint32_t> txpLens;
     std::vector<uint32_t> positionIDs;
+    google::dense_hash_map<uint64_t,
+                        rapmap::utils::SAInterval,
+                        rapmap::utils::KmerKeyHasher> khash;
+                       // ::NopointerSerializer(), &hashStream);
+        /*
     std::unordered_map<uint64_t,
                        rapmap::utils::SAInterval,
                        rapmap::utils::KmerKeyHasher> khash;
+                       */
 };
 #endif //__RAPMAP_SA_INDEX_HPP__

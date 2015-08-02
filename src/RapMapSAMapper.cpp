@@ -54,7 +54,7 @@
 #include "ScopedTimer.hpp"
 #include "SpinLock.hpp"
 
-//#define __TRACK_CORRECT__
+#define __TRACK_CORRECT__
 
 using paired_parser = pair_sequence_parser<char**>;
 using stream_manager = jellyfish::stream_manager<std::vector<std::string>::const_iterator>;
@@ -1076,6 +1076,122 @@ void processReadsSingleSA(single_parser * parser,
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput) {
+
+    auto& txpNames = rmi.txpNames;
+    std::vector<uint32_t>& txpOffsets = rmi.txpOffsets;
+    auto& txpLens = rmi.txpLens;
+    uint32_t n{0};
+    //uint32_t k = rapmap::utils::my_mer::k();
+    constexpr char bases[] = {'A', 'C', 'G', 'T'};
+
+    auto logger = spdlog::get("stderrLog");
+
+    fmt::MemoryWriter sstream;
+    size_t batchSize{1000};
+    std::vector<QuasiAlignment> hits;
+
+    size_t readLen{0};
+	bool tooManyHits{false};
+    uint16_t flags;
+    // 1000-bp reads are max here (get rid of hard limit later).
+    std::string readTemp(1000, 'A');
+    std::string qualTemp(1000, '~');
+
+    char buff1[1000];
+    FixedWriter cigarStr(buff1, 1000);
+
+    SASearcher saSearcher(&rmi);
+
+    // 0 means properly aligned
+    // 0x1 means only alignments for left read
+    // 0x2 means only alignments for right read
+    // 0x3 means "orphaned" alignments for left and right
+    // (currently not treated as orphan).
+    std::atomic<uint64_t> diffCount{0};
+    uint32_t orphanStatus{0};
+    while(true) {
+        typename single_parser::job j(*parser); // Get a job from the parser: a bunch of read (at most max_read_group)
+        if(j.is_empty()) break;           // If got nothing, quit
+        for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
+            readLen = j->data[i].seq.length();
+            ++hctr.numReads;
+            hits.clear();
+            hitCollector(j->data[i].seq, hits, saSearcher, MateStatus::SINGLE_END, diffCount);
+            auto numHits = hits.size();
+            hctr.totHits += numHits;
+
+            if (hits.size() > 0 and hits.size() < maxNumHits) {
+                auto& readName = j->data[i].header;
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
+                auto before = readName.find_first_of(':');
+                before = readName.find_first_of(':', before+1);
+                auto after = readName.find_first_of(':', before+1);
+                const auto& txpName = readName.substr(before+1, after-before-1);
+#endif //__DEBUG__
+                uint32_t alnCtr{0};
+                for (auto& qa : hits) {
+                    auto& transcriptName = txpNames[qa.tid];
+                    // === SAM
+                    rapmap::utils::getSamFlags(qa, flags);
+                    if (alnCtr != 0) {
+                        flags |= 0x900;
+                    }
+
+                    std::string* readSeq = &(j->data[i].seq);
+                    std::string* qstr = &(j->data[i].qual);
+                    rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], cigarStr);
+
+                    sstream << readName << '\t' // QNAME
+                        << flags << '\t' // FLAGS
+                        << transcriptName << '\t' // RNAME
+                        << qa.pos + 1 << '\t' // POS (1-based)
+                        << 255 << '\t' // MAPQ
+                        << cigarStr.c_str() << '\t' // CIGAR
+                        << '*' << '\t' // MATE NAME
+                        << 0 << '\t' // MATE POS
+                        << qa.fragLen << '\t' // TLEN
+                        << *readSeq << '\t' // SEQ
+                        << *qstr << '\n';
+                    ++alnCtr;
+                    // === SAM
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
+                    if (txpNames[qa.tid] == txpName) { ++hctr.trueHits; }
+#endif //__DEBUG__
+                }
+            }
+
+            if (hctr.numReads > hctr.lastPrint + 1000000) {
+		hctr.lastPrint.store(hctr.numReads.load());
+                if (iomutex->try_lock()){
+                    if (hctr.numReads > 0) {
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
+                        std::cerr << "\033[F\033[F\033[F";
+#else
+                        std::cerr << "\033[F\033[F";
+#endif // __DEBUG__
+                    }
+                    std::cerr << "saw " << hctr.numReads << " reads\n";
+                    std::cerr << "# hits per read = "
+                        << hctr.totHits / static_cast<float>(hctr.numReads) << "\n";
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
+                    std::cerr << "The true hit was in the returned set of hits "
+                        << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
+                        <<  "% of the time\n";
+#endif // __DEBUG__
+                    iomutex->unlock();
+                }
+            }
+        } // for all reads in this job
+
+        // DUMP OUTPUT
+        iomutex->lock();
+        outStream << sstream.str();
+        iomutex->unlock();
+        sstream.clear();
+
+    } // processed all reads
+
+
 }
 
 template <typename CollectorT, typename MutexT>
@@ -1125,7 +1241,6 @@ void processReadsPairSA(paired_parser* parser,
     // (currently not treated as orphan).
     std::atomic<uint64_t> diffCount{0};
     uint32_t orphanStatus{0};
-    size_t lb, ub;
     while(true) {
         typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of read (at most max_read_group)
         if(j.is_empty()) break;           // If got nothing, quit
@@ -1411,7 +1526,8 @@ void processReadsPairSA(paired_parser* parser,
                               << "pe / read = " << hctr.peHits / static_cast<float>(hctr.numReads)
                               << " : se / read = " << hctr.seHits / static_cast<float>(hctr.numReads) << ' ';
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
-                    std::cerr << ": true hit \% = " << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads));
+                    std::cerr << ": true hit \% = "
+                        << (100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads)));
 #endif // __DEBUG__
                     iomutex->unlock();
                 }
@@ -1429,78 +1545,6 @@ void processReadsPairSA(paired_parser* parser,
     } // processed all reads
 
 }
-
-/*
-int SAQuery(int argc, char* argv[]) {
-    std::string indDir(argv[1]);
-
-    std::vector<int> SA;
-    std::vector<int> LCP;
-    size_t n{0};
-    std::ifstream saStream(indDir + "/sa.bin");
-    {
-        cereal::BinaryInputArchive saArchive(saStream);
-        saArchive(SA);
-        saArchive(LCP);
-    }
-    saStream.close();
-
-    std::ifstream seqStream(indDir + "/txpInfo.bin");
-    std::vector<std::string> txpNames;
-    std::vector<uint32_t> txpOffsets;
-    std::string seq;
-    {
-        cereal::BinaryInputArchive seqArchive(seqStream);
-        seqArchive(txpNames);
-        seqArchive(txpOffsets);
-        seqArchive(seq);
-    }
-    seqStream.close();
-
-    std::ifstream rsdStream(indDir + "/rsd.bin");
-    rsdic::RSDic rsd;
-    {
-        rsd.Load(rsdStream);
-    }
-    rsdStream.close();
-
-
-    SASearcher saSearcher(seq, SA);
-
-    std::cerr << "Ready to search: \n";
-    std::string query;
-    size_t lb, ub;
-    //std::vector inds;
-    while (std::getline(std::cin, query)) {
-        if (query == "quit") {
-            std::cerr << "exiting\n";
-            std::exit(0);
-        }
-        auto ql = query.length();
-        //inds.resize(ql);
-        //inds = std::iota(inds.begin(), inds.begin()+ql, 0);
-        //sacomp.setQuery(query);
-        std::tie(lb, ub) = saSearcher.query(query);
-        //auto lb = std::lower_bound(SA.begin(), SA.end(), query);
-        //auto ub = std::upper_bound(SA.begin(), SA.end(), query);
-        std::cerr << "query in = [" << lb << ", " << ub << ")\n";
-        if (ub - lb > 1) {
-            std::cerr << "LCE = " << saSearcher.lce(lb, ub-1, true) << "\n";
-        }
-        for (auto i = lb; i < ub; ++i) {
-            size_t txpNum = rsd.Rank(SA[i], 1);
-            if (txpNum > 0) { txpNum -= 1; }
-            std::cerr << "txpNum = " << txpNum << "\n";
-            std::cerr << "offset[" << txpNum << "] = " << txpOffsets[txpNum] << "\n";
-            std::cerr << "SA[" << i << "] = " << SA[i] << "\n";
-            size_t pos = SA[i] - txpOffsets[txpNum];
-            std::cerr << "txp = " << txpNames[txpNum]
-                      << ", pos = " << pos << "\n";
-        }
-    }
-    return 0;
-}
-*/
 
 int rapMapSAMap(int argc, char* argv[]) {
     std::cerr << "RapMap Mapper (SA-based)\n";
@@ -1594,11 +1638,11 @@ int rapMapSAMap(int argc, char* argv[]) {
 	std::unique_ptr<paired_parser> pairParserPtr{nullptr};
 	std::unique_ptr<single_parser> singleParserPtr{nullptr};
 
-    /*
+
 	if (!noout.getValue()) {
-	    writeSAMHeader(rmi, outStream);
+        rapmap::utils::writeSAMHeader(rmi, outStream);
 	}
-    */
+
 
 	SpinLockT iomutex;
 	{

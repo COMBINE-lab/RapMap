@@ -31,6 +31,23 @@ namespace rapmap {
     // in the forward or RC direction.
     void decodePosition(uint32_t p, uint32_t& pout, bool& newTxp, bool& isRC);
 
+    template <typename IndexT>
+        void writeSAMHeader(IndexT& rmi, std::ostream& outStream) {
+            fmt::MemoryWriter hd;
+            hd.write("@HD\tVN:0.1\tSO:unknown\n");
+
+            auto& txpNames = rmi.txpNames;
+            auto& txpLens = rmi.txpLens;
+
+            auto numRef = txpNames.size();
+            for (size_t i = 0; i < numRef; ++i) {
+                hd.write("@SQ\tSN:{}\tLN:{:d}\n", txpNames[i], txpLens[i]);
+            }
+            // Eventuall output a @PG line
+            //hd.format("@PG\t");
+            outStream << hd.str();
+        }
+
     // from http://stackoverflow.com/questions/9435385/split-a-string-using-c11
     std::vector<std::string> tokenize(const std::string &s, char delim);
 
@@ -256,16 +273,17 @@ namespace rapmap {
     };
 
     struct ProcessedSAHit {
-	    ProcessedSAHit() : tid(std::numeric_limits<uint32_t>::max()) {}
+	    ProcessedSAHit() : tid(std::numeric_limits<uint32_t>::max()), active(false) {}
 
 	    ProcessedSAHit(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t queryPosIn, bool queryRCIn) :
-		    tid(txpIDIn)
+		    tid(txpIDIn), active(false)
 	    {
 		tqvec.emplace_back(txpPosIn, queryPosIn, queryRCIn);
 	    }
 
 	    uint32_t tid;
 	    std::vector<SATxpQueryPos> tqvec;
+        bool active;
     };
 
     struct SAHitInfo {

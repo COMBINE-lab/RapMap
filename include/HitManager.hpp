@@ -21,7 +21,8 @@ namespace rapmap {
         using SATxpQueryPos = rapmap::utils::SATxpQueryPos;
         using SAIntervalHit = rapmap::utils::SAIntervalHit;
         using SAHitMap = std::map<int, std::vector<SATxpQueryPos>>;
-
+        using ProcessedSAHit = rapmap::utils::ProcessedSAHit;
+        using SAProcessedHitVec = std::vector<ProcessedSAHit>;
         // Return hits from processedHits where position constraints
         // match maxDist
         bool collectHitsSimple(std::vector<ProcessedHit>& processedHits,
@@ -38,6 +39,15 @@ namespace rapmap {
                 std::vector<QuasiAlignment>& hits,
                 MateStatus mateStatus);
 
+        // Return hits from processedHits where position constraints
+        // match maxDist
+        bool collectHitsSimpleSA2(SAProcessedHitVec& processedHits,
+                uint32_t readLen,
+                uint32_t maxDist,
+                std::vector<QuasiAlignment>& hits,
+                MateStatus mateStatus);
+
+
         // Intersects the hit h2 with outHits.
         // This will modify outHits so that the tqvec field of the
         // entries in outHits that are labeled by the transcripts in
@@ -50,11 +60,18 @@ namespace rapmap {
                 RapMapSAIndex& rmi,
                 SAHitMap& outHits);
 
+        void intersectSAIntervalWithOutput2(SAIntervalHit& h,
+                RapMapSAIndex& rmi,
+                SAProcessedHitVec& outHits);
+
         std::vector<ProcessedHit> intersectHits(
                 std::vector<HitInfo>& inHits,
                 RapMapIndex& rmi);
 
         SAHitMap intersectSAHits(
+                std::vector<SAIntervalHit>& inHits,
+                RapMapSAIndex& rmi);
+        SAProcessedHitVec intersectSAHits2(
                 std::vector<SAIntervalHit>& inHits,
                 RapMapSAIndex& rmi);
     }

@@ -70,6 +70,39 @@ namespace rapmap {
         }
 
 
+        // Return hits from processedHits where position constraints
+        // match maxDist
+        bool collectHitsSimpleSA2(SAProcessedHitVec& processedHits,
+                        uint32_t readLen,
+                        uint32_t maxDist,
+                        std::vector<QuasiAlignment>& hits,
+                        MateStatus mateStatus){
+                bool foundHit{false};
+                // One processed hit per transcript
+                for (auto& ph : processedHits) {
+                        // If this is an *active* position list
+                        if (ph.active) {
+                                auto tid = ph.tid;
+                                auto minPosIt =
+                                    std::min_element(ph.tqvec.begin(),
+                                                     ph.tqvec.end(),
+                                                     [](const SATxpQueryPos& a, const SATxpQueryPos& b) -> bool {
+                                                        return a.pos < b.pos;
+                                                        });
+
+                                bool hitRC = minPosIt->queryRC;
+                                int32_t hitPos = minPosIt->pos - minPosIt->queryPos;
+                                bool isFwd = !hitRC;
+                                hits.emplace_back(tid, hitPos, isFwd, readLen);
+                                hits.back().mateStatus = mateStatus;
+                        }
+                }
+                return true;
+        }
+
+
+
+
         // Intersects the hit h2 with outHits.
         // This will modify outHits so that the tqvec field of the
         // entries in outHits that are labeled by the transcripts in
@@ -131,6 +164,61 @@ namespace rapmap {
             }
 
         }
+
+        void intersectSAIntervalWithOutput2(SAIntervalHit& h,
+                RapMapSAIndex& rmi,
+                SAProcessedHitVec& outHits) {
+            // Convenient bindings for variables we'll use
+            auto& SA = rmi.SA;
+            auto& txpIDs = rmi.positionIDs;
+            auto& txpStarts = rmi.txpOffsets;
+
+            // Iterator to the beginning and end of the output hits
+            auto outHitIt = outHits.begin();
+            auto outHitEnd = outHits.end();
+
+            // Make a vector of iterators into the right interval
+            std::vector<int*> rightHitIterators;
+            rightHitIterators.reserve(h.span());
+            for (auto i = h.begin; i < h.end; ++i) {
+                rightHitIterators.emplace_back(&SA[i]);
+            }
+            // Sort the iterators by their transcript ID
+            std::sort(rightHitIterators.begin(), rightHitIterators.end(),
+                    [&txpIDs](const int* a, const int* b) -> bool {
+                    return txpIDs[*a] < txpIDs[*b];
+                    });
+            auto rightIntHit = rightHitIterators.begin();
+            auto rightIntHitEnd = rightHitIterators.end();
+
+            uint32_t leftTxp, rightTxp;
+            uint32_t pos;
+            while (outHitIt != outHitEnd and rightIntHit != rightIntHitEnd) {
+                // Get the current transcript ID for the left and right eq class
+                leftTxp = outHitIt->tid;
+                rightTxp = txpIDs[(*(*rightIntHit))];
+                // If we need to advance the left txp, do it
+                if (leftTxp < rightTxp) {
+                    // Advance to the next transcript in the
+                    // equivalence class label
+                    ++outHitIt;
+                } else {
+                    // If the transcripts are equal (i.e. leftTxp >= rightTxp and !(rightTxp < leftTxp))
+                    // Then see if there are any hits here.
+                    if (!(rightTxp < leftTxp)) {
+                        // Add the position list iterator and query pos for the
+                        // hit from h2 to the back of outHits' tqvec.
+                        pos = static_cast<uint32_t>(*(*rightIntHit)) - txpStarts[rightTxp];
+                        outHitIt->tqvec.emplace_back(pos, h.queryPos, h.queryRC);
+                        //++outHitIt;
+                    }
+                    ++rightIntHit;
+                }
+            }
+        }
+
+
+
 
         void intersectSAIntervalWithOutput(SAIntervalHit& h,
                         RapMapSAIndex& rmi,
@@ -262,6 +350,81 @@ namespace rapmap {
             return outHits;
         }
 
+        SAProcessedHitVec intersectSAHits2(
+                std::vector<SAIntervalHit>& inHits,
+                RapMapSAIndex& rmi
+                ) {
+
+            // Each inHit is a SAIntervalHit structure that contains
+            // an SA interval with all hits for a particuar query location
+            // on the read.
+            //
+            // We want to find the transcripts that appear in *every*
+            // interavl.  Further, for each transcript, we want to
+            // know the positions within this txp.
+
+            // Check this --- we should never call this function
+            // with less than 2 hits.
+            SAProcessedHitVec outHits;
+            if (inHits.size() < 2) {
+                std::cerr << "intersectHitsSA() called with < 2 k-mer "
+                    " hits; this shouldn't happen\n";
+                return outHits;
+            }
+
+            auto& SA = rmi.SA;
+            auto& txpStarts = rmi.txpOffsets;
+            auto& txpIDs = rmi.positionIDs;
+
+            // Start with the smallest interval
+            // i.e. interval with the fewest hits.
+            SAIntervalHit* minHit = &inHits[0];
+            for (auto& h : inHits) {
+                if (h.span() < minHit->span()) {
+                    minHit = &h;
+                }
+            }
+
+            outHits.reserve(minHit->span());
+            std::map<int, uint32_t> posMap;
+            // =========
+            { // Add the info from minHit to outHits
+                for (int i = minHit->begin; i < minHit->end; ++i) {
+                    auto globalPos = SA[i];
+                    auto tid = txpIDs[globalPos];
+                    auto txpPos = globalPos - txpStarts[tid];
+                    auto posIt = posMap.find(tid);
+                    if (posIt == posMap.end()) {
+                        posMap[tid] = outHits.size();
+                        outHits.emplace_back(tid, txpPos, minHit->queryPos, minHit->queryRC);
+                    } else {
+                        outHits[posIt->second].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
+                    }
+                }
+                std::sort(outHits.begin(), outHits.end(),
+                          [] (const ProcessedSAHit& a, const ProcessedSAHit& b) -> bool {
+                            return a.tid < b.tid;
+                          });
+            }
+            // =========
+
+            // Now intersect everything in inHits (apart from minHits)
+            // to get the final set of mapping info.
+            for (auto& h : inHits) {
+                if (&h != minHit) { // don't intersect minHit with itself
+                    intersectSAIntervalWithOutput2(h, rmi, outHits);
+                }
+            }
+
+            size_t requiredNumHits = inHits.size();
+            // Mark as active any transcripts with the required number of hits.
+            for (auto it = outHits.begin(); it != outHits.end(); ++it) {
+                if (it->tqvec.size() >= requiredNumHits) {
+                    it->active = true;
+                }
+            }
+            return outHits;
+        }
 
 
         SAHitMap intersectSAHits(
