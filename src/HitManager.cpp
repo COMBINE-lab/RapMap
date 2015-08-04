@@ -1,5 +1,5 @@
 #include "HitManager.hpp"
-
+#include <type_traits>
 
 namespace rapmap {
     namespace hit_manager {
@@ -72,12 +72,13 @@ namespace rapmap {
 
         // Return hits from processedHits where position constraints
         // match maxDist
-        bool collectHitsSimpleSA2(SAProcessedHitVec& processedHits,
+        bool collectHitsSimpleSA2(std::vector<ProcessedSAHit>& processedHits,
                         uint32_t readLen,
                         uint32_t maxDist,
                         std::vector<QuasiAlignment>& hits,
                         MateStatus mateStatus){
                 bool foundHit{false};
+
                 // One processed hit per transcript
                 for (auto& ph : processedHits) {
                         // If this is an *active* position list
@@ -165,7 +166,128 @@ namespace rapmap {
 
         }
 
+        /** from http://en.cppreference.com/w/cpp/algorithm/lower_bound **/
+        template <typename ForwardIt>
+        ForwardIt binarySearch(
+                ForwardIt first,
+                ForwardIt last,
+                uint32_t value) {
+            ForwardIt it;
+            typename std::iterator_traits<ForwardIt>::difference_type count, step;
+            count = std::distance(first, last);
+
+            while (count > 0) {
+                it = first;
+                step = count / 2;
+                std::advance(it, step);
+                if (*it < value) {
+                    first = ++it;
+                    count -= step + 1;
+                }
+                else {
+                    count = step;
+                }
+            }
+            return first;
+        }
+
+        /** from http://en.cppreference.com/w/cpp/algorithm/find **/
+        template<class InputIt>
+        InputIt linearSearch(InputIt first, InputIt last, uint32_t value) {
+            for (; first != last; ++first) {
+                if (*first == value) {
+                    return first;
+                }
+            }
+            return last;
+        }
+
+        /** adapted from https://schani.wordpress.com/2010/04/30/linear-vs-binary-search/ **/
+        uint32_t binarySearchFast(const std::vector<uint32_t>& arr, size_t n, uint32_t key) {
+            uint32_t min = 0, max = n;
+            while (min < max) {
+                int middle = (min + max) >> 1;
+                min = (key > arr[middle]) ? middle+1 : min;
+                max = (key <= arr[middle]) ? middle : max;
+            }
+            return (arr[min] == key) ? min : std::numeric_limits<uint32_t>::max();
+        }
+
+        /** adapted from https://schani.wordpress.com/2010/04/30/linear-vs-binary-search/ **/
+        // ASSUMES SENTINEL VALUE (value in array >= key *MUST* exist)
+        uint32_t linearSearchUnrolled16(const std::vector<uint32_t>& arr, size_t n, uint32_t key) {
+            uint32_t i{0};
+                for (;;) {
+                    if ( arr[i + 0] >= key) return  i + 0;
+                    if ( arr[i + 1] >= key) return  i + 1;
+                    if ( arr[i + 2] >= key) return  i + 2;
+                    if ( arr[i + 3] >= key) return  i + 3;
+                    if ( arr[i + 4] >= key) return  i + 4;
+                    if ( arr[i + 5] >= key) return  i + 5;
+                    if ( arr[i + 6] >= key) return  i + 6;
+                    if ( arr[i + 7] >= key) return  i + 7;
+                    if ( arr[i + 8] >= key) return  i + 8;
+                    if ( arr[i + 9] >= key) return  i + 9;
+                    if ( arr[i + 10] >= key) return i + 10;
+                    if ( arr[i + 11] >= key) return i + 11;
+                    if ( arr[i + 12] >= key) return i + 12;
+                    if ( arr[i + 13] >= key) return i + 13;
+                    if ( arr[i + 14] >= key) return i + 14;
+                    if ( arr[i + 15] >= key) return i + 15;
+                    i += 16;
+                }
+            }
+
         void intersectSAIntervalWithOutput2(SAIntervalHit& h,
+                RapMapSAIndex& rmi,
+                //fbs::eytzinger_array_bfp<uint32_t, uint32_t, true>& outTxps,
+                //std::vector<uint32_t>& outTxps,
+                SAProcessedHitVec& processedHits) {
+            // Convenient bindings for variables we'll use
+            auto& SA = rmi.SA;
+            auto& txpIDs = rmi.positionIDs;
+            auto& txpStarts = rmi.txpOffsets;
+
+            auto& outStructs = processedHits.hits;
+            auto& outTxps = processedHits.txps;
+
+            // Iterator to the beginning and end of the output hits
+            auto txpIt = processedHits.txps.begin();
+            auto txpEnd = processedHits.txps.end();
+
+            uint32_t arraySize = processedHits.txps.size();
+
+            uint32_t rightTxp;
+            uint32_t pos;
+            //decltype(processedHits.txps)::iterator searchIt = txpEnd;
+            uint32_t searchInd{0};
+            for (auto i = h.begin; i < h.end; ++i) {
+                rightTxp = txpIDs[SA[i]];
+                if (arraySize > 64) {
+                    searchInd = binarySearchFast(outTxps, arraySize, rightTxp);
+                } else {
+                    searchInd = linearSearchUnrolled16(outTxps, arraySize, rightTxp);
+                }
+                // If we found this transcript (make sure it's not the sentinel) then
+                // add it to the list.
+                if ( searchInd < arraySize - 1 ) {
+                    //auto offset = std::distance(txpIt, searchIt);
+                    pos = static_cast<uint32_t>(SA[i]) - txpStarts[rightTxp];
+                    outStructs[searchInd].tqvec.emplace_back(pos, h.queryPos, h.queryRC);
+                }
+                /*
+                auto searchIdx = outTxps.search(rightTxp);
+                if (searchIdx < arraySize) {
+                    pos = static_cast<uint32_t>(SA[i]) - txpStarts[rightTxp];
+                    outStructs[searchIdx].tqvec.emplace_back(pos, h.queryPos, h.queryRC);
+                }
+                */
+            }
+        }
+
+
+        /*
+        void intersectSAIntervalWithOutput3(SAIntervalHit& h,
                 RapMapSAIndex& rmi,
                 SAProcessedHitVec& outHits) {
             // Convenient bindings for variables we'll use
@@ -216,6 +338,7 @@ namespace rapmap {
                 }
             }
         }
+        */
 
 
 
@@ -350,7 +473,7 @@ namespace rapmap {
             return outHits;
         }
 
-        SAProcessedHitVec intersectSAHits2(
+        std::vector<ProcessedSAHit> intersectSAHits2(
                 std::vector<SAIntervalHit>& inHits,
                 RapMapSAIndex& rmi
                 ) {
@@ -369,7 +492,7 @@ namespace rapmap {
             if (inHits.size() < 2) {
                 std::cerr << "intersectHitsSA() called with < 2 k-mer "
                     " hits; this shouldn't happen\n";
-                return outHits;
+                return outHits.hits;
             }
 
             auto& SA = rmi.SA;
@@ -385,27 +508,40 @@ namespace rapmap {
                 }
             }
 
-            outHits.reserve(minHit->span());
+            auto& outStructs = outHits.hits;
+            auto& outTxps = outHits.txps;
+            outStructs.reserve(minHit->span());
+            outTxps.reserve(minHit->span());
             std::map<int, uint32_t> posMap;
             // =========
-            { // Add the info from minHit to outHits
+            //{ // Add the info from minHit to outHits
                 for (int i = minHit->begin; i < minHit->end; ++i) {
                     auto globalPos = SA[i];
                     auto tid = txpIDs[globalPos];
                     auto txpPos = globalPos - txpStarts[tid];
                     auto posIt = posMap.find(tid);
                     if (posIt == posMap.end()) {
-                        posMap[tid] = outHits.size();
-                        outHits.emplace_back(tid, txpPos, minHit->queryPos, minHit->queryRC);
+                        posMap[tid] = outStructs.size();
+                        outStructs.emplace_back(tid, txpPos, minHit->queryPos, minHit->queryRC);
                     } else {
-                        outHits[posIt->second].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
+                        outStructs[posIt->second].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
                     }
                 }
-                std::sort(outHits.begin(), outHits.end(),
+                std::sort(outStructs.begin(), outStructs.end(),
                           [] (const ProcessedSAHit& a, const ProcessedSAHit& b) -> bool {
                             return a.tid < b.tid;
                           });
-            }
+                for (auto it = outStructs.begin(); it != outStructs.end(); ++it) {
+                    outTxps.emplace_back(it->tid);
+                }
+                // Sentinel value for search
+                outTxps.emplace_back(std::numeric_limits<uint32_t>::max());
+                /*
+                fbs::eytzinger_array_bfp<uint32_t, uint32_t, true> searchArray(
+                        txpIndices.begin(), txpIndices.size()
+                        );
+                        */
+            //}
             // =========
 
             // Now intersect everything in inHits (apart from minHits)
@@ -418,12 +554,12 @@ namespace rapmap {
 
             size_t requiredNumHits = inHits.size();
             // Mark as active any transcripts with the required number of hits.
-            for (auto it = outHits.begin(); it != outHits.end(); ++it) {
+            for (auto it = outStructs.begin(); it != outStructs.end(); ++it) {
                 if (it->tqvec.size() >= requiredNumHits) {
                     it->active = true;
                 }
             }
-            return outHits;
+            return outStructs;
         }
 
 

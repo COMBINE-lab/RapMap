@@ -5,6 +5,9 @@
 #include "RapMapIndex.hpp"
 #include "RapMapSAIndex.hpp"
 
+#include "eytzinger_array.h"
+
+#include <tuple>
 #include <vector>
 #include <algorithm>
 #include <map>
@@ -22,7 +25,16 @@ namespace rapmap {
         using SAIntervalHit = rapmap::utils::SAIntervalHit;
         using SAHitMap = std::map<int, std::vector<SATxpQueryPos>>;
         using ProcessedSAHit = rapmap::utils::ProcessedSAHit;
-        using SAProcessedHitVec = std::vector<ProcessedSAHit>;
+
+        class SAProcessedHitVec {
+            public:
+                std::vector<ProcessedSAHit> hits;
+                std::vector<uint32_t> txps;
+        };
+        /*
+        using SAProcessedHitVec = std::tuple<std::vector<ProcessedSAHit>, std::vector<uint32_t>>;
+        */
+
         // Return hits from processedHits where position constraints
         // match maxDist
         bool collectHitsSimple(std::vector<ProcessedHit>& processedHits,
@@ -41,7 +53,7 @@ namespace rapmap {
 
         // Return hits from processedHits where position constraints
         // match maxDist
-        bool collectHitsSimpleSA2(SAProcessedHitVec& processedHits,
+        bool collectHitsSimpleSA2(std::vector<ProcessedSAHit>& processedHits,
                 uint32_t readLen,
                 uint32_t maxDist,
                 std::vector<QuasiAlignment>& hits,
@@ -62,7 +74,13 @@ namespace rapmap {
 
         void intersectSAIntervalWithOutput2(SAIntervalHit& h,
                 RapMapSAIndex& rmi,
+                SAProcessedHitVec& outStructs);
+
+        /*
+        void intersectSAIntervalWithOutput3(SAIntervalHit& h,
+                RapMapSAIndex& rmi,
                 SAProcessedHitVec& outHits);
+                */
 
         std::vector<ProcessedHit> intersectHits(
                 std::vector<HitInfo>& inHits,
@@ -71,7 +89,8 @@ namespace rapmap {
         SAHitMap intersectSAHits(
                 std::vector<SAIntervalHit>& inHits,
                 RapMapSAIndex& rmi);
-        SAProcessedHitVec intersectSAHits2(
+
+        std::vector<ProcessedSAHit> intersectSAHits2(
                 std::vector<SAIntervalHit>& inHits,
                 RapMapSAIndex& rmi);
     }

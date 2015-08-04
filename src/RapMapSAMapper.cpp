@@ -813,8 +813,10 @@ class SACollector {
                 ubLeftRC = rcMerIt->second.end;
                 int diff = ubLeftRC - lbLeftRC;
                 if (ubLeftRC > lbLeftRC and diff < maxInterval) {
+                    /* Don't actually push here since we can't extend
                     auto queryStart = std::distance(read.begin(), rb);
                     rcSAInts.emplace_back(lbLeftRC, ubLeftRC, k, queryStart, true);
+                    */
                     leftRCHit = true;
                 }
             }
@@ -963,11 +965,23 @@ class SACollector {
                         auto queryStart = std::distance(revRE + matchedLen, revReadEndIt);
                         rcSAInts.emplace_back(lbRightRC, ubRightRC, matchedLen, queryStart, true);
                         rightRCHit = true;
-                        break;
+                        //break;
                     }
                     revRB += matchedLen;
+                    revRE = revRB + k;
+		    
+                    if (revRE <= revReadEndIt) {
+                        revRB -= matchedLen;
+                        auto remainingDistance = std::distance(revRB, revReadEndIt);
+                        auto lce = saSearcher.lce(lbRightRC, ubRightRC-1, matchedLen, remainingDistance);
+                        revRB += lce;
+                        revRE = revRE + k;
+                    }
+		    
+
                 } else {
-                    revRB = revRE;
+                    revRB += 8;//= revRE;
+                    revRE = revRB + k;
                 }
             }
         }
