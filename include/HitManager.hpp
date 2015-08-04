@@ -5,7 +5,7 @@
 #include "RapMapIndex.hpp"
 #include "RapMapSAIndex.hpp"
 
-#include "eytzinger_array.h"
+//#include "eytzinger_array.h"
 
 #include <tuple>
 #include <vector>
