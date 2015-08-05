@@ -54,7 +54,7 @@
 #include "ScopedTimer.hpp"
 #include "SpinLock.hpp"
 
-#define __TRACK_CORRECT__
+//#define __TRACK_CORRECT__
 
 using paired_parser = pair_sequence_parser<char**>;
 using stream_manager = jellyfish::stream_manager<std::vector<std::string>::const_iterator>;
@@ -1536,7 +1536,7 @@ void processReadsPairSA(paired_parser* parser,
                 }
             }
 
-            if (hctr.numReads > hctr.lastPrint + 100000) {
+            if (hctr.numReads > hctr.lastPrint + 1000000) {
 		hctr.lastPrint.store(hctr.numReads.load());
                 if (iomutex->try_lock()) {
                     if (hctr.numReads > 0) {
@@ -1734,9 +1734,12 @@ int rapMapSAMap(int argc, char* argv[]) {
             }
             for (auto& t : threads) { t.join(); }
         }
+	std::cerr << "\n\n";
         consoleLog->info("done mapping reads.");
+	/*
 	    consoleLog->info("Discarded {} reads because they had > {} alignments",
 		    hctrs.tooManyHits, maxNumHits.getValue());
+		    */
 
 	}
 
