@@ -704,6 +704,7 @@ class SACollector {
         auto& SA = rmi_->SA;
         auto& khash = rmi_->khash;
         auto& text = rmi_->seq;
+        uint32_t sampFactor{8};
         auto salen = SA.size();
 
         auto readLen = read.length();
@@ -716,7 +717,7 @@ class SACollector {
         auto readRevEndIt = read.rend();
 
         auto rb = read.begin();
-        auto re = rb + 31;
+        auto re = rb + k;
         int lbLeftFwd = 0, ubLeftFwd = 0;
         int lbLeftRC = 0, ubLeftRC = 0;
         int lbRightFwd = 0, ubRightFwd = 0;
@@ -896,7 +897,7 @@ class SACollector {
                             auto queryStart = std::distance(read.begin(), rb);
                             fwdSAInts.emplace_back(lbRightFwd, ubRightFwd, matchedLen, queryStart, false);
                             rightFwdHit = true;
-                            break;
+                            //break;
                         }
 
                         rb += matchedLen;
@@ -911,7 +912,7 @@ class SACollector {
                         }
 
                     } else {
-                        rb = re;
+                        rb += sampFactor;//re;
                         re = rb + k;
                     }
                 }
@@ -922,7 +923,6 @@ class SACollector {
             size_t pos{read.length() - k};
 
             auto revReadEndIt = read.rend();
-            size_t invalidPos{0};
 
             auto revRB = read.rbegin();
             auto revRE = revRB + k;
@@ -937,17 +937,24 @@ class SACollector {
                                                  [](const char c) -> bool {
                                                      return c == 'n' or c == 'N';
                                                  });
+                // If we found an N before the end of the k-mer
                 if (invalidPosIt < revRE) {
+                    // Skip to the k-mer starting at the next position
+                    // (i.e. right past the N)
                     revRB = invalidPosIt + 1;
                     continue;
                 }
 
+                // The distance from the beginning of the read to the
+                // start of the k-mer
                 pos = std::distance(revRE, revReadEndIt);
 
+                // Get the k-mer and query it in the hash
                 mer = rapmap::utils::my_mer(read.c_str() + pos);
                 rcMer = mer.get_reverse_complement();
                 auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
 
+                // If we found the k-mer
                 if (rcMerIt != khash.end()) {
                     lbRightRC = rcMerIt->second.begin;
                     ubRightRC = rcMerIt->second.end;
@@ -957,30 +964,29 @@ class SACollector {
                     lbRightRC = std::max(0, lbRightRC - 1);
                     std::tie(lbRightRC, ubRightRC, matchedLen) =
                         saSearcher.extendSearchNaive(lbRightRC, ubRightRC, k,
-                                revRB, revRE, true);
+                                revRB, revReadEndIt, true);
 
-                    //matchedLen = k;
                     int diff = ubRightRC - lbRightRC;
                     if (ubRightRC > lbRightRC and diff < maxInterval) {
-                        auto queryStart = std::distance(revRE + matchedLen, revReadEndIt);
+                        auto queryStart = std::distance(revRB + matchedLen, revReadEndIt);
                         rcSAInts.emplace_back(lbRightRC, ubRightRC, matchedLen, queryStart, true);
                         rightRCHit = true;
                         //break;
                     }
                     revRB += matchedLen;
                     revRE = revRB + k;
-		    
+
                     if (revRE <= revReadEndIt) {
                         revRB -= matchedLen;
-                        auto remainingDistance = std::distance(revRB, revReadEndIt);
+                        auto remainingDistance = std::distance(revRB + matchedLen, revReadEndIt);
                         auto lce = saSearcher.lce(lbRightRC, ubRightRC-1, matchedLen, remainingDistance);
                         revRB += lce;
                         revRE = revRE + k;
                     }
-		    
+
 
                 } else {
-                    revRB += 8;//= revRE;
+                    revRB += sampFactor;//= revRE;
                     revRE = revRB + k;
                 }
             }

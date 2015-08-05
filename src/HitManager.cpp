@@ -47,13 +47,13 @@ namespace rapmap {
                         // If this is an *active* position list
                         if (ph.second.front().active) {
                                 auto tid = ph.first;
-                                std::sort(ph.second.begin(), ph.second.end(),
-                                                [](const SATxpQueryPos& x, const SATxpQueryPos& y) -> bool {
-                                                return x.pos < y.pos;
-                                                });
-                                auto& firstHit = ph.second.front();
-                                bool hitRC = firstHit.queryRC;
-                                int32_t hitPos = firstHit.pos - firstHit.queryPos;
+				auto minPosIt = std::min_element(ph.second.begin(),
+						ph.second.end(),
+						[](const SATxpQueryPos& a, const SATxpQueryPos& b) -> bool {
+						    return a.pos < b.pos;
+						});
+                                bool hitRC = minPosIt->queryRC;
+                                int32_t hitPos = minPosIt->pos - minPosIt->queryPos;
                                 bool isFwd = !hitRC;
                                 hits.emplace_back(tid, hitPos, isFwd, readLen);
                                 hits.back().mateStatus = mateStatus;
