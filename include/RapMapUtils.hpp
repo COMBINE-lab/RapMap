@@ -273,17 +273,18 @@ namespace rapmap {
     };
 
     struct ProcessedSAHit {
-	    ProcessedSAHit() : tid(std::numeric_limits<uint32_t>::max()), active(false) {}
+	    ProcessedSAHit() : tid(std::numeric_limits<uint32_t>::max()), active(false), numActive(1) {}
 
 	    ProcessedSAHit(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t queryPosIn, bool queryRCIn) :
-		    tid(txpIDIn), active(false)
+		    tid(txpIDIn), active(false), numActive(1)
 	    {
 		tqvec.emplace_back(txpPosIn, queryPosIn, queryRCIn);
 	    }
 
 	    uint32_t tid;
 	    std::vector<SATxpQueryPos> tqvec;
-        bool active;
+            bool active;
+	    uint32_t numActive;
     };
 
     struct SAHitInfo {

@@ -45,10 +45,10 @@ namespace rapmap {
 	            auto startOffset = hits.size();
                 for (auto& ph : processedHits) {
                         // If this is an *active* position list
-                        if (ph.second.front().active) {
+                        if (ph.second.active) {
                                 auto tid = ph.first;
-				auto minPosIt = std::min_element(ph.second.begin(),
-						ph.second.end(),
+				auto minPosIt = std::min_element(ph.second.tqvec.begin(),
+						ph.second.tqvec.end(),
 						[](const SATxpQueryPos& a, const SATxpQueryPos& b) -> bool {
 						    return a.pos < b.pos;
 						});
@@ -345,6 +345,7 @@ namespace rapmap {
 
         void intersectSAIntervalWithOutput(SAIntervalHit& h,
                         RapMapSAIndex& rmi,
+			uint32_t intervalCounter,
                         SAHitMap& outHits) {
                 // Convenient bindings for variables we'll use
                 auto& SA = rmi.SA;
@@ -358,9 +359,12 @@ namespace rapmap {
                         // If we found this transcript
                         // Add this position to the list
                         if (txpListIt != outHits.end()) {
-                                auto globalPos = SA[i];
-                                auto localPos = globalPos - txpStarts[txpID];
-                                txpListIt->second.emplace_back(localPos, h.queryPos, h.queryRC);
+				txpListIt->second.numActive += (txpListIt->second.numActive == intervalCounter - 1) ? 1 : 0;
+				if (txpListIt->second.numActive == intervalCounter) {
+                                    auto globalPos = SA[i];
+                                    auto localPos = globalPos - txpStarts[txpID];
+                                    txpListIt->second.tqvec.emplace_back(localPos, h.queryPos, h.queryRC);
+				}
                         }
                 }
         }
@@ -605,24 +609,26 @@ namespace rapmap {
                     auto globalPos = SA[i];
                     auto tid = txpIDs[globalPos];
                     auto txpPos = globalPos - txpStarts[tid];
-                    outHits[tid].emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
+                    outHits[tid].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
                 }
             }
             // =========
 
             // Now intersect everything in inHits (apart from minHits)
             // to get the final set of mapping info.
+	    size_t intervalCounter{2};
             for (auto& h : inHits) {
                 if (&h != minHit) { // don't intersect minHit with itself
-                    intersectSAIntervalWithOutput(h, rmi, outHits);
+                    intersectSAIntervalWithOutput(h, rmi, intervalCounter, outHits);
+		    ++intervalCounter;
                 }
             }
 
             size_t requiredNumHits = inHits.size();
             // Mark as active any transcripts with the required number of hits.
             for (auto it = outHits.begin(); it != outHits.end(); ++it) {
-                if (it->second.size() >= requiredNumHits) {
-                    it->second.front().active = true;
+                if (it->second.numActive >= requiredNumHits) {
+                    it->second.active = true;
                 }
             }
             return outHits;

@@ -23,7 +23,7 @@ namespace rapmap {
         using TxpQueryPos = rapmap::utils::TxpQueryPos;
         using SATxpQueryPos = rapmap::utils::SATxpQueryPos;
         using SAIntervalHit = rapmap::utils::SAIntervalHit;
-        using SAHitMap = std::map<int, std::vector<SATxpQueryPos>>;
+        using SAHitMap = std::map<int, rapmap::utils::ProcessedSAHit>;
         using ProcessedSAHit = rapmap::utils::ProcessedSAHit;
 
         class SAProcessedHitVec {
@@ -70,6 +70,7 @@ namespace rapmap {
 
         void intersectSAIntervalWithOutput(SAIntervalHit& h,
                 RapMapSAIndex& rmi,
+		uint32_t intervalCounter,
                 SAHitMap& outHits);
 
         void intersectSAIntervalWithOutput2(SAIntervalHit& h,
