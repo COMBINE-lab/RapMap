@@ -210,6 +210,8 @@ void indexTranscriptsSA(ParserT* parser,
     rsStream.close();
     */
     /** END OF SANITY CHECK **/
+    onePos.clear();
+    onePos.shrink_to_fit();
 
     std::string rsFileName = outputDir + "rsd.bin";
     FILE* rsFile = fopen(rsFileName.c_str(), "w");
@@ -252,12 +254,12 @@ void indexTranscriptsSA(ParserT* parser,
     std::ofstream saStream(outputDir + "sa.bin", std::ios::binary);
     {
         ScopedTimer timer;
-        std::cerr << "Building suffix array ";
+        std::cerr << "Building suffix array . . . ";
         auto ret = sais(reinterpret_cast<unsigned char*>(
                         const_cast<char*>(concatText.c_str())),
                         SA.data(), tlen + 1);
         if (ret == 0) {
-            std::cerr << "SUCCESS!\n";
+            std::cerr << "success\n";
             {
                 ScopedTimer timer2;
                 std::cerr << "saving to disk . . . ";
@@ -268,7 +270,8 @@ void indexTranscriptsSA(ParserT* parser,
                 std::cerr << "done\n";
             }
         } else {
-            std::cerr << "FAILURE: return code was " << ret << "\n";
+            std::cerr << "FAILURE: return code from sais() was " << ret << "\n";
+	    std::exit(1);
         }
         std::cerr << "done\n";
     }
