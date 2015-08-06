@@ -8,14 +8,45 @@
 
 #include "spdlog/spdlog.h"
 #include "spdlog/details/format.h"
-//#include "RSDic.hpp"
+#include "RSDic.hpp"
 #include "google/dense_hash_map"
+#include "bit_array.h"
+//#include "bitmap.h"
+//#include "shared.h"
+#include "rank9b.h"
 
+
+#include <cstdio>
 #include <vector>
+#include <memory>
 
 class RapMapSAIndex {
     public:
+	struct BitArrayDeleter {
+	   void operator()(BIT_ARRAY* b) {
+	       if(b != nullptr) {
+	           bit_array_free(b);
+	       }
+	   }
+	};
+
+	using BitArrayPointer = std::unique_ptr<BIT_ARRAY, BitArrayDeleter>;
+
         RapMapSAIndex() {}
+
+	// Given a position, p, in the concatenated text,
+	// return the corresponding transcript
+	uint32_t transcriptAtPosition(uint32_t p) {
+	   /*
+	    auto rsafe = rankDictSafe.Rank(p, 1);
+	    auto r = rankDict->rank(p);
+	    if (r != rsafe) {
+		std::cerr << "RANK VECTOR IMPLEMENTATIONS DISAGREED!\n";
+		std::cerr << "RSDic said " << rsafe << ", uncompressed said " << r << '\n';
+	    }
+	    */
+	    return rankDict->rank(p);
+	}
 
         bool load(const std::string& indDir) {
 
@@ -52,10 +83,32 @@ class RapMapSAIndex {
                 cereal::BinaryInputArchive seqArchive(seqStream);
                 seqArchive(txpNames);
                 seqArchive(txpOffsets);
-                seqArchive(positionIDs);
+                //seqArchive(positionIDs);
                 seqArchive(seq);
             }
             seqStream.close();
+
+	    /*
+	    std::ifstream rsStream(indDir + "rsdSafe.bin", std::ios::binary);
+	    {
+		    logger->info("Loading Rank-Select Data");
+		    rankDictSafe.Load(rsStream);
+	    }
+	    rsStream.close();
+	    */
+	    std::string rsFileName = indDir + "rsd.bin";
+	    FILE* rsFile = fopen(rsFileName.c_str(), "r");
+	    {
+		logger->info("Loading Rank-Select Bit Array");
+		bitArray.reset(bit_array_create(0));
+		if (!bit_array_load(bitArray.get(), rsFile)) {
+			logger->error("Couldn't load bit array from {}!", rsFileName);
+			std::exit(1);
+		}
+		logger->info("There were {} set bits in the bit array", bit_array_num_bits_set(bitArray.get()));
+		rankDict.reset(new rank9b(bitArray->words, bitArray->num_of_bits));
+	    }
+	    fclose(rsFile);
 
             {
                 logger->info("Computing transcript lengths");
@@ -76,7 +129,11 @@ class RapMapSAIndex {
         }
 
     std::vector<int> SA;
-    //std::vector<int> LCP;
+    //rsdic::RSDic rankDictSafe;
+	
+    BitArrayPointer bitArray{nullptr};
+    std::unique_ptr<rank9b> rankDict{nullptr};
+
     std::string seq;
     std::vector<std::string> txpNames;
     std::vector<uint32_t> txpOffsets;

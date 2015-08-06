@@ -17,7 +17,6 @@
 #include <tuple>
 #include <cstring>
 
-#include "RSDic.hpp"
 #include "ScopedTimer.hpp"
 
 #include <cereal/types/unordered_map.hpp>
@@ -699,12 +698,13 @@ class SACollector {
             MateStatus mateStatus,
             std::atomic<uint64_t>& diffCount) {
 
-        auto& posIDs = rmi_->positionIDs;
+        //auto& posIDs = rmi_->positionIDs;
+        auto& rankDict = rmi_->rankDict;
         auto& txpStarts = rmi_->txpOffsets;
         auto& SA = rmi_->SA;
         auto& khash = rmi_->khash;
         auto& text = rmi_->seq;
-        uint32_t sampFactor{8};
+        uint32_t sampFactor{1};
         auto salen = SA.size();
 
         auto readLen = read.length();
@@ -1002,7 +1002,9 @@ class SACollector {
                 auto initialSize = hits.size();
                 for (int i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
                         auto globalPos = SA[i];
-                        auto txpID = posIDs[globalPos];
+                        //auto txpID = posIDs[globalPos];
+			//auto txpID = rankDict.Rank(globalPos, 1);
+			auto txpID = rmi_->transcriptAtPosition(globalPos);
                         // the offset into this transcript
                         auto pos = globalPos - txpStarts[txpID];
                         hits.emplace_back(txpID, pos, true, readLen);
@@ -1038,7 +1040,9 @@ class SACollector {
             auto initialSize = hits.size();
             for (int i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
                 auto globalPos = SA[i];
-                auto txpID = posIDs[globalPos];
+                //auto txpID = posIDs[globalPos];
+		//auto txpID = rankDict.Rank(globalPos, 1);
+		auto txpID = rmi_->transcriptAtPosition(globalPos);
                 // the offset into this transcript
                 auto pos = globalPos - txpStarts[txpID];
                 hits.emplace_back(txpID, pos, false, readLen);

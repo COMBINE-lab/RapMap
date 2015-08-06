@@ -7,10 +7,13 @@ set (RAPMAP_MAIN_SRCS
     RapMapSAMapper.cpp
     RapMapFileSystem.cpp
     HitManager.cpp
+    rank9b.cpp
     intersection.cpp
+    #bitmap.cpp
     stringpiece.cc
     sais.c
     xxhash.c
+    bit_array.c
 )
 
 set (RAPMAP_ALIGN_SRCS

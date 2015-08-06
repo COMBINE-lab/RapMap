@@ -349,12 +349,15 @@ namespace rapmap {
                         SAHitMap& outHits) {
                 // Convenient bindings for variables we'll use
                 auto& SA = rmi.SA;
-                auto& txpIDs = rmi.positionIDs;
+                //auto& txpIDs = rmi.positionIDs;
+		auto& rankDict = rmi.rankDict;
                 auto& txpStarts = rmi.txpOffsets;
 
                 // Walk through every hit in the new interval 'h'
                 for (int i = h.begin; i != h.end; ++i) {
-                        auto txpID = txpIDs[SA[i]];
+                        //auto txpID = txpIDs[SA[i]];
+			// auto txpID = rankDict.Rank(SA[i], 1);
+			auto txpID = rmi.transcriptAtPosition(SA[i]);
                         auto txpListIt = outHits.find(txpID);
                         // If we found this transcript
                         // Add this position to the list
@@ -591,7 +594,8 @@ namespace rapmap {
 
             auto& SA = rmi.SA;
             auto& txpStarts = rmi.txpOffsets;
-            auto& txpIDs = rmi.positionIDs;
+            //auto& txpIDs = rmi.positionIDs;
+	    auto& rankDict = rmi.rankDict;
 
             // Start with the smallest interval
             // i.e. interval with the fewest hits.
@@ -607,7 +611,8 @@ namespace rapmap {
             { // Add the info from minHit to outHits
                 for (int i = minHit->begin; i < minHit->end; ++i) {
                     auto globalPos = SA[i];
-                    auto tid = txpIDs[globalPos];
+                    //auto tid = txpIDs[globalPos];
+		    auto tid = rmi.transcriptAtPosition(globalPos);
                     auto txpPos = globalPos - txpStarts[tid];
                     outHits[tid].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
                 }

@@ -6,6 +6,7 @@
 #include <type_traits>
 #include <fstream>
 #include <cctype>
+#include <cstdio>
 
 #include "tclap/CmdLine.h"
 
@@ -25,8 +26,9 @@
 #include "jellyfish/whole_sequence_parser.hpp"
 
 #include "sais.h"
-#include "RSDic.hpp"
-#include "RSDicBuilder.hpp"
+//#include "RSDic.hpp"
+//#include "RSDicBuilder.hpp"
+#include "bit_array.h"
 #include "RapMapUtils.hpp"
 #include "RapMapFileSystem.hpp"
 #include "ScopedTimer.hpp"
@@ -38,7 +40,8 @@
 #include "jellyfish/mer_overlap_sequence_parser.hpp"
 #include "jellyfish/mer_iterator.hpp"
 #include "JFRaw.hpp"
-
+//#include "bitmap.h"
+#include "rank9b.h"
 
 #include "sparsehash/dense_hash_map"
 
@@ -70,7 +73,7 @@ void indexTranscriptsSA(ParserT* parser,
     uint32_t k = rapmap::utils::my_mer::k();
     std::vector<std::string> transcriptNames;
     std::vector<uint32_t> transcriptStarts;
-    std::vector<uint32_t> positionIDs;
+    //std::vector<uint32_t> positionIDs;
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
     uint32_t polyAClipLength{10};
     uint32_t numPolyAsClipped{0};
@@ -82,9 +85,11 @@ void indexTranscriptsSA(ParserT* parser,
 
     size_t numDistinctKmers{0};
     size_t numKmers{0};
-    size_t currIndex{1};
+    size_t currIndex{0};
     std::cerr << "\n[Step 1 of 4] : counting k-mers\n";
 
+    //rsdic::RSDicBuilder rsdb;
+    std::vector<uint32_t> onePos; // Positions in the bit array where we should write a '1'
     fmt::MemoryWriter txpSeqStream;
     {
         ScopedTimer timer;
@@ -113,8 +118,12 @@ void indexTranscriptsSA(ParserT* parser,
 
                 uint32_t readLen  = readStr.size();
                 uint32_t txpIndex = n++;
+
+		// The name of the current transcript
                 transcriptNames.push_back(j->data[i].header);
+		// The position at which this transcript starts
                 transcriptStarts.push_back(currIndex);
+
 
                 bool firstBase{true};
                 rapmap::utils::my_mer mer;
@@ -128,12 +137,15 @@ void indexTranscriptsSA(ParserT* parser,
                         c = jellyfish::mer_dna::code(rbase);
                         readStr[b] = rbase;
                     }
-                    positionIDs.push_back(txpIndex);
+                    //positionIDs.push_back(txpIndex);
+		    //rsdb.PushBack(0);
                 }
                 txpSeqStream << readStr;
                 txpSeqStream << '$';
-                positionIDs.push_back(txpIndex);
+                //positionIDs.push_back(txpIndex);
+		//rsdb.PushBack(1);
                 currIndex += readLen + 1;
+		onePos.push_back(currIndex - 1);
             }
             if (n % 10000 == 0) {
                 std::cerr << "\r\rcounted k-mers for " << n << " transcripts";
@@ -144,11 +156,52 @@ void indexTranscriptsSA(ParserT* parser,
 
     std::cerr << "Clipped poly-A tails from " << numPolyAsClipped << " transcripts\n";
 
+    // Put the concatenated text in a string
+    std::string concatText = txpSeqStream.str();
+    // And clear the stream
+    txpSeqStream.clear();
+
+
+    // Make our dense bit arrray 
+    BIT_ARRAY* bitArray = bit_array_create(concatText.length());
+    for (auto p : onePos) {
+	    bit_array_set_bit(bitArray, p);
+    }
+
+    /** SANITY CHECKS RELATED TO THE RANK structure **/
     /*
-    std::ofstream rsStream(outputDir + "rsd.bin", std::ios::binary);
+    uint64_t nextSetBit{0};
+    uint64_t offset{0};
+    auto numBits = bit_array_length(bitArray);
+    while (offset < numBits and bit_array_find_next_set_bit(bitArray, offset, &nextSetBit)) {
+	if (concatText[nextSetBit] != '$') {
+		std::cerr << "Bit # " << nextSetBit << " is set to 1, but the "
+			  << "corresponding character in the text is " << concatText[nextSetBit] << "\n";
+	}
+	offset = nextSetBit + 1;
+    }
+
+    if (bit_array_num_bits_set(bitArray) != onePos.size()) {
+	std::cerr << "ERROR: Bit array has " << bit_array_num_bits_set(bitArray) 
+		  << " bits set, but this should be " << onePos.size() << "!\n";
+	std::exit(1);
+    }
+
+    rank9b bitmap(bitArray->words, bitArray->num_of_bits);
+    for (size_t i = 0; i < onePos.size() - 1; ++i) {
+	    auto pos = onePos[i];
+	    auto r = bitmap.rank(pos+1);
+
+	    if (r != i+1) {
+		std::cerr << "rank should be " << i+1 << " but it's " << r << "\n";
+		std::cerr << "text is " << concatText[pos] < "\n\n";
+		std::cerr << "bit vector says " << (bit_array_get_bit(bitArray, pos) ? '1' : '0') << "\n";
+	    }
+    }
+
+    std::ofstream rsStream(outputDir + "rsdSafe.bin", std::ios::binary);
     {
         ScopedTimer timer;
-        std::cerr << "Building rank-select dictionary and saving to disk ";
         rsdic::RSDic rsd;
         rsdb.Build(rsd);
         rsd.Save(rsStream);
@@ -156,9 +209,20 @@ void indexTranscriptsSA(ParserT* parser,
     }
     rsStream.close();
     */
+    /** END OF SANITY CHECK **/
 
-    std::string concatText = txpSeqStream.str();
-    txpSeqStream.clear();
+    std::string rsFileName = outputDir + "rsd.bin";
+    FILE* rsFile = fopen(rsFileName.c_str(), "w");
+    {
+        ScopedTimer timer;
+        std::cerr << "Building rank-select dictionary and saving to disk ";
+	bit_array_save(bitArray, rsFile);
+        std::cerr << "done\n";
+    }
+    fclose(rsFile);
+    bit_array_free(bitArray);
+    
+
     std::ofstream seqStream(outputDir + "txpInfo.bin", std::ios::binary);
     {
         ScopedTimer timer;
@@ -166,15 +230,15 @@ void indexTranscriptsSA(ParserT* parser,
         cereal::BinaryOutputArchive seqArchive(seqStream);
         seqArchive(transcriptNames);
         seqArchive(transcriptStarts);
-        seqArchive(positionIDs);
+        //seqArchive(positionIDs);
         seqArchive(concatText);
         std::cerr << "done\n";
     }
     seqStream.close();
 
     // clear stuff we no longer need
-    positionIDs.clear();
-    positionIDs.shrink_to_fit();
+    //positionIDs.clear();
+    //positionIDs.shrink_to_fit();
     transcriptStarts.clear();
     transcriptStarts.shrink_to_fit();
     transcriptNames.clear();
