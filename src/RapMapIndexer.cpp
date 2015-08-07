@@ -12,6 +12,7 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/archives/binary.hpp>
+#include <cereal/archives/json.hpp>
 
 #include "xxhash.h"
 #include "btree/btree_map.h"
@@ -24,6 +25,7 @@
 #include "RapMapUtils.hpp"
 #include "RapMapFileSystem.hpp"
 #include "ScopedTimer.hpp"
+#include "IndexHeader.hpp"
 
 #include "jellyfish/file_header.hpp"
 #include "jellyfish/binary_dumper.hpp"
@@ -682,6 +684,17 @@ void processTranscripts(ParserT* parser,
     txpArchive(transcriptNames);
   }
   txpStream.close();
+  
+  std::string indexVersion = "p0";
+  IndexHeader header(IndexType::PSEUDO, indexVersion, true, k);
+  // Finally (since everything presumably succeeded) write the header
+  std::ofstream headerStream(outputDir + "header.json");
+  {
+    cereal::JSONOutputArchive archive(headerStream);
+    archive(header);
+  }
+  headerStream.close();
+
 
   std::cerr << "transcriptIDs.size() = " << transcriptIDs.size() << "\n";
   std::cerr << "parsed " << transcriptNames.size() << " transcripts\n";

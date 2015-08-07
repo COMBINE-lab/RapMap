@@ -14,6 +14,7 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/archives/binary.hpp>
+#include <cereal/archives/json.hpp>
 
 #include "xxhash.h"
 #include "btree/btree_map.h"
@@ -44,6 +45,8 @@
 #include "rank9b.h"
 
 #include "sparsehash/dense_hash_map"
+
+#include "IndexHeader.hpp"
 
 #include <chrono>
 
@@ -447,6 +450,18 @@ void indexTranscriptsSA(ParserT* parser,
         std::cerr << "done\n";
     }
     hashStream.close();
+
+
+    std::string indexVersion = "q0";
+    IndexHeader header(IndexType::QUASI, indexVersion, true, k);
+    // Finally (since everything presumably succeeded) write the header
+    std::ofstream headerStream(outputDir + "header.json");
+    {
+	cereal::JSONOutputArchive archive(headerStream);
+	archive(header);
+    }
+    headerStream.close();
+
 }
 
 

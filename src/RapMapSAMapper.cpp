@@ -23,6 +23,7 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/archives/binary.hpp>
+#include <cereal/archives/json.hpp>
 
 #include "HitManager.hpp"
 #include "SIMDCompressionAndIntersection/intersection.h"
@@ -52,6 +53,7 @@
 #include "RapMapConfig.hpp"
 #include "ScopedTimer.hpp"
 #include "SpinLock.hpp"
+#include "IndexHeader.hpp"
 
 //#define __TRACK_CORRECT__
 
@@ -1634,6 +1636,20 @@ int rapMapSAMap(int argc, char* argv[]) {
 	if (!rapmap::fs::DirExists(indexPrefix.c_str())) {
 	    consoleLog->error("It looks like the index you provided [{}] "
 		    "doesn't exist", indexPrefix);
+	    std::exit(1);
+	}
+
+	IndexHeader h;
+	std::ifstream indexStream(indexPrefix + "header.json");
+	{
+		cereal::JSONInputArchive ar(indexStream);
+		ar(h);
+	}
+	indexStream.close();
+
+	if (h.indexType() != IndexType::QUASI) {
+	    consoleLog->error("The index {} does not appear to be of the "
+			    "appropriate type (quasi)", indexPrefix);
 	    std::exit(1);
 	}
 

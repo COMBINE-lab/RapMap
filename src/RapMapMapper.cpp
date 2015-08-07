@@ -17,7 +17,9 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/archives/binary.hpp>
+#include <cereal/archives/json.hpp>
 
+#include "IndexHeader.hpp"
 #include "HitManager.hpp"
 #include "SIMDCompressionAndIntersection/intersection.h"
 #include "xxhash.h"
@@ -1252,6 +1254,21 @@ int rapMapMap(int argc, char* argv[]) {
 	if (!rapmap::fs::DirExists(indexPrefix.c_str())) {
 	    consoleLog->error("It looks like the index you provided [{}] "
 		    "doesn't exist", indexPrefix);
+	    std::exit(1);
+	}
+
+
+	IndexHeader h;
+	std::ifstream indexStream(indexPrefix + "header.json");
+	{
+		cereal::JSONInputArchive ar(indexStream);
+		ar(h);
+	}
+	indexStream.close();
+
+	if (h.indexType() != IndexType::PSEUDO) {
+	    consoleLog->error("The index {} does not appear to be of the "
+			    "appropriate type (pseudo)", indexPrefix);
 	    std::exit(1);
 	}
 

@@ -1,6 +1,11 @@
 #include <iostream>
+#include <fstream>
 #include <vector>
+
+#include <cereal/archives/json.hpp>
+
 #include "RapMapConfig.hpp"
+#include "IndexHeader.hpp"
 
 int rapMapIndex(int argc, char* argv[]);
 int rapMapSAIndex(int argc, char* argv[]);
@@ -15,15 +20,20 @@ void printUsage() {
     auto usage =
         R"(
 There are currently 4 RapMap subcommands
-    index   --- builds a k-mer-based index
-    map     --- map reads using a k-mer-based index
-    saindex --- builds a suffix array-based (SA) index
-    samap   --- map reads using the SA-based index
+    pseudoindex   --- builds a k-mer-based index
+    pseudomap     --- map reads using a k-mer-based index
+    quasiindex --- builds a suffix array-based (SA) index
+    quasimap   --- map reads using the SA-based index
 
 Run a corresponding command "rapmap <cmd> -h" for
 more information on each of the possible RapMap
 commands.)";
     std::cerr << usage << '\n';
+}
+
+bool isIndexArg(char* arg) {
+    std::string argStr(arg);
+    return (argStr == "-i") or (argStr == "--index");
 }
 
 
@@ -47,13 +57,13 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     }
 
-    if (std::string(argv[1]) == "index") {
+    if (std::string(argv[1]) == "pseudoindex") {
         return rapMapIndex(argc - 1, args.data());
-    } else if (std::string(argv[1]) == "map") {
-        return rapMapMap(argc - 1, args.data());
-    } else if (std::string(argv[1]) == "saindex") {
+    } else if (std::string(argv[1]) == "quasiindex") {
         return rapMapSAIndex(argc - 1, args.data());
-    } else if (std::string(argv[1]) == "samap") {
+    } else if (std::string(argv[1]) == "pseudomap") {
+        return rapMapMap(argc - 1, args.data());
+    } else if (std::string(argv[1]) == "quasimap") {
         return rapMapSAMap(argc - 1, args.data());
     } else {
         std::cerr << "the command " << argv[1]
