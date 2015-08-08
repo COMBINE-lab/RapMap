@@ -1154,6 +1154,7 @@ void processReadsSingleSA(single_parser * parser,
                 auto after = readName.find_first_of(':', before+1);
                 const auto& txpName = readName.substr(before+1, after-before-1);
 #endif //__DEBUG__
+                std::string numHitFlag = fmt::format("NH:i:{}", hits.size());
                 uint32_t alnCtr{0};
                 for (auto& qa : hits) {
                     auto& transcriptName = txpNames[qa.tid];
@@ -1177,7 +1178,8 @@ void processReadsSingleSA(single_parser * parser,
                         << 0 << '\t' // MATE POS
                         << qa.fragLen << '\t' // TLEN
                         << *readSeq << '\t' // SEQ
-                        << *qstr << '\n';
+                        << *qstr << '\t' // QSTR
+                        << numHitFlag << '\n';
                     ++alnCtr;
                     // === SAM
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
@@ -1375,6 +1377,7 @@ void processReadsPairSA(paired_parser* parser,
                 auto after = readName.find_first_of(':', before+1);
                 const auto& trueTxpName = readName.substr(before+1, after-before-1);
 #endif //__DEBUG__
+                std::string numHitFlag = fmt::format("NH:i:{}", jointHits.size());
                 uint32_t alnCtr{0};
 				uint32_t trueHitCtr{0};
 				QuasiAlignment* firstTrueHit{nullptr};
@@ -1415,7 +1418,8 @@ void processReadsPairSA(paired_parser* parser,
                                 << qa.matePos + 1 << '\t' // PNEXT
                                 << qa.fragLen << '\t' // TLEN
                                 << j->data[i].first.seq << '\t' // SEQ
-                                << j->data[i].first.qual << '\n';
+                                << j->data[i].first.qual << '\t' // QUAL
+                                << numHitFlag << '\n';
 
                         sstream << mateName.c_str() << '\t' // QNAME
                                 << flags2 << '\t' // FLAGS
@@ -1427,7 +1431,8 @@ void processReadsPairSA(paired_parser* parser,
                                 << qa.pos + 1 << '\t' // PNEXT
                                 << qa.fragLen << '\t' // TLEN
                                 << j->data[i].second.seq << '\t' // SEQ
-                                << j->data[i].first.qual << '\n';
+                                << j->data[i].second.qual << '\t' // QUAL
+                                << numHitFlag << '\n';
                     } else {
                         rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
@@ -1499,7 +1504,8 @@ void processReadsPairSA(paired_parser* parser,
                                 << 0 << '\t' // PNEXT (only 1 read in templte)
                                 << 0 << '\t' // TLEN (spec says 0, not read len)
                                 << *readSeq << '\t' // SEQ
-                                << *qstr << '\n';
+                                << *qstr << '\t' // QUAL
+                                << numHitFlag << '\n';
 
                         // Output the info for the unaligned mate.
                         sstream << unalignedName->c_str() << '\t' // QNAME
@@ -1512,7 +1518,8 @@ void processReadsPairSA(paired_parser* parser,
                             << 0 << '\t' // PNEXT (only 1 read in template)
                             << 0 << '\t' // TLEN (spec says 0, not read len)
                             << *unalignedSeq << '\t' // SEQ
-                            << *unalignedQstr << '\n';
+                            << *unalignedQstr << '\t' // QUAL
+                            << numHitFlag << '\n';
                     }
                     ++alnCtr;
                     // === SAM
