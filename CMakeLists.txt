@@ -107,10 +107,6 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
     else()
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++")
     endif()
-    # There's currently a bug with clang-3.4 & Boost 1.55 -- this hack fixes it
-    # but we should do something better (does this break things if CPU doesn't
-    # have 128-bit support)?
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBOOST_HAS_INT128") 
 
     if (APPLE)
         set (NON_APPLECLANG_LIBS "")
@@ -120,13 +116,6 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 else ()
     message(FATAL_ERROR "Your C++ compiler does not support C++11.")
 endif ()
-
-## TODO: Figure out how to detect this automatically
-# If the "assembler" is too old, tell TBB not to compile 
-# with -mrtm
-if (NO_RTM)
-    set (TBB_CXXFLAGS "-mno-rtm")
-endif()
 
 include(ExternalProject)
 
@@ -153,173 +142,11 @@ set (GAT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 # Have CMake tell us what it's doing
 set (CMAKE_VERBOSE_MAKEFILE true)
 
-##
-# Super-secret override
-##
-if ( DEFINED CUSTOM_BOOST_PATH )
-	set (CMAKE_INCLUDE_PATH ${CUSTOM_BOOST_PATH} ${CMAKE_INCLUDE_PATH})
-    set (CMAKE_LIBRARY_PATH ${CUSTOM_BOOST_PATH}/lib ${CMAKE_LIBRARY_PATH})
-endif ( DEFINED CUSTOM_BOOST_PATH )
-
-##
-# We want static, multithreaded boost libraries
-##
-set (Boost_USE_STATIC_LIBS ON)
-set (Boost_USE_MULTITHREADED ON)
-#set (Boost_USE_STATIC_RUNTIME OFF)
-
 find_package (ZLIB)
 if (NOT ZLIB_FOUND)
 	message (FATAL_ERROR "zlib must be installed before configuration & building can proceed")
 endif()
 
-find_package (LibLZMA)
-if (NOT LIBLZMA_FOUND)
-    message ("Will attempt to fetch and build liblzma")
-    message ("=======================================")
-    ExternalProject_Add(liblzma
-    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-    URL http://tukaani.org/xz/xz-5.2.0.tar.gz 
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/xz-5.2.0
-    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
-    BUILD_IN_SOURCE TRUE
-    CONFIGURE_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/external/xz-5.2.0/configure --prefix=<INSTALL_DIR> CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER}
-    BUILD_COMMAND make
-    INSTALL_COMMAND make install
-)
-# Tell cmake that the external project generated a library so we can
-# add dependencies here instead of later
-set (LIBLZMA_LIBRARIES ${GAT_SOURCE_DIR}/external/install/lib/liblzma.a)
-set (LIBSTADEN_LDFLAGS "-L${GAT_SOURCE_DIR}/external/install/lib")
-set (LIBSTADEN_CFLAGS "-I${GAT_SOURCE_DIR}/external/install/include")
-else()
-    message("Found liblzma library: ${LIBLZMA_LIBRARIES}")
-    message("===========================================")
-endif()
-
-#find_package (BZip2)
-#if (NOT BZIP2_FOUND)
-#    message ("Will attempt to fetch and build libbz2")
-#    message ("=======================================")
-#ExternalProject_Add(libbz2
-#    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-#    URL http://www.bzip.org/1.0.6/bzip2-1.0.6.tar.gz
-#    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/bzip2-1.0.6
-#    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
-#    BUILD_IN_SOURCE TRUE
-#    CONFIGURE_COMMAND ""
-#    BUILD_COMMAND make CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER}
-#    INSTALL_COMMAND make install PREFIX=<INSTALL_DIR>
-#)
-## Tell cmake that the external project generated a library so we can
-## add dependencies here instead of later
-#set (BZIP2_LIBRARIES ${GAT_SOURCE_DIR}/external/install/lib/libbz2.a)
-#set (LIBSTADEN_LDFLAGS "-L${GAT_SOURCE_DIR}/external/install/lib -I${GAT_SOURCE_DIR}/external/install/include")
-#set (LIBSTADEN_CFLAGS "-I${GAT_SOURCE_DIR}/external/install/include")
-#else()
-#    message("Found libbz2 library: ${BZIP2_LIBRARIES}")
-#    message("===========================================")
-#endif()
-
-##
-# Set the latest version and look for what we need
-##
-#set(Boost_ADDITIONAL_VERSIONS "1.53" "1.53.0" "1.54" "1.55" "1.56" "1.57.0" "1.58")
-#find_package(Boost 1.53.0 COMPONENTS iostreams filesystem system thread timer chrono program_options serialization)
-#message("BOOST_INCLUDEDIR = ${BOOST_INCLUDEDIR}")
-#message("BOOST_LIBRARYDIR = ${BOOST_LIBRARYDIR}")
-#message("Boost_FOUND = ${Boost_FOUND}")
-#include(ExternalProject)
-
-##
-#  If we had to fetch Boost, the reconfigure step will re-run cmake.  The second configuration
-#  pass is executed with the BOOST_RECONFIGURE flag set. This should allow our newly
-#  installed Boost to be found by CMake.
-##
-#if (BOOST_RECONFIGURE)
-#    message("Executing Boost Reconfiguration")
-#    unset(Boost_FOUND CACHE)
-#    unset(Boost_INCLUDE_DIR CACHE)
-#    unset(Boost_INCLUDE_DIRS CACHE)
-#    unset(Boost_LIBRARY_DIRS CACHE) 
-#    unset(Boost_LIBRARIES CACHE)
-#    unset(BOOST_ROOT CACHE)
-#    unset(CMAKE_PREFIX_PATH CACHE)
-#    
-#    set(BOOST_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/external/install)
-#    set(CMAKE_PREFIX_PATH ${CMAKE_CURRENT_SOURCE_DIR}/external/install)
-#    set(Boost_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/external/install/include)
-#    set(Boost_LIBRARY_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/external/install/lib)
-#    find_package(Boost 1.53.0 COMPONENTS filesystem system thread timer chrono program_options REQUIRED)
-#    set(FETCH_BOOST FALSE)
-#endif()
-#
-#
-#
-###
-## Either inform the user of how to obtain Boost, or, if they passed in the FETCH_BOOST
-## option, go and grab it for them.
-###
-#if ((NOT Boost_FOUND) AND (NOT FETCH_BOOST))
-#	message(FATAL_ERROR 
-#        "Salmon cannot be compiled without Boost.\n"
-#        "It is recommended to visit http://www.boost.org/ and install Boost according to those instructions.\n"
-#        "This build system can also download and install a local version of boost for you (this takes a lot of time).\n"
-#        "To fetch and build boost locally, call cmake with -DFETCH_BOOST=TRUE"
-#    )
-#elseif(FETCH_BOOST)
-#    ## Let the rest of the build process know we're going to be fetching boost
-#    set (BOOST_LIB_SUBSET --with-atomic --with-chrono --with-container --with-date_time --with-exception 
-#                          --with-filesystem --with-graph --with-graph_parallel --with-math 
-#                          --with-program_options --with-system --with-thread
-#                          --with-timer)
-#    set (BOOST_WILL_RECONFIGURE TRUE)
-#    set (FETCH_BOOST FALSE)
-#    message("Build system will fetch and build Boost")
-#    message("==================================================================")
-#    ExternalProject_Add(libboost
-#        DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-#        DOWNLOAD_COMMAND curl -k -L http://fossies.org/linux/misc/boost_1_57_0.tar.gz -o boost_1_57_0.tar.gz && 
-#                tar xzf boost_1_57_0.tar.gz
-#        #URL http://downloads.sourceforge.net/project/boost/boost/1.57.0/boost_1_57_0.tar.gz
-#        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/boost_1_57_0
-#        INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
-#        #PATCH_COMMAND patch -p2 < ${CMAKE_CURRENT_SOURCE_DIR}/external/boost156.patch
-#	CONFIGURE_COMMAND CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} ${CMAKE_CURRENT_SOURCE_DIR}/external/boost_1_57_0/bootstrap.sh ${BOOST_CONFIGURE_TOOLSET} ${BOOST_BUILD_LIBS} --prefix=<INSTALL_DIR>
-#	BUILD_COMMAND CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} ${CMAKE_CURRENT_SOURCE_DIR}/external/boost_1_57_0/b2 -d0 -j2 ${BOOST_LIB_SUBSET} toolset=${BOOST_TOOLSET} ${BOOST_EXTRA_FLAGS} cxxflags=${BOOST_CXX_FLAGS} install
-#        BUILD_IN_SOURCE 1
-#        INSTALL_COMMAND ""
-#    )
-#
-#    ##
-#    # After we've installed boost, 
-#    ##
-#    SET( RECONFIG_FLAGS ${RECONFIG_FLAGS} -DBOOST_WILL_RECONFIGURE=FALSE -DBOOST_RECONFIGURE=TRUE -DFETCH_BOOST=FALSE)
-#    ExternalProject_Add_Step(libboost reconfigure
-#        COMMAND ${CMAKE_COMMAND} ${CMAKE_CURRENT_SOURCE_DIR} ${RECONFIG_FLAGS}
-#        DEPENDEES install
-#    )
-#endif()
-#
-###
-## If we're fetching boost and we need to have dummy paths for these variables
-## so that CMake won't complain
-###
-#if (BOOST_WILL_RECONFIGURE)
-#    message("Setting Temporary Boost paths")
-#    set(Boost_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install/include)
-#    set(Boost_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/external/install/include)
-#    set(Boost_LIBRARY_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/external/install/lib)        
-#    set(Boost_FOUND TRUE)
-#endif()
-#
-#
-#message("BOOST INCLUDE DIR = ${Boost_INCLUDE_DIR}")
-#message("BOOST INCLUDE DIRS = ${Boost_INCLUDE_DIRS}")
-#message("BOOST LIB DIR = ${Boost_LIBRARY_DIRS}")
-#message("BOOST LIBRAREIS = ${Boost_LIBRARIES}")
-#	
-#set(EXTERNAL_LIBRARY_PATH $CMAKE_CURRENT_SOURCE_DIR/lib)
 
 message("Build system will fetch and build SparseHash")
 message("==================================================================")
@@ -335,20 +162,28 @@ ExternalProject_Add(libsparsehash
 )
 
 
+find_package (Cereal)
+if (NOT CEREAL_FOUND)
+    
 message("Build system will fetch and build the Cereal serialization library")
 message("==================================================================")
 include(ExternalProject)
 ExternalProject_Add(libcereal
     DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-    URL http://www.cs.cmu.edu/~robp/files/cereal-v1.0.0.tgz
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.0.0
+    DOWNLOAD_COMMAND curl -k -L https://github.com/USCiLab/cereal/archive/v1.1.2.tar.gz -o cereal-v1.1.2.tar.gz &&
+        tar -xzvf cereal-v1.1.2.tar.gz 
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.1.2
     INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
     UPDATE_COMMAND sh -c "mkdir -p <SOURCE_DIR>/build"
-    BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.0.0/build
+    BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.1.2/build
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
     INSTALL_COMMAND sh -c "mkdir -p <INSTALL_DIR>/include && cp -r <SOURCE_DIR>/include/cereal <INSTALL_DIR>/include"
 )
+
+set(CEREAL_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/external/install/include)
+
+endif()
 
 message("Build system will fetch and build Jellyfish")
 message("==================================================================")
@@ -363,18 +198,6 @@ ExternalProject_Add(libjellyfish
     INSTALL_COMMAND make install && 
                     cp config.h <INSTALL_DIR>/include/jellyfish-2.1.3/jellyfish/ &&
                     cp config.h <INSTALL_DIR>/include/
-)
-
-message("Build system will compile libgff")
-message("==================================================================")
-ExternalProject_Add(libgff
-    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-    URL http://www.cs.cmu.edu/~robp/files/libgff.tgz
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libgff
-    UPDATE_COMMAND sh -c "mkdir -p <SOURCE_DIR>/build"
-    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
-    BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libgff/build
-    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_SOURCE_DIR}/external/install
 )
 
 set (FAST_MALLOC_LIB "")

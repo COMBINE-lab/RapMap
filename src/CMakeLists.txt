@@ -36,6 +36,7 @@ ${GAT_SOURCE_DIR}/external/cereal/include
 ${GAT_SOURCE_DIR}/external/install/include
 ${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.1.3
 ${ZLIB_INCLUDE_DIR}
+${CEREAL_INCLUDE_DIRS}
 #${Boost_INCLUDE_DIRS}
 )
 
