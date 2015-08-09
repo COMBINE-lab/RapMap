@@ -374,7 +374,7 @@ namespace rapmap {
 		    pos = 0;
 	    } else if (pos + readLen > txpLen) {
 		    int32_t matchLen = txpLen - pos;
-		    int32_t clipLen = pos + readLen - matchLen;
+		    int32_t clipLen = pos + readLen - txpLen;
 		    cigarStr.write("{}M{}S", matchLen, clipLen);
 	    } else {
 		    cigarStr.write("{}M", readLen);
