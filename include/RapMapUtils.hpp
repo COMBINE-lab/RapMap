@@ -7,6 +7,7 @@
 #include "jellyfish/mer_dna.hpp"
 #include "spdlog/spdlog.h"
 #include "spdlog/details/format.h"
+#include "PairSequenceParser.hpp"
 
 #ifdef __GNUC__
 #define LIKELY(x) __builtin_expect((x),1)
@@ -16,6 +17,15 @@
 #define UNLIKELY(x) (x)
 #endif
 
+// Must be forward-declared
+template <typename IndexT>
+class PairAlignmentFormatter;
+template <typename IndexT>
+class SingleAlignmentFormatter;
+
+// Forward-declare because the C++ compiler is dumb
+class RapMapSAIndex;
+class RapMapIndex;
 
 namespace rapmap {
     namespace utils {
@@ -471,6 +481,25 @@ namespace rapmap {
                 std::string& readWork,
                 std::string& qualWork);
 
+        template <typename ReadPairT, typename IndexT>
+        uint32_t writeAlignmentsToStream(
+                ReadPairT& r,
+                PairAlignmentFormatter<IndexT>& formatter,
+                HitCounters& hctr,
+                std::vector<QuasiAlignment>& jointHits,
+                fmt::MemoryWriter& sstream);
+
+        template <typename ReadT, typename IndexT>
+        uint32_t writeAlignmentsToStream(
+                ReadT& r,
+                SingleAlignmentFormatter<IndexT>& formatter,
+                HitCounters& hctr,
+                std::vector<QuasiAlignment>& jointHits,
+                fmt::MemoryWriter& sstream);
+
+
+
+
     /*
     template <typename Archive>
     void save(Archive& archive, const my_mer& mer);
@@ -480,4 +509,6 @@ namespace rapmap {
     */
     }
 }
+
+
 #endif // __RAP_MAP_UTILS_HPP__

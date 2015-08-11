@@ -6,6 +6,8 @@ set (RAPMAP_MAIN_SRCS
     RapMapMapper.cpp
     RapMapSAMapper.cpp
     RapMapFileSystem.cpp
+    RapMapSAIndex.cpp
+    RapMapIndex.cpp
     HitManager.cpp
     rank9b.cpp
     intersection.cpp
