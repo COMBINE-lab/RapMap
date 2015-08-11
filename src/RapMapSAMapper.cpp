@@ -1240,6 +1240,12 @@ void processReadsPairSA(paired_parser* parser,
             bool rh = hitCollector(j->data[i].second.seq,
                         rightHits, saSearcher,
                         MateStatus::PAIRED_END_RIGHT, diffCount);
+
+            rapmap::utils::mergeLeftRightHits(
+                    leftHits, rightHits, jointHits,
+                    readLen, maxNumHits, tooManyHits, hctr);
+
+        /*
 	    if (leftHits.size() > 0) {
 		    auto leftIt = leftHits.begin();
 		    auto leftEnd = leftHits.end();
@@ -1310,6 +1316,7 @@ void processReadsPairSA(paired_parser* parser,
 				    std::make_move_iterator(rightHits.begin()),
 				    std::make_move_iterator(rightHits.end()));
 	    }
+            */
 
             if (jointHits.size() > 0 and !noOutput) {
                 rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,

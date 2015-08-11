@@ -384,7 +384,7 @@ namespace rapmap {
 		    pos = 0;
 	    } else if (pos + readLen > txpLen) {
 		    int32_t matchLen = txpLen - pos;
-		    int32_t clipLen = pos + readLen - txpLen;
+		    int32_t clipLen = pos + readLen - matchLen;
 		    cigarStr.write("{}M{}S", matchLen, clipLen);
 	    } else {
 		    cigarStr.write("{}M", readLen);
@@ -498,7 +498,81 @@ namespace rapmap {
                 fmt::MemoryWriter& sstream);
 
 
+        inline void mergeLeftRightHits(
+                std::vector<QuasiAlignment>& leftHits,
+                std::vector<QuasiAlignment>& rightHits,
+                std::vector<QuasiAlignment>& jointHits,
+                uint32_t readLen,
+                uint32_t maxNumHits,
+                bool& tooManyHits,
+                HitCounters& hctr) {
+            if (leftHits.size() > 0) {
+                auto leftIt = leftHits.begin();
+                auto leftEnd = leftHits.end();
+                auto leftLen = std::distance(leftIt, leftEnd);
+                if (rightHits.size() > 0) {
+                    auto rightIt = rightHits.begin();
+                    auto rightEnd = rightHits.end();
+                    auto rightLen = std::distance(rightIt, rightEnd);
+                    size_t numHits{0};
+                    jointHits.reserve(std::min(leftLen, rightLen));
+                    uint32_t leftTxp, rightTxp;
+                    while (leftIt != leftEnd && rightIt != rightEnd) {
+                        leftTxp = leftIt->tid;
+                        rightTxp = rightIt->tid;
+                        if (leftTxp < rightTxp) {
+                            ++leftIt;
+                        } else {
+                            if (!(rightTxp < leftTxp)) {
+                                int32_t startRead1 = leftIt->pos;
+                                int32_t startRead2 = rightIt->pos;
+                                int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
+                                int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
+                                uint32_t fragLen = fragEndPos - fragStartPos;
+                                jointHits.emplace_back(leftTxp,
+                                        startRead1,
+                                        leftIt->fwd,
+                                        leftIt->readLen,
+                                        fragLen, true);
+                                // Fill in the mate info
+                                auto& qaln = jointHits.back();
+                                qaln.mateLen = rightIt->readLen;
+                                qaln.matePos = startRead2;
+                                qaln.mateIsFwd = rightIt->fwd;
+                                jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
 
+                                ++numHits;
+                                if (numHits > maxNumHits) { tooManyHits = true; break; }
+                                ++leftIt;
+                            }
+                            ++rightIt;
+                        }
+                    }
+                }
+                if (tooManyHits) { jointHits.clear(); ++hctr.tooManyHits; }
+            }
+
+            // If we had proper paired hits
+            if (jointHits.size() > 0) {
+                hctr.peHits += jointHits.size();
+                //orphanStatus = 0;
+            } else if (leftHits.size() + rightHits.size() > 0 and !tooManyHits) {
+                // If there weren't proper paired hits, then either
+                // there were too many hits, and we forcibly discarded the read
+                // or we take the single end hits.
+                auto numHits = leftHits.size() + rightHits.size();
+                hctr.seHits += numHits;
+                //orphanStatus = 0;
+                //orphanStatus |= (leftHits.size() > 0) ? 0x1 : 0;
+                //orphanStatus |= (rightHits.size() > 0) ? 0x2 : 0;
+                jointHits.insert(jointHits.end(),
+                        std::make_move_iterator(leftHits.begin()),
+                        std::make_move_iterator(leftHits.end()));
+                jointHits.insert(jointHits.end(),
+                        std::make_move_iterator(rightHits.begin()),
+                        std::make_move_iterator(rightHits.end()));
+            }
+        }
 
     /*
     template <typename Archive>

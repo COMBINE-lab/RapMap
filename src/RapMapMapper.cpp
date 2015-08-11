@@ -828,7 +828,7 @@ void processReadsPair(paired_parser* parser,
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
-	    hitCollector(j->data[i].first.seq,
+    	    hitCollector(j->data[i].first.seq,
                         leftHits, MateStatus::PAIRED_END_LEFT);
             hitCollector(j->data[i].second.seq,
                         rightHits, MateStatus::PAIRED_END_RIGHT);
@@ -837,72 +837,11 @@ void processReadsPair(paired_parser* parser,
                rightHits.begin(), rightHits.end(),
                std::back_inserter(jointHits));
                */
-            if (leftHits.size() > 0) {
-                auto leftIt = leftHits.begin();
-                auto leftEnd = leftHits.end();
-                auto leftLen = std::distance(leftIt, leftEnd);
-                if (rightHits.size() > 0) {
-                    auto rightIt = rightHits.begin();
-                    auto rightEnd = rightHits.end();
-                    auto rightLen = std::distance(rightIt, rightEnd);
-                    size_t numHits{0};
-                    jointHits.reserve(std::min(leftLen, rightLen));
-					uint32_t leftTxp, rightTxp;
-                    while (leftIt != leftEnd && rightIt != rightEnd) {
-                        leftTxp = leftIt->tid;
-                        rightTxp = rightIt->tid;
-                        if (leftTxp < rightTxp) {
-                            ++leftIt;
-                        } else {
-                            if (!(rightTxp < leftTxp)) {
-                                int32_t startRead1 = leftIt->pos;
-                                int32_t startRead2 = rightIt->pos;
-                                int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
-                                int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
-                                uint32_t fragLen = fragEndPos - fragStartPos;
-                                jointHits.emplace_back(leftTxp,
-                                                       startRead1,
-                                                       leftIt->fwd,
-                                                       leftIt->readLen,
-                                                       fragLen, true);
-                                // Fill in the mate info
-                                auto& qaln = jointHits.back();
-                                qaln.mateLen = rightIt->readLen;
-                                qaln.matePos = startRead2;
-                                qaln.mateIsFwd = rightIt->fwd;
-                                jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
 
-                                ++numHits;
-                                if (numHits > maxNumHits) { tooManyHits = true; break; }
-                                ++leftIt;
-                            }
-                            ++rightIt;
-                        }
-                    }
-                }
-				if (tooManyHits) { jointHits.clear(); ++hctr.tooManyHits; }
-            }
+            rapmap::utils::mergeLeftRightHits(
+                    leftHits, rightHits, jointHits,
+                    readLen, maxNumHits, tooManyHits, hctr);
 
-			// If we had proper paired hits
-            if (jointHits.size() > 0) {
-                hctr.peHits += jointHits.size();
-                orphanStatus = 0;
-            } else if (leftHits.size() + rightHits.size() > 0 and !tooManyHits) {
-		    // If there weren't proper paired hits, then either
-			// there were too many hits, and we forcibly discarded the read
-			// or we take the single end hits.
-					auto numHits = leftHits.size() + rightHits.size();
-					hctr.seHits += numHits;
-					orphanStatus = 0;
-					orphanStatus |= (leftHits.size() > 0) ? 0x1 : 0;
-					orphanStatus |= (rightHits.size() > 0) ? 0x2 : 0;
-					jointHits.insert(jointHits.end(),
-									std::make_move_iterator(leftHits.begin()),
-									std::make_move_iterator(leftHits.end()));
-					jointHits.insert(jointHits.end(),
-									std::make_move_iterator(rightHits.begin()),
-									std::make_move_iterator(rightHits.end()));
-			}
 
             if (jointHits.size() > 0 and !noOutput) {
                 rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,
