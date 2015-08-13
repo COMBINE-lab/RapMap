@@ -706,7 +706,7 @@ void processReadsSingle(single_parser* parser,
         RapMapIndex& rmi,
 	CollectorT& hitCollector,
         MutexT* iomutex,
-        std::ostream& outStream,
+	std::shared_ptr<spdlog::logger> outQueue,
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput) {
@@ -770,11 +770,17 @@ void processReadsSingle(single_parser* parser,
             }
         } // for all reads in this job
 
+	if (!noOutput) {
+	    outQueue->info() << sstream.str();
+	    sstream.clear();
+	}
+	/*
         // DUMP OUTPUT
         iomutex->lock();
         outStream << sstream.str();
         iomutex->unlock();
         sstream.clear();
+	*/
 
     } // processed all reads
 }
@@ -787,7 +793,7 @@ void processReadsPair(paired_parser* parser,
         RapMapIndex& rmi,
 	CollectorT& hitCollector,
         MutexT* iomutex,
-        std::ostream& outStream,
+	std::shared_ptr<spdlog::logger> outQueue,
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput) {
@@ -822,7 +828,7 @@ void processReadsPair(paired_parser* parser,
         typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of read (at most max_read_group)
         if(j.is_empty()) break;           // If got nothing, quit
         for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
-		    tooManyHits = false;
+	    tooManyHits = false;
             readLen = j->data[i].first.seq.length();
             ++hctr.numReads;
             jointHits.clear();
@@ -832,11 +838,6 @@ void processReadsPair(paired_parser* parser,
                         leftHits, MateStatus::PAIRED_END_LEFT);
             hitCollector(j->data[i].second.seq,
                         rightHits, MateStatus::PAIRED_END_RIGHT);
-            /*
-               std::set_intersection(leftHits.begin(), leftHits.end(),
-               rightHits.begin(), rightHits.end(),
-               std::back_inserter(jointHits));
-               */
 
             rapmap::utils::mergeLeftRightHits(
                     leftHits, rightHits, jointHits,
@@ -877,13 +878,20 @@ void processReadsPair(paired_parser* parser,
             }
         } // for all reads in this job
 
+	if (!noOutput) {
+	    outQueue->info() << sstream.str();
+	    sstream.clear();
+	}
+
         // DUMP OUTPUT
+	/*
         if (!noOutput) {
             iomutex->lock();
             outStream << sstream.str();
             iomutex->unlock();
             sstream.clear();
         }
+	*/
 
     } // processed all reads
 
@@ -994,12 +1002,19 @@ int rapMapMap(int argc, char* argv[]) {
 	// either std::cout, or a file.
 	std::ostream outStream(outBuf);
 
+	// Must be a power of 2
+	size_t queueSize{268435456};
+	spdlog::set_async_mode(queueSize);
+	auto outputSink = std::make_shared<spdlog::sinks::ostream_sink_mt>(outStream);
+	auto outLog = std::make_shared<spdlog::logger>("outLog", outputSink);
+	outLog->set_pattern("%v");
+
 	uint32_t nthread = numThreads.getValue();
 	std::unique_ptr<paired_parser> pairParserPtr{nullptr};
 	std::unique_ptr<single_parser> singleParserPtr{nullptr};
 
 	if (!noout.getValue()) {
-        rapmap::utils::writeSAMHeader(rmi, outStream);
+	    rapmap::utils::writeSAMHeader(rmi, outLog);
 	}
 
 	SpinLockT iomutex;
@@ -1039,7 +1054,7 @@ int rapMapMap(int argc, char* argv[]) {
 				std::ref(rmi),
 				std::ref(endCollector),
 				&iomutex,
-				std::ref(outStream),
+				outLog,
 				std::ref(hctrs),
 				maxNumHits.getValue(),
 				noout.getValue());
@@ -1052,7 +1067,7 @@ int rapMapMap(int argc, char* argv[]) {
 				std::ref(rmi),
 				std::ref(skippingCollector),
 				&iomutex,
-				std::ref(outStream),
+				outLog,
 				std::ref(hctrs),
 				maxNumHits.getValue(),
 				noout.getValue());
@@ -1082,7 +1097,7 @@ int rapMapMap(int argc, char* argv[]) {
 				std::ref(rmi),
 				std::ref(endCollector),
 				&iomutex,
-				std::ref(outStream),
+				outLog,
 				std::ref(hctrs),
 				maxNumHits.getValue(),
 				noout.getValue());
@@ -1095,7 +1110,7 @@ int rapMapMap(int argc, char* argv[]) {
 				std::ref(rmi),
 				std::ref(skippingCollector),
 				&iomutex,
-				std::ref(outStream),
+				outLog,
 				std::ref(hctrs),
 				maxNumHits.getValue(),
 				noout.getValue());
@@ -1107,6 +1122,8 @@ int rapMapMap(int argc, char* argv[]) {
 	    consoleLog->info("Discarded {} reads because they had > {} alignments",
 		    hctrs.tooManyHits, maxNumHits.getValue());
 
+	    consoleLog->info("flushing output");
+	    outLog->flush();
 	}
 
 	if (haveOutputFile) {

@@ -15,6 +15,7 @@
 #include <fstream>
 #include <iostream>
 #include <tuple>
+#include <memory>
 #include <cstring>
 
 #include "ScopedTimer.hpp"
@@ -1100,7 +1101,7 @@ void processReadsSingleSA(single_parser * parser,
         RapMapSAIndex& rmi,
     	CollectorT& hitCollector,
         MutexT* iomutex,
-        std::ostream& outStream,
+	std::shared_ptr<spdlog::logger> outQueue,
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput) {
@@ -1173,10 +1174,16 @@ void processReadsSingleSA(single_parser * parser,
         } // for all reads in this job
 
         // DUMP OUTPUT
-        iomutex->lock();
-        outStream << sstream.str();
-        iomutex->unlock();
-        sstream.clear();
+	if (!noOutput) {
+	    outQueue->info() << sstream.str();
+	    sstream.clear();
+	    /*
+	    iomutex->lock();
+	    outStream << sstream.str();
+	    iomutex->unlock();
+	    sstream.clear();
+	    */
+	}
 
     } // processed all reads
 
@@ -1188,7 +1195,7 @@ void processReadsPairSA(paired_parser* parser,
         RapMapSAIndex& rmi,
     	CollectorT& hitCollector,
         MutexT* iomutex,
-        std::ostream& outStream,
+	std::shared_ptr<spdlog::logger> outQueue,
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput) {
@@ -1343,10 +1350,14 @@ void processReadsPairSA(paired_parser* parser,
 
         // DUMP OUTPUT
         if (!noOutput) {
+	    outQueue->info() << sstream.str();
+	    sstream.clear();
+	    /*
             iomutex->lock();
             outStream << sstream.str();
             iomutex->unlock();
             sstream.clear();
+	    */
         }
 
     } // processed all reads
@@ -1455,13 +1466,20 @@ int rapMapSAMap(int argc, char* argv[]) {
 	// either std::cout, or a file.
 	std::ostream outStream(outBuf);
 
+	// Must be a power of 2
+	size_t queueSize{268435456};
+	spdlog::set_async_mode(queueSize);
+	auto outputSink = std::make_shared<spdlog::sinks::ostream_sink_mt>(outStream);
+	std::shared_ptr<spdlog::logger> outLog = std::make_shared<spdlog::logger>("outLog", outputSink);
+	outLog->set_pattern("%v");
+
 	uint32_t nthread = numThreads.getValue();
 	std::unique_ptr<paired_parser> pairParserPtr{nullptr};
 	std::unique_ptr<single_parser> singleParserPtr{nullptr};
 
 
 	if (!noout.getValue()) {
-        rapmap::utils::writeSAMHeader(rmi, outStream);
+	    rapmap::utils::writeSAMHeader(rmi, outLog);
 	}
 
 
@@ -1500,7 +1518,7 @@ int rapMapSAMap(int argc, char* argv[]) {
                         std::ref(rmi),
                         std::ref(saCollector),
                         &iomutex,
-                        std::ref(outStream),
+			outLog,
                         std::ref(hctrs),
                         maxNumHits.getValue(),
                         noout.getValue());
@@ -1528,7 +1546,7 @@ int rapMapSAMap(int argc, char* argv[]) {
                         std::ref(rmi),
                         std::ref(saCollector),
                         &iomutex,
-                        std::ref(outStream),
+			outLog,
                         std::ref(hctrs),
                         maxNumHits.getValue(),
                         noout.getValue());
@@ -1537,6 +1555,8 @@ int rapMapSAMap(int argc, char* argv[]) {
         }
 	std::cerr << "\n\n";
         consoleLog->info("done mapping reads.");
+	consoleLog->info("flushing output queue.");
+	outLog->flush();
 	/*
 	    consoleLog->info("Discarded {} reads because they had > {} alignments",
 		    hctrs.tooManyHits, maxNumHits.getValue());

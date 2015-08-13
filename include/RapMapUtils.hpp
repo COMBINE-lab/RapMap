@@ -2,6 +2,7 @@
 #define __RAP_MAP_UTILS_HPP__
 
 #include <atomic>
+#include <memory>
 #include "xxhash.h"
 #include <cereal/archives/binary.hpp>
 #include "jellyfish/mer_dna.hpp"
@@ -40,6 +41,23 @@ namespace rapmap {
     // and whether or not the k-mer from the hash matches this txp
     // in the forward or RC direction.
     void decodePosition(uint32_t p, uint32_t& pout, bool& newTxp, bool& isRC);
+
+    template <typename IndexT>
+        void writeSAMHeader(IndexT& rmi, std::shared_ptr<spdlog::logger> out) {
+            fmt::MemoryWriter hd;
+            hd.write("@HD\tVN:0.1\tSO:unknown\n");
+
+            auto& txpNames = rmi.txpNames;
+            auto& txpLens = rmi.txpLens;
+
+            auto numRef = txpNames.size();
+            for (size_t i = 0; i < numRef; ++i) {
+                hd.write("@SQ\tSN:{}\tLN:{:d}\n", txpNames[i], txpLens[i]);
+            }
+            // Eventuall output a @PG line
+            //hd.format("@PG\t");
+            out->info() << hd.str();
+        }
 
     template <typename IndexT>
         void writeSAMHeader(IndexT& rmi, std::ostream& outStream) {
