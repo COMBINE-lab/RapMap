@@ -490,8 +490,15 @@ namespace rapmap {
             flags1 |= (qaln.isPaired) ? properlyAligned : 0;
             flags2 = flags1;
             // we don't output unmapped yet
-            flags1 |= (qaln.mateStatus == MateStatus::PAIRED_END_RIGHT) ? unmapped : 0;
-            flags2 |= (qaln.mateStatus == MateStatus::PAIRED_END_LEFT) ? mateUnmapped : 0;
+            bool read1Unaligned = qaln.mateStatus == MateStatus::PAIRED_END_RIGHT;
+            bool read2Unaligned = qaln.mateStatus == MateStatus::PAIRED_END_LEFT;
+            // If read 1 is unaligned, flags1 gets "unmapped" and flags2 gets "mate unmapped"
+            flags1 |= (read1Unaligned) ? unmapped : 0;
+            flags2 |= (read1Unaligned) ? mateUnmapped : 0;
+            // If read 2 is unaligned, flags2 gets "unmapped" and flags1 gets "mate unmapped"
+            flags2 |= (read2Unaligned) ? unmapped : 0;
+            flags1 |= (read2Unaligned) ? mateUnmapped : 0;
+
             flags1 |= (qaln.fwd) ? 0 : isRC;
             flags1 |= (qaln.mateIsFwd) ? 0 : mateIsRC;
             flags2 |= (qaln.mateIsFwd) ? 0 : isRC;
