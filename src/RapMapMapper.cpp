@@ -771,7 +771,10 @@ void processReadsSingle(single_parser* parser,
         } // for all reads in this job
 
 	if (!noOutput) {
-	    outQueue->info() << sstream.str();
+        std::string outStr(sstream.str());
+        // Get rid of last newline
+        outStr.pop_back();
+	    outQueue->info() << std::move(outStr);
 	    sstream.clear();
 	}
 	/*
@@ -879,7 +882,10 @@ void processReadsPair(paired_parser* parser,
         } // for all reads in this job
 
 	if (!noOutput) {
-	    outQueue->info() << sstream.str();
+        std::string outStr(sstream.str());
+        // Get rid of last newline
+        outStr.pop_back();
+	    outQueue->info() << std::move(outStr);
 	    sstream.clear();
 	}
 

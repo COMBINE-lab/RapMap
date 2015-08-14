@@ -394,15 +394,20 @@ namespace rapmap {
     inline void adjustOverhang(int32_t& pos, uint32_t readLen,
 		    uint32_t txpLen, FixedWriter& cigarStr) {
 	    cigarStr.clear();
-	    if (pos < 0) {
-		    int32_t clipLen = -pos;
+	    if (pos + readLen < 0) {
+            cigarStr.write("{}S", readLen);
+            pos = 0;
+        } else if (pos < 0) {
 		    int32_t matchLen = readLen + pos;
+            int32_t clipLen = readLen - matchLen;
 		    cigarStr.write("{}S{}M", clipLen, matchLen);
 		    // Now adjust the mapping position
 		    pos = 0;
-	    } else if (pos + readLen > txpLen) {
+	    } else if (pos > txpLen) {
+            cigarStr.write("{}S", readLen);
+        } else if (pos + readLen > txpLen) {
 		    int32_t matchLen = txpLen - pos;
-		    int32_t clipLen = pos + readLen - txpLen;
+		    int32_t clipLen = readLen - matchLen;
 		    cigarStr.write("{}M{}S", matchLen, clipLen);
 	    } else {
 		    cigarStr.write("{}M", readLen);
@@ -413,7 +418,7 @@ namespace rapmap {
 		    FixedWriter& cigarStr1, FixedWriter& cigarStr2) {
 	    if (qa.isPaired) { // both mapped
 		    adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr1);
-		    adjustOverhang(qa.matePos, qa.mateLen, txpLen, cigarStr1);
+		    adjustOverhang(qa.matePos, qa.mateLen, txpLen, cigarStr2);
 	    } else if (qa.mateStatus == MateStatus::PAIRED_END_LEFT ) {
 		    // left read mapped
 		    adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr1);

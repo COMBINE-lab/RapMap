@@ -52,9 +52,9 @@ namespace rapmap {
                 std::string& readWork,
                 std::string& qualWork) {
 
-            readWork.resize(seq.length());
-            qualWork.resize(qual.length());
-            int32_t end = seq.length(), start = 0;
+            readWork.resize(seq.length(), 'A');
+            qualWork.resize(qual.length(), 'I');
+            int32_t end = seq.length()-1, start = 0;
             //readWork[end] = '\0';
             //qualWork[end] = '\0';
             -- end;
@@ -300,7 +300,7 @@ namespace rapmap {
                                 << 1 << '\t' // MAPQ
                                 << cigarStr->c_str() << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
-                                << 0 << '\t' // PNEXT (only 1 read in templte)
+                                << qa.pos+1 << '\t' // PNEXT (only 1 read in templte)
                                 << 0 << '\t' // TLEN (spec says 0, not read len)
                                 << *readSeq << '\t' // SEQ
                                 << *qstr << '\t' // QUAL
@@ -314,7 +314,7 @@ namespace rapmap {
                             << 0 << '\t' // MAPQ
                             << readSeq->length() << 'M' << '\t' // CIGAR
                             << '=' << '\t' // RNEXT
-                            << 0 << '\t' // PNEXT (only 1 read in template)
+                            << qa.pos + 1 << '\t' // PNEXT (only 1 read in template)
                             << 0 << '\t' // TLEN (spec says 0, not read len)
                             << *unalignedSeq << '\t' // SEQ
                             << *unalignedQstr << '\t' // QUAL
