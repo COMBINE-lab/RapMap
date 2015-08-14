@@ -56,6 +56,9 @@ namespace rapmap {
             }
             // Eventuall output a @PG line
             //hd.format("@PG\t");
+            std::string headerStr(hd.str());
+            // Don't include the last '\n', since the logger will do it for us.
+            headerStr.pop_back();
             out->info() << hd.str();
         }
 
@@ -373,7 +376,7 @@ namespace rapmap {
 
     inline void printMateStatus(rapmap::utils::MateStatus ms) {
         switch(ms) {
-            case rapmap::utils::MateStatus::SINGLE_END:
+            case rapmap::Utils::MateStatus::SINGLE_END:
                 std::cerr << "SINGLE END";
                 break;
             case rapmap::utils::MateStatus::PAIRED_END_LEFT:
