@@ -376,7 +376,7 @@ namespace rapmap {
 
     inline void printMateStatus(rapmap::utils::MateStatus ms) {
         switch(ms) {
-            case rapmap::Utils::MateStatus::SINGLE_END:
+            case rapmap::utils::MateStatus::SINGLE_END:
                 std::cerr << "SINGLE END";
                 break;
             case rapmap::utils::MateStatus::PAIRED_END_LEFT:
