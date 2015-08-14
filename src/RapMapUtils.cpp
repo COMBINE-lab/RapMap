@@ -253,11 +253,12 @@ namespace rapmap {
                         uint32_t flags, unalignedFlags;
                         std::string* qstr{nullptr};
                         std::string* unalignedQstr{nullptr};
+                        std::string* alignedName{nullptr};
                         std::string* unalignedName{nullptr};
                         rapmap::utils::FixedWriter* cigarStr;
                         if (qa.mateStatus == MateStatus::PAIRED_END_LEFT) { // left read
-                            readName = r.first.header;
-                            unalignedName = &r.second.header;
+                            alignedName = &readName;
+                            unalignedName = &mateName;
 
                             readSeq = &(r.first.seq);
                             unalignedSeq = &(r.second.seq);
@@ -270,8 +271,8 @@ namespace rapmap {
 
                             cigarStr = &cigarStr1;
                         } else { // right read
-                            readName = r.second.header;
-                            unalignedName = &(r.first.header);
+                            alignedName = &mateName;
+                            unalignedName = &readName;
 
                             readSeq = &(r.second.seq);
                             unalignedSeq = &(r.first.seq);
@@ -293,7 +294,7 @@ namespace rapmap {
                         }
 
                         rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
-                        sstream << readName.c_str() << '\t' // QNAME
+                        sstream << alignedName->c_str() << '\t' // QNAME
                                 << flags << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
