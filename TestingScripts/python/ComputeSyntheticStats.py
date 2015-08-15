@@ -2,6 +2,7 @@ import argparse
 
 def main(args):
     import pysam
+    import sys
 
     alnFile = pysam.AlignmentFile(args.input, 'r')
     currQueryName = ''
@@ -17,8 +18,8 @@ def main(args):
         if qname != currQueryName:
             readsSeen += 1
             if readsSeen % 1000000 == 0:
-                print("Saw {} reads --- thp = {:.2%}".format(readsSeen, \
-                       float(readsWithTrueAln) / readsSeen))
+                print("\r\rSaw {} reads --- thp = {:.2%}".format(readsSeen, \
+                       float(readsWithTrueAln) / readsSeen), file=sys.stderr, end='')
             currQueryName = qname
             skipToNextAlignment = False
 
@@ -35,6 +36,9 @@ def main(args):
                 readsWithTrueAln += 1
                 skipToNextAlignment = True
 
+    print("\nSaw {} reads, {} of them had a correct alignment: THP = {:.2%}".format(\
+           readsSeen, readsWithTrueAln, float(readsWithTrueAln) / readsSeen, \
+           file=sys.stderr))
 
 
 if __name__ == "__main__":
