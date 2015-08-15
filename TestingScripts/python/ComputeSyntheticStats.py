@@ -1,6 +1,7 @@
 import argparse
 
 def main(args):
+    from __future__ import print_function
     import pysam
     import sys
 
