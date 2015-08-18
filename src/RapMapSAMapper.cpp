@@ -465,15 +465,15 @@ class SASearcher {
                     }
 
                     ++i;
-		}
-		if (i == m or SA[c] + i == n) {
-			if (i > prevIHigh) {
-				prevIHigh = i;
-				validBoundHigh = c;
-			} else if (i == prevIHigh) {
-				validBoundHigh = c < validBoundHigh ? c : validBoundHigh;
-			}
-		}
+                }
+                if (i == m or SA[c] + i == n) {
+                    if (i > prevIHigh) {
+                        prevIHigh = i;
+                        validBoundHigh = c;
+                    } else if (i == prevIHigh) {
+                        validBoundHigh = c < validBoundHigh ? c : validBoundHigh;
+                    }
+                }
 
                 if (plt) {
                     if (c == l + 1) {
@@ -486,7 +486,7 @@ class SASearcher {
                 } else {
                     if (c == r - 1) {
                         maxI = std::max(std::max(i, prevILow), prevIHigh);
-			res1.maxLen = maxI;
+                        res1.maxLen = maxI;
                         break;
                     }
                     l = c;
@@ -497,10 +497,10 @@ class SASearcher {
             bool knownValid{true};
             m = res1.maxLen + 1;
 
-	    // first search for the lower bound
+            // first search for the lower bound
             sentinel = '#';
-	    l = lbIn;
-	    r = ubIn;
+            l = lbIn;
+            r = ubIn;
 
             lcpLP = startAt;
             lcpRP = startAt;
@@ -543,10 +543,10 @@ class SASearcher {
                 }
             }
 
-	    // then search for the upper bound
+            // then search for the upper bound
             sentinel = '{';
-	    l = res1.bound - 1;
-	    r = ubIn;
+            l = res1.bound - 1;
+            r = ubIn;
 
             lcpLP = startAt;
             lcpRP = startAt;
@@ -668,13 +668,19 @@ class SASearcher {
             return std::make_tuple(lower, upper);
         }
 
+        /**
+         * Compute the longest common extension between the suffixes
+         * at T[SA[p1]] and T[SA[p2]].  Start the comparison at `startAt`
+         * positions into the suffix, and only consider an extension
+         * going to at most position `stopAt`.
+         */
         uint32_t lce(int p1, int p2,
                      int startAt=0,
                      int stopAt=std::numeric_limits<int>::max(),
                      bool verbose=false) {
             std::string& seq = *seq_;
             std::vector<int>& SA = *sa_;
-            size_t len{startAt};
+            uint32_t len{startAt};
             auto o1 = SA[p1] + startAt;
             auto o2 = SA[p2] + startAt;
             auto maxIndex = std::max(o1, o2);
@@ -685,6 +691,7 @@ class SASearcher {
             }
             return len;
         }
+
     private:
         RapMapSAIndex* rmi_;
         std::string* seq_;
@@ -700,8 +707,7 @@ class SACollector {
     bool operator()(std::string& read,
             std::vector<QuasiAlignment>& hits,
             SASearcher& saSearcher,
-            MateStatus mateStatus,
-            std::atomic<uint64_t>& diffCount) {
+            MateStatus mateStatus) {
 
         //auto& posIDs = rmi_->positionIDs;
         auto& rankDict = rmi_->rankDict;
@@ -748,6 +754,15 @@ class SACollector {
         std::vector<uint32_t> rightTxps, rightTxpsRC;
         int maxInterval{1000};
 
+        // The number of bases that a new query position (to which
+        // we skipped) should overlap the previous extension. A
+        // value of 0 means no overlap (the new search begins at the next
+        // base) while a value of (k - 1) means that k-1 bases (one less than
+        // the k-mer size) must overlap.
+        int skipOverlap = 0;
+        // Number of nucleotides to skip when encountering a homopolymer k-mer.
+        int homoPolymerSkip = k / 2;
+
         // Find a hit within the read
         // While we haven't fallen off the end
         while (re < read.end()) {
@@ -765,6 +780,7 @@ class SACollector {
             // If the next k-bases are valid, get the k-mer and
             // reverse complement k-mer
             mer = rapmap::utils::my_mer(read.c_str() + pos);
+            if (mer.is_homopolymer()) { rb += homoPolymerSkip; re += homoPolymerSkip; continue; }
             rcMer = mer.get_reverse_complement();
 
             // See if we can find this k-mer in the hash
@@ -854,22 +870,28 @@ class SACollector {
             // T[SA[lb]:] and T[SA[ub-1]:]
             auto remainingLength = std::distance(rb, readEndIt);
             auto lce = saSearcher.lce(lbLeftFwd, ubLeftFwd-1, matchLen, remainingLength);
+            auto fwdSkip = lce - skipOverlap;
 
             size_t nextInformativePosition = std::min(
                     std::max(0, static_cast<int>(readLen)- static_cast<int>(k)),
-                    static_cast<int>(std::distance(readStartIt, rb) + lce)
+                    static_cast<int>(std::distance(readStartIt, rb) + fwdSkip)
                     );
 
             rb = read.begin() + nextInformativePosition;
             re = rb + k;
 
+            size_t invalidPos{0};
             while (re <= readEndIt) {
                 // The offset into the string
                 auto pos = std::distance(readStartIt, rb);
-                //std::cerr << "readLen = " << readLen << ", lce = " << lce << "\n";
-                //std::cerr << "here; pos = " << pos << "\n";
+
                 // The position of the first N in the k-mer (if there is one)
-                auto invalidPos = read.find_first_of("nN", pos);
+                // If we have already verified there are no Ns in the remainder
+                // of the string (invalidPos is std::string::npos) then we can
+                // skip this test.
+                if (invalidPos != std::string::npos) {
+                    invalidPos = read.find_first_of("nN", pos);
+                }
 
                 // If the first N is within k bases, then this k-mer is invalid
                 if (invalidPos < pos + k) {
@@ -885,6 +907,7 @@ class SACollector {
                 if (re <= readEndIt) {
 
                     mer = rapmap::utils::my_mer(read.c_str() + pos);
+                    if (mer.is_homopolymer()) { rb += homoPolymerSkip; re += homoPolymerSkip; continue; }
                     auto merIt = khash.find(mer.get_bits(0, 2*k));
 
                     if (merIt != khash.end()) {
@@ -905,14 +928,15 @@ class SACollector {
                             //break;
                         }
 
-                        rb += matchedLen;
+                        fwdSkip = matchedLen - skipOverlap;
+                        rb += fwdSkip;
                         re = rb + k;
 
                         if (re <= readEndIt) {
-                            rb -= matchedLen;
+                            rb -= fwdSkip;
                             auto remainingDistance = std::distance(rb, readEndIt);
                             auto lce = saSearcher.lce(lbRightFwd, ubRightFwd-1, matchedLen, remainingDistance);
-                            rb += lce;
+                            rb += lce - skipOverlap;
                             re = rb + k;
                         }
 
@@ -932,16 +956,22 @@ class SACollector {
             auto revRB = read.rbegin();
             auto revRE = revRB + k;
 
+            auto invalidPosIt = revRB;
             while (revRE <= revReadEndIt){
 
                 revRE = revRB + k;
                 if (revRE >= revReadEndIt) { break; }
 
                 // See if this k-mer would contain an N
-                auto invalidPosIt = std::find_if(revRB, revRE,
+                // only check if we don't yet know that there are no remaining
+                // Ns
+                if (invalidPosIt != revReadEndIt) {
+                    invalidPosIt = std::find_if(revRB, revRE,
                                                  [](const char c) -> bool {
                                                      return c == 'n' or c == 'N';
                                                  });
+                }
+
                 // If we found an N before the end of the k-mer
                 if (invalidPosIt < revRE) {
                     // Skip to the k-mer starting at the next position
@@ -956,6 +986,7 @@ class SACollector {
 
                 // Get the k-mer and query it in the hash
                 mer = rapmap::utils::my_mer(read.c_str() + pos);
+                if (mer.is_homopolymer()) { revRB += homoPolymerSkip; revRE += homoPolymerSkip; continue; }
                 rcMer = mer.get_reverse_complement();
                 auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
 
@@ -978,20 +1009,21 @@ class SACollector {
                         rightRCHit = true;
                         //break;
                     }
-                    revRB += matchedLen;
+
+                    auto fwdSkip = matchedLen - skipOverlap;
+                    revRB += fwdSkip;
                     revRE = revRB + k;
 
                     if (revRE <= revReadEndIt) {
-                        revRB -= matchedLen;
-                        auto remainingDistance = std::distance(revRB + matchedLen, revReadEndIt);
+                        revRB -= fwdSkip;
+                        auto remainingDistance = std::distance(revRB, revReadEndIt);
                         auto lce = saSearcher.lce(lbRightRC, ubRightRC-1, matchedLen, remainingDistance);
-                        revRB += lce;
+                        revRB += lce - skipOverlap;
                         revRE = revRE + k;
                     }
 
-
                 } else {
-                    revRB += sampFactor;//= revRE;
+                    revRB += sampFactor;
                     revRE = revRB + k;
                 }
             }
@@ -1101,7 +1133,7 @@ void processReadsSingleSA(single_parser * parser,
         RapMapSAIndex& rmi,
     	CollectorT& hitCollector,
         MutexT* iomutex,
-	std::shared_ptr<spdlog::logger> outQueue,
+    	std::shared_ptr<spdlog::logger> outQueue,
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput) {
@@ -1110,7 +1142,6 @@ void processReadsSingleSA(single_parser * parser,
     std::vector<uint32_t>& txpOffsets = rmi.txpOffsets;
     auto& txpLens = rmi.txpLens;
     uint32_t n{0};
-    //uint32_t k = rapmap::utils::my_mer::k();
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
 
     auto logger = spdlog::get("stderrLog");
@@ -1127,21 +1158,15 @@ void processReadsSingleSA(single_parser * parser,
 
     SASearcher saSearcher(&rmi);
 
-    // 0 means properly aligned
-    // 0x1 means only alignments for left read
-    // 0x2 means only alignments for right read
-    // 0x3 means "orphaned" alignments for left and right
-    // (currently not treated as orphan).
-    std::atomic<uint64_t> diffCount{0};
     uint32_t orphanStatus{0};
     while(true) {
-        typename single_parser::job j(*parser); // Get a job from the parser: a bunch of read (at most max_read_group)
-        if(j.is_empty()) break;           // If got nothing, quit
+        typename single_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
+        if(j.is_empty()) break;                 // If we got nothing, then quit.
         for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
             readLen = j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
-            hitCollector(j->data[i].seq, hits, saSearcher, MateStatus::SINGLE_END, diffCount);
+            hitCollector(j->data[i].seq, hits, saSearcher, MateStatus::SINGLE_END);
             auto numHits = hits.size();
             hctr.totHits += numHits;
 
@@ -1174,31 +1199,34 @@ void processReadsSingleSA(single_parser * parser,
         } // for all reads in this job
 
         // DUMP OUTPUT
-	if (!noOutput) {
-        std::string outStr(sstream.str());
-        // Get rid of last newline
-        outStr.pop_back();
-	    outQueue->info() << std::move(outStr);
-	    sstream.clear();
-	    /*
-	    iomutex->lock();
-	    outStream << sstream.str();
-	    iomutex->unlock();
-	    sstream.clear();
-	    */
-	}
+        if (!noOutput) {
+            std::string outStr(sstream.str());
+            // Get rid of last newline
+            outStr.pop_back();
+            outQueue->info() << std::move(outStr);
+            sstream.clear();
+            /*
+             iomutex->lock();
+             outStream << sstream.str();
+             iomutex->unlock();
+             sstream.clear();
+             */
+        }
 
     } // processed all reads
 
 
 }
 
+/**
+ *  Map reads from a collection of paired-end files.
+ */
 template <typename CollectorT, typename MutexT>
 void processReadsPairSA(paired_parser* parser,
         RapMapSAIndex& rmi,
     	CollectorT& hitCollector,
         MutexT* iomutex,
-	std::shared_ptr<spdlog::logger> outQueue,
+	    std::shared_ptr<spdlog::logger> outQueue,
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput) {
@@ -1206,7 +1234,6 @@ void processReadsPairSA(paired_parser* parser,
     std::vector<uint32_t>& txpOffsets = rmi.txpOffsets;
     auto& txpLens = rmi.txpLens;
     uint32_t n{0};
-    //uint32_t k = rapmap::utils::my_mer::k();
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
 
     auto logger = spdlog::get("stderrLog");
@@ -1226,16 +1253,10 @@ void processReadsPairSA(paired_parser* parser,
 
     SASearcher saSearcher(&rmi);
 
-    // 0 means properly aligned
-    // 0x1 means only alignments for left read
-    // 0x2 means only alignments for right read
-    // 0x3 means "orphaned" alignments for left and right
-    // (currently not treated as orphan).
-    std::atomic<uint64_t> diffCount{0};
     uint32_t orphanStatus{0};
     while(true) {
-        typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of read (at most max_read_group)
-        if(j.is_empty()) break;           // If got nothing, quit
+        typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
+        if(j.is_empty()) break;                 // If we got nothing, quit
         for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
 		    tooManyHits = false;
             readLen = j->data[i].first.seq.length();
@@ -1246,88 +1267,16 @@ void processReadsPairSA(paired_parser* parser,
 
             bool lh = hitCollector(j->data[i].first.seq,
                         leftHits, saSearcher,
-                        MateStatus::PAIRED_END_LEFT, diffCount);
+                        MateStatus::PAIRED_END_LEFT);
             bool rh = hitCollector(j->data[i].second.seq,
                         rightHits, saSearcher,
-                        MateStatus::PAIRED_END_RIGHT, diffCount);
+                        MateStatus::PAIRED_END_RIGHT);
 
             rapmap::utils::mergeLeftRightHits(
                     leftHits, rightHits, jointHits,
                     readLen, maxNumHits, tooManyHits, hctr);
 
-        /*
-	    if (leftHits.size() > 0) {
-		    auto leftIt = leftHits.begin();
-		    auto leftEnd = leftHits.end();
-		    auto leftLen = std::distance(leftIt, leftEnd);
-		    if (rightHits.size() > 0) {
-			    auto rightIt = rightHits.begin();
-			    auto rightEnd = rightHits.end();
-			    auto rightLen = std::distance(rightIt, rightEnd);
-			    size_t numHits{0};
-			    jointHits.reserve(std::min(leftLen, rightLen));
-			    uint32_t leftTxp, rightTxp;
-			    while (leftIt != leftEnd && rightIt != rightEnd) {
-				    // The left and right transcipt ids
-				    leftTxp = leftIt->tid;
-				    rightTxp = rightIt->tid;
-
-				    // They don't point to the same transcript
-				    if (leftTxp < rightTxp) {
-					    ++leftIt;
-				    } else {
-
-					    // The left and right iterators point to the same transcript
-					    if (!(rightTxp < leftTxp)) {
-						    int32_t startRead1 = leftIt->pos;
-						    int32_t startRead2 = rightIt->pos;
-						    int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
-						    int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
-						    uint32_t fragLen = fragEndPos - fragStartPos;
-						    jointHits.emplace_back(leftTxp,
-								    startRead1,
-								    leftIt->fwd,
-								    leftIt->readLen,
-								    fragLen, true);
-						    // Fill in the mate info
-						    auto& qaln = jointHits.back();
-						    qaln.mateLen = rightIt->readLen;
-						    qaln.matePos = startRead2;
-						    qaln.mateIsFwd = rightIt->fwd;
-						    jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
-						    ++numHits;
-						    if (numHits > maxNumHits) { tooManyHits = true; break; }
-						    ++leftIt;
-					    }
-					    ++rightIt;
-				    }
-			    }
-		    }
-		    if (tooManyHits) { jointHits.clear(); ++hctr.tooManyHits; }
-	    }
-
-	    // If we had proper paired hits
-	    if (jointHits.size() > 0) {
-		    hctr.peHits += jointHits.size();
-		    orphanStatus = 0;
-	    } else if (leftHits.size() + rightHits.size() > 0 and !tooManyHits) {
-		    // If there weren't proper paired hits, then either
-		    // there were too many hits, and we forcibly discarded the read
-		    // or we take the single end hits.
-		    auto numHits = leftHits.size() + rightHits.size();
-		    hctr.seHits += numHits;
-		    orphanStatus = 0;
-		    orphanStatus |= (leftHits.size() > 0) ? 0x1 : 0;
-		    orphanStatus |= (rightHits.size() > 0) ? 0x2 : 0;
-		    jointHits.insert(jointHits.end(),
-				    std::make_move_iterator(leftHits.begin()),
-				    std::make_move_iterator(leftHits.end()));
-		    jointHits.insert(jointHits.end(),
-				    std::make_move_iterator(rightHits.begin()),
-				    std::make_move_iterator(rightHits.end()));
-	    }
-            */
-
+            // If we have reads to output, and we're writing output.
             if (jointHits.size() > 0 and !noOutput) {
                 rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,
                                                        hctr, jointHits, sstream);
@@ -1339,7 +1288,7 @@ void processReadsPairSA(paired_parser* parser,
                     if (hctr.numReads > 0) {
                         std::cerr << "\r\r";
                     }
-                    std::cerr << "saw " << hctr.numReads << " reads (diffCount = " << diffCount << ") : "
+                    std::cerr << "saw " << hctr.numReads << " reads : "
                               << "pe / read = " << hctr.peHits / static_cast<float>(hctr.numReads)
                               << " : se / read = " << hctr.seHits / static_cast<float>(hctr.numReads) << ' ';
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
@@ -1358,12 +1307,12 @@ void processReadsPairSA(paired_parser* parser,
             outStr.pop_back();
             outQueue->info() << std::move(outStr);
             sstream.clear();
-	    /*
+	        /*
             iomutex->lock();
             outStream << sstream.str();
             iomutex->unlock();
             sstream.clear();
-	    */
+	        */
         }
 
     } // processed all reads
@@ -1483,11 +1432,9 @@ int rapMapSAMap(int argc, char* argv[]) {
 	std::unique_ptr<paired_parser> pairParserPtr{nullptr};
 	std::unique_ptr<single_parser> singleParserPtr{nullptr};
 
-
 	if (!noout.getValue()) {
 	    rapmap::utils::writeSAMHeader(rmi, outLog);
 	}
-
 
 	SpinLockT iomutex;
 	{
@@ -1501,7 +1448,7 @@ int rapMapSAMap(int argc, char* argv[]) {
 
             if (read1Vec.size() != read2Vec.size()) {
                 consoleLog->error("The number of provided files for "
-                        "-1 and -2 must be the same!");
+                                  "-1 and -2 must be the same!");
                 std::exit(1);
             }
 
@@ -1524,7 +1471,7 @@ int rapMapSAMap(int argc, char* argv[]) {
                         std::ref(rmi),
                         std::ref(saCollector),
                         &iomutex,
-			outLog,
+            			outLog,
                         std::ref(hctrs),
                         maxNumHits.getValue(),
                         noout.getValue());
@@ -1552,7 +1499,7 @@ int rapMapSAMap(int argc, char* argv[]) {
                         std::ref(rmi),
                         std::ref(saCollector),
                         &iomutex,
-			outLog,
+            			outLog,
                         std::ref(hctrs),
                         maxNumHits.getValue(),
                         noout.getValue());
@@ -1560,7 +1507,7 @@ int rapMapSAMap(int argc, char* argv[]) {
             for (auto& t : threads) { t.join(); }
         }
 	std::cerr << "\n\n";
-        consoleLog->info("done mapping reads.");
+    consoleLog->info("done mapping reads.");
 	consoleLog->info("flushing output queue.");
 	outLog->flush();
 	/*
@@ -1633,6 +1580,80 @@ if (verbose) {
 
 }
 */
+/* Old read output code
+if (leftHits.size() > 0) {
+auto leftIt = leftHits.begin();
+auto leftEnd = leftHits.end();
+auto leftLen = std::distance(leftIt, leftEnd);
+if (rightHits.size() > 0) {
+auto rightIt = rightHits.begin();
+auto rightEnd = rightHits.end();
+auto rightLen = std::distance(rightIt, rightEnd);
+size_t numHits{0};
+jointHits.reserve(std::min(leftLen, rightLen));
+uint32_t leftTxp, rightTxp;
+while (leftIt != leftEnd && rightIt != rightEnd) {
+	// The left and right transcipt ids
+	leftTxp = leftIt->tid;
+	rightTxp = rightIt->tid;
+
+	// They don't point to the same transcript
+	if (leftTxp < rightTxp) {
+		++leftIt;
+	} else {
+
+		// The left and right iterators point to the same transcript
+		if (!(rightTxp < leftTxp)) {
+			int32_t startRead1 = leftIt->pos;
+			int32_t startRead2 = rightIt->pos;
+			int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
+			int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
+			uint32_t fragLen = fragEndPos - fragStartPos;
+			jointHits.emplace_back(leftTxp,
+					startRead1,
+					leftIt->fwd,
+					leftIt->readLen,
+					fragLen, true);
+			// Fill in the mate info
+			auto& qaln = jointHits.back();
+			qaln.mateLen = rightIt->readLen;
+			qaln.matePos = startRead2;
+			qaln.mateIsFwd = rightIt->fwd;
+			jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
+			++numHits;
+			if (numHits > maxNumHits) { tooManyHits = true; break; }
+			++leftIt;
+		}
+		++rightIt;
+	}
+}
+}
+if (tooManyHits) { jointHits.clear(); ++hctr.tooManyHits; }
+}
+
+// If we had proper paired hits
+if (jointHits.size() > 0) {
+hctr.peHits += jointHits.size();
+orphanStatus = 0;
+} else if (leftHits.size() + rightHits.size() > 0 and !tooManyHits) {
+// If there weren't proper paired hits, then either
+// there were too many hits, and we forcibly discarded the read
+// or we take the single end hits.
+auto numHits = leftHits.size() + rightHits.size();
+hctr.seHits += numHits;
+orphanStatus = 0;
+orphanStatus |= (leftHits.size() > 0) ? 0x1 : 0;
+orphanStatus |= (rightHits.size() > 0) ? 0x2 : 0;
+jointHits.insert(jointHits.end(),
+	std::make_move_iterator(leftHits.begin()),
+	std::make_move_iterator(leftHits.end()));
+jointHits.insert(jointHits.end(),
+	std::make_move_iterator(rightHits.begin()),
+	std::make_move_iterator(rightHits.end()));
+}
+*/
+
+
 
 
 

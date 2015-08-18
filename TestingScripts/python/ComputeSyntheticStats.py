@@ -5,13 +5,21 @@ def main(args):
     import pysam
     import sys
 
+    printFP = args.printFalsePositives
     alnFile = pysam.AlignmentFile(args.input, 'r')
+    totalNumReads = args.totalNumReads
     currQueryName = ''
     skipToNextAlignment = False
 
     readsWithTrueAln = 0
     readsSeen = 0
 
+    truePos = 0
+    falsePos = 0
+    falseNeg = 0
+    foundTrueAlignment = False
+    ## True Neg are somewhat ill-defined in our context
+    prevRec = None
     for rec in alnFile:
         qname = rec.qname[:-2]
         # If this is a new read, remember the name
@@ -20,10 +28,17 @@ def main(args):
             readsSeen += 1
             if readsSeen % 1000000 == 0:
                 print("\r\rSaw {} reads --- thp = {:.2%}".format(readsSeen, \
-                       float(readsWithTrueAln) / readsSeen), file=sys.stderr, end='')
-            currQueryName = qname
-            skipToNextAlignment = False
+                       float(truePos) / readsSeen), file=sys.stderr, end='')
 
+            currQueryName = qname
+            if not foundTrueAlignment:
+                falsePos += 1
+                if (printFP):
+                    print(prevRec)
+            skipToNextAlignment = False
+            foundTrueAlignment = False
+
+        prevRec = rec
         # If we already found the true hit
         # for this read, don't bother processing
         # this record
@@ -34,16 +49,34 @@ def main(args):
             trueTxpName = qname.split(':')[2]
             alignedTxpName = alnFile.getrname(rec.rname)
             if (trueTxpName == alignedTxpName):
-                readsWithTrueAln += 1
+                truePos += 1
                 skipToNextAlignment = True
+                foundTrueAlignment = True
 
-    print("\nSaw {} reads, {} of them had a correct alignment: THP = {:.2%}".format(\
-           readsSeen, readsWithTrueAln, float(readsWithTrueAln) / readsSeen, \
-           file=sys.stderr))
+    falseNeg = totalNumReads - readsSeen
+    print('\n'.join(["Total Reads = {}" ,
+          "Reads Aligned  = {}" ,
+          "True Pos = {}" ,
+          "False Pos = {}" ,
+          "False Neg = {}" ,
+          "Precision = {:.2%}",
+          "Recall = {:.2%}" ,
+          "TPH = {:.2%}",
+          "FDR = {:.2%}",
+          "F1 Score = {:.2%}"]).format(totalNumReads, readsSeen,
+                                  truePos, falsePos,
+                                  falseNeg, truePos / float(truePos + falsePos),
+                                  truePos / float(truePos + falseNeg),
+                                  truePos / float(readsSeen),
+                                  falsePos / float(falsePos + truePos),
+                                  (2*truePos) / float(2*truePos + falsePos + falseNeg)),
+          file=sys.stderr)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Compute statistics from synthetic SAM file.')
     parser.add_argument('--input', type=str)
+    parser.add_argument('--totalNumReads', type=int)
+    parser.add_argument('--printFalsePositives', action='store_true')
     args = parser.parse_args()
     main(args)
