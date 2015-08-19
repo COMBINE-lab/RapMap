@@ -76,7 +76,6 @@ add_executable(rapmap ${RAPMAP_MAIN_SRCS})
 # Link the executable
 target_link_libraries(rapmap
     rsdic
-    gff
     ${PTHREAD_LIB}
     #${Boost_LIBRARIES} 
     ${ZLIB_LIBRARY} 
