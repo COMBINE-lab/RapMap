@@ -1277,7 +1277,7 @@ void processReadsPairSA(paired_parser* parser,
                     readLen, maxNumHits, tooManyHits, hctr);
 
             // If we have reads to output, and we're writing output.
-            if (jointHits.size() > 0 and !noOutput) {
+            if (jointHits.size() > 0 and !noOutput and jointHits.size() <= maxNumHits) {
                 rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,
                                                        hctr, jointHits, sstream);
             }
