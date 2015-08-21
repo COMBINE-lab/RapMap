@@ -165,7 +165,7 @@ void indexTranscriptsSA(ParserT* parser,
     txpSeqStream.clear();
 
 
-    // Make our dense bit arrray 
+    // Make our dense bit arrray
     BIT_ARRAY* bitArray = bit_array_create(concatText.length());
     for (auto p : onePos) {
 	    bit_array_set_bit(bitArray, p);
@@ -185,7 +185,7 @@ void indexTranscriptsSA(ParserT* parser,
     }
 
     if (bit_array_num_bits_set(bitArray) != onePos.size()) {
-	std::cerr << "ERROR: Bit array has " << bit_array_num_bits_set(bitArray) 
+	std::cerr << "ERROR: Bit array has " << bit_array_num_bits_set(bitArray)
 		  << " bits set, but this should be " << onePos.size() << "!\n";
 	std::exit(1);
     }
@@ -226,7 +226,7 @@ void indexTranscriptsSA(ParserT* parser,
     }
     fclose(rsFile);
     bit_array_free(bitArray);
-    
+
 
     std::ofstream seqStream(outputDir + "txpInfo.bin", std::ios::binary);
     {
@@ -484,6 +484,14 @@ int rapMapSAIndex(int argc, char* argv[]) {
     std::vector<std::string> transcriptFiles({ transcriptFile });
 
     uint32_t k = kval.getValue();
+    if (k % 2 == 0) {
+        std::cerr << "Error: k must be an odd value, you chose " << k << '\n';
+        std::exit(1);
+    } else
+    if (k > 31) {
+        std::cerr << "Error: k must not be larger than 31, you chose " << k << '\n';
+        std::exit(1);
+    }
     rapmap::utils::my_mer::k(k);
 
     std::string indexDir = index.getValue();

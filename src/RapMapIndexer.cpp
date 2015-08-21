@@ -684,7 +684,7 @@ void processTranscripts(ParserT* parser,
     txpArchive(transcriptNames);
   }
   txpStream.close();
-  
+
   std::string indexVersion = "p0";
   IndexHeader header(IndexType::PSEUDO, indexVersion, true, k);
   // Finally (since everything presumably succeeded) write the header
@@ -726,6 +726,13 @@ int rapMapIndex(int argc, char* argv[]) {
     std::vector<std::string> transcriptFiles({ transcriptFile });
 
     uint32_t k = kval.getValue();
+    if (k % 2 == 0) {
+        std::cerr << "Error: k must be an odd value, you chose " << k << '\n';
+        std::exit(1);
+    } else if (k > 31) {
+        std::cerr << "Error: k must not be larger than 31, you chose " << k << '\n';
+        std::exit(1);
+    }
     rapmap::utils::my_mer::k(k);
 
     std::string indexDir = index.getValue();
