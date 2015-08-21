@@ -1147,7 +1147,7 @@ void processReadsSingleSA(single_parser * parser,
     auto logger = spdlog::get("stderrLog");
 
     fmt::MemoryWriter sstream;
-    size_t batchSize{1000};
+    size_t batchSize{2500};
     std::vector<QuasiAlignment> hits;
 
     size_t readLen{0};

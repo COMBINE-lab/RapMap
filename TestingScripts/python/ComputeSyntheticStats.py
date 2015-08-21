@@ -20,15 +20,25 @@ def main(args):
     foundTrueAlignment = False
     ## True Neg are somewhat ill-defined in our context
     prevRec = None
+    useNHTag = args.useNHTag
+    NHTagSum = 0
+    nhData = []
     for rec in alnFile:
+        if rec.is_unmapped:
+            continue
         qname = rec.qname[:-2]
         # If this is a new read, remember the name
         # and increment the counter
         if qname != currQueryName:
             readsSeen += 1
+            if useNHTag:
+                tagVal = rec.get_tag('NH')
+                NHTagSum += tagVal
+                nhData.append(tagVal)
             if readsSeen % 1000000 == 0:
                 print("\r\rSaw {} reads --- thp = {:.2%}".format(readsSeen, \
                        float(truePos) / readsSeen), file=sys.stderr, end='')
+
 
             currQueryName = qname
             if not foundTrueAlignment:
@@ -72,11 +82,19 @@ def main(args):
                                   (2*truePos) / float(2*truePos + falsePos + falseNeg)),
           file=sys.stderr)
 
+    if useNHTag:
+        print("Average hits-per-read = {:.2}".format(
+              NHTagSum / float(totalNumReads)), file=sys.stderr)
+        if args.nhFreqFile:
+            import pickle
+            pickle.dump(nhData, args.nhFreqFile)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Compute statistics from synthetic SAM file.')
     parser.add_argument('--input', type=str)
     parser.add_argument('--totalNumReads', type=int)
+    parser.add_argument('--useNHTag', action='store_true')
+    parser.add_argument('--nhFreqFile', nargs='?', type=argparse.FileType('w'))
     parser.add_argument('--printFalsePositives', action='store_true')
     args = parser.parse_args()
     main(args)

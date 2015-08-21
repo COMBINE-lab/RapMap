@@ -1,4 +1,6 @@
 #include "RapMapSAIndex.hpp"
+#include <future>
+#include <thread>
 
 RapMapSAIndex::RapMapSAIndex() {}
 
@@ -12,6 +14,28 @@ bool RapMapSAIndex::load(const std::string& indDir) {
 
     auto logger = spdlog::get("stderrLog");
     size_t n{0};
+
+    // This part takes the longest, so do it in it's own asynchronous task
+    std::future<std::pair<bool, uint32_t>> loadingHash = std::async(std::launch::async, [this, logger, indDir]() -> std::pair<bool, uint32_t> {
+        this->khash.set_empty_key(std::numeric_limits<uint64_t>::max());
+        uint32_t k;
+        std::ifstream hashStream(indDir + "hash.bin");
+        {
+            logger->info("Loading Position Hash");
+            cereal::BinaryInputArchive hashArchive(hashStream);
+            hashArchive(k);
+            khash.unserialize(google::dense_hash_map<uint64_t,
+                    rapmap::utils::SAInterval,
+                    rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
+
+            //hashArchive(khash);
+        }
+        hashStream.close();
+        return std::make_pair(true, k);
+    });
+
+
+
     std::ifstream saStream(indDir + "sa.bin");
     {
         logger->info("Loading Suffix Array ");
@@ -20,22 +44,6 @@ bool RapMapSAIndex::load(const std::string& indDir) {
         //saArchive(LCP);
     }
     saStream.close();
-
-    khash.set_empty_key(std::numeric_limits<uint64_t>::max());
-    uint32_t k;
-    std::ifstream hashStream(indDir + "hash.bin");
-    {
-        logger->info("Loading Position Hash");
-        cereal::BinaryInputArchive hashArchive(hashStream);
-        hashArchive(k);
-        khash.unserialize(google::dense_hash_map<uint64_t,
-                rapmap::utils::SAInterval,
-                rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
-
-        //hashArchive(khash);
-    }
-    hashStream.close();
-    rapmap::utils::my_mer::k(k);
 
     std::ifstream seqStream(indDir + "txpInfo.bin");
     {
@@ -83,6 +91,17 @@ bool RapMapSAIndex::load(const std::string& indDir) {
         // The last length is just the length of the suffix array - the last offset
         txpLens[txpOffsets.size()-1] = (SA.size() - 1) - txpOffsets[txpOffsets.size() - 1];
     }
+
+    logger->info("Waiting to finish loading hash");
+    loadingHash.wait();
+    auto hashLoadRes = loadingHash.get();
+    if (!hashLoadRes.first) {
+        logger->error("Failed to load hash!");
+        std::exit(1);
+    }
+    rapmap::utils::my_mer::k(hashLoadRes.second);
+
+
 
     logger->info("Done loading index");
     return true;

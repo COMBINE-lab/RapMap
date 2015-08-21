@@ -422,7 +422,8 @@ class SkippingKmerSearcher{
 		//rcmer.shift_right(jellyfish::mer_dna::complement(c));
 		++klen;
 	        ++nextBaseIndex;
-		if (klen >= k) {
+            // EDIT
+		if (klen >= k and !mer.is_homopolymer()) {
 		    startPos = nextBaseIndex - k;
 		    valid = true;
 		}
