@@ -10,6 +10,20 @@ than the optimal alignment and base-for-base `CIGAR` string that aligns the read
 
 There are a number of different ways to collect such information, and the idea of RapMap (as the repository grows) will be to explore multiple different strategies in how to most rapidly determine all *feasible* / *compatible* locations for a read within the transcriptome.  In this sense, it is like an *all-mapper*; the alignments it outputs are intended to be (eventually) disambiguated (*Really, it's more like an "all-best" mapper, since it returns all hits in the top "stratum" of lightweight/pseudo/quasi alignments*).  If there is a need for it, *best-mapper* functionality may be added in the future.
 
+# Building RapMap
+
+To build RapMap, you need a C++11 compliant compiler (g++ >= 4.7 and clang >= 3.4) and CMake.  RapMap is built with the following steps (assuming that `path_to_rapmap` is the toplevel directory where you have cloned this repository):
+
+```
+[path_to_rapmap] > mkdir build && cd build
+[path_to_rapmap/build] > cmake ..
+[path_to_rapmap/build] > make
+[path_to_rapmap/build] > make install
+[path_to_rapmap/build] > cd ../bin
+[path_to_rapmap/bin] > ./rapmap -h
+```
+This should output the standard help message for rapmap.
+
 # Can I use RapMap for genomic alignment?
 
 No, at least not right now.  The index and mapping strategy employed by RapMap are highly geared toward mapping to transcriptomes.  It may be the case that some of these ideas can be successfully applied to genomic alignment, but 
@@ -23,7 +37,7 @@ align all of the reads *on a single core* (on an Intel Xeon E5-2690 @ 3.00 GHz) 
 
 # OK, that's fast, but is it accurate?
 
-Again, we're too early in development for a comprehensive benchmark or answer to this question.  However, in the above mentioned synthetic dataset (generated *with* sequencing errors), the true location of origin of the read appears in the hits returned by RapMap > 97% of the time.
+Again, we're too early in development for a comprehensive benchmark or answer to this question.  However, in the above mentioned synthetic dataset (generated *with* sequencing errors), the true location of origin of the read appears in the hits returned by RapMap > 97% of the time.  For significantly more details on the accuracy and the quasi-mapping algorithm, see [this](http://robpatro.com/blog/?p=260) blog post.
 
 # Caveats
 
