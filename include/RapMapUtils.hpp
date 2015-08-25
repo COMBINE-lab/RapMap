@@ -59,7 +59,7 @@ namespace rapmap {
             std::string headerStr(hd.str());
             // Don't include the last '\n', since the logger will do it for us.
             headerStr.pop_back();
-            out->info() << hd.str();
+            out->info() << headerStr;
         }
 
     template <typename IndexT>
@@ -439,7 +439,7 @@ namespace rapmap {
         inline void getSamFlags(const QuasiAlignment& qaln,
                 uint16_t& flags) {
             constexpr uint16_t pairedInSeq = 0x1;
-            constexpr uint16_t properlyAligned = 0x2;
+            constexpr uint16_t mappedInProperPair = 0x2;
             constexpr uint16_t unmapped = 0x4;
             constexpr uint16_t mateUnmapped = 0x8;
             constexpr uint16_t isRC = 0x10;
@@ -454,14 +454,14 @@ namespace rapmap {
             flags = 0;
             // Not paired in sequencing
             // flags1 = (peInput) ? pairedInSeq : 0;
-            flags |= properlyAligned;
+            // flags |= properlyAligned;
             // we don't output unmapped yet
             // flags |= unmapped
             // flags |= mateUnmapped
             flags |= (qaln.fwd) ? 0 : isRC;
             // Mate flag meaningless
             // flags1 |= (qaln.mateIsFwd) ? 0 : mateIsRC;
-            flags |= isRead1;
+            // flags |= isRead1;
             //flags2 |= isRead2;
         }
 

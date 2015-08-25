@@ -72,8 +72,8 @@ namespace rapmap {
                 // but don't need to mess with quality
                 // qualWork[start] = qual[start];
             }
-            std::swap(seq, readWork);
-            std::swap(qual, qualWork);
+            //std::swap(seq, readWork);
+            //std::swap(qual, qualWork);
         }
 
         template <typename ReadT, typename IndexT>
@@ -101,8 +101,17 @@ namespace rapmap {
                 auto after = readName.find_first_of(':', before+1);
                 const auto& txpName = readName.substr(before+1, after-before-1);
 #endif //__DEBUG__
+                // If the read name contains multiple space-separated parts, print
+                // only the first
+                size_t splitPos = readName.find(' ');
+                if (splitPos < readName.length()) {
+                    readName[splitPos] = '\0';
+                }
+
+
                 std::string numHitFlag = fmt::format("NH:i:{}", hits.size());
                 uint32_t alnCtr{0};
+                bool haveRev{false};
                 for (auto& qa : hits) {
                     auto& transcriptName = txpNames[qa.tid];
                     // === SAM
@@ -115,13 +124,18 @@ namespace rapmap {
                     std::string* qstr = &(r.qual);
 
                     if (!qa.fwd) {
-                        rapmap::utils::reverseRead(*readSeq, *qstr,
-                                                   readTemp, qualTemp);
+                        if (!haveRev) {
+                            rapmap::utils::reverseRead(*readSeq, *qstr,
+                                                       readTemp, qualTemp);
+                            haveRev = true;
+                        }
+                        readSeq = &(readTemp);
+                        qstr = &(qualTemp);
                     }
 
                    rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], cigarStr);
 
-                    sstream << readName << '\t' // QNAME
+                    sstream << readName.c_str() << '\t' // QNAME
                         << flags << '\t' // FLAGS
                         << transcriptName << '\t' // RNAME
                         << qa.pos + 1 << '\t' // POS (1-based)
@@ -165,7 +179,36 @@ namespace rapmap {
                 uint16_t flags1, flags2;
 
                 auto& readName = r.first.header;
+                // If the read name contains multiple space-separated parts,
+                // print only the first
+                size_t splitPos = readName.find(' ');
+                if (splitPos < readName.length()) {
+                    readName[splitPos] = '\0';
+                } else {
+                    splitPos = readName.length();
+                }
+
+                // trim /1 from the pe read
+                if (splitPos > 2 and readName[splitPos - 2] == '/') {
+                    readName[splitPos - 2] = '\0';
+                }
+
                 auto& mateName = r.second.header;
+                // If the read name contains multiple space-separated parts,
+                // print only the first
+                splitPos = mateName.find(' ');
+                if (splitPos < mateName.length()) {
+                    mateName[splitPos] = '\0';
+                } else {
+                    splitPos = mateName.length();
+                }
+
+                // trim /2 from the pe read
+                if (splitPos > 2 and mateName[splitPos - 2] == '/') {
+                    mateName[splitPos - 2] = '\0';
+                }
+
+                /*
                 // trim /1 and /2 from pe read names
                 if (readName.length() > 2 and
                         readName[readName.length() - 2] == '/') {
@@ -175,11 +218,15 @@ namespace rapmap {
                         mateName[mateName.length() - 2] == '/') {
                     mateName[mateName.length() - 2] = '\0';
                 }
+                */
 
                 std::string numHitFlag = fmt::format("NH:i:{}", jointHits.size());
                 uint32_t alnCtr{0};
 				uint32_t trueHitCtr{0};
 				QuasiAlignment* firstTrueHit{nullptr};
+                bool haveRev1{false};
+                bool haveRev2{false};
+                bool* haveRev = nullptr;
                 for (auto& qa : jointHits) {
                     auto& transcriptName = txpNames[qa.tid];
                     // === SAM
@@ -194,17 +241,28 @@ namespace rapmap {
 
                         // Reverse complement the read and reverse
                         // the quality string if we need to
+                        std::string* readSeq1 = &(r.first.seq);
+                        std::string* qstr1 = &(r.first.qual);
                         if (!qa.fwd) {
-                            rapmap::utils::reverseRead(r.first.seq,
-                                        r.first.qual,
-                                        read1Temp,
-                                        qual1Temp);
+                            if (!haveRev1) {
+                                rapmap::utils::reverseRead(*readSeq1, *qstr1,
+                                        read1Temp, qual1Temp);
+                                haveRev1 = true;
+                            }
+                            readSeq1 = &(read1Temp);
+                            qstr1 = &(qual1Temp);
                         }
+
+                        std::string* readSeq2 = &(r.second.seq);
+                        std::string* qstr2 = &(r.second.qual);
                         if (!qa.mateIsFwd) {
-                            rapmap::utils::reverseRead(r.second.seq,
-                                        r.second.qual,
-                                        read2Temp,
-                                        qual2Temp);
+                            if (!haveRev2) {
+                                rapmap::utils::reverseRead(*readSeq2, *qstr2,
+                                        read2Temp, qual2Temp);
+                                haveRev2 = true;
+                            }
+                            readSeq2 = &(read2Temp);
+                            qstr2 = &(qual2Temp);
                         }
 
                         sstream << readName.c_str() << '\t' // QNAME
@@ -216,8 +274,8 @@ namespace rapmap {
                                 << '=' << '\t' // RNEXT
                                 << qa.matePos + 1 << '\t' // PNEXT
                                 << qa.fragLen << '\t' // TLEN
-                                << r.first.seq << '\t' // SEQ
-                                << r.first.qual << '\t' // QUAL
+                                << *readSeq1 << '\t' // SEQ
+                                << *qstr1 << '\t' // QUAL
                                 << numHitFlag << '\n';
 
                         sstream << mateName.c_str() << '\t' // QNAME
@@ -229,8 +287,8 @@ namespace rapmap {
                                 << '=' << '\t' // RNEXT
                                 << qa.pos + 1 << '\t' // PNEXT
                                 << qa.fragLen << '\t' // TLEN
-                                << r.second.seq << '\t' // SEQ
-                                << r.second.qual << '\t' // QUAL
+                                << *readSeq2 << '\t' // SEQ
+                                << *qstr2 << '\t' // QUAL
                                 << numHitFlag << '\n';
                     } else {
                         rapmap::utils::getSamFlags(qa, true, flags1, flags2);
@@ -255,6 +313,9 @@ namespace rapmap {
                         std::string* unalignedQstr{nullptr};
                         std::string* alignedName{nullptr};
                         std::string* unalignedName{nullptr};
+                        std::string* readTemp{nullptr};
+                        std::string* qualTemp{nullptr};
+
                         rapmap::utils::FixedWriter* cigarStr;
                         if (qa.mateStatus == MateStatus::PAIRED_END_LEFT) { // left read
                             alignedName = &readName;
@@ -270,6 +331,10 @@ namespace rapmap {
                             unalignedFlags = flags2;
 
                             cigarStr = &cigarStr1;
+
+                            haveRev = &haveRev1;
+                            readTemp = &read1Temp;
+                            qualTemp = &qual1Temp;
                         } else { // right read
                             alignedName = &mateName;
                             unalignedName = &readName;
@@ -284,14 +349,29 @@ namespace rapmap {
                             unalignedFlags = flags1;
 
                             cigarStr = &cigarStr2;
+                            haveRev = &haveRev2;
+                            readTemp = &read2Temp;
+                            qualTemp = &qual2Temp;
                         }
 
                         // Reverse complement the read and reverse
                         // the quality string if we need to
                         if (!qa.fwd) {
+                            if (!(*haveRev)) {
+                                rapmap::utils::reverseRead(*readSeq, *qstr,
+                                        *readTemp, *qualTemp);
+                                *haveRev = true;
+                            }
+                            readSeq = readTemp;
+                            qstr = qualTemp;
+                        }
+
+                        /*
+                        if (!qa.fwd) {
                             rapmap::utils::reverseRead(*readSeq, *qstr,
                                         read1Temp, qual1Temp);
                         }
+                        */
 
                         rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
                         sstream << alignedName->c_str() << '\t' // QNAME

@@ -759,9 +759,9 @@ class SACollector {
         // value of 0 means no overlap (the new search begins at the next
         // base) while a value of (k - 1) means that k-1 bases (one less than
         // the k-mer size) must overlap.
-        int skipOverlap = 0;
+        int skipOverlap = k-1;
         // Number of nucleotides to skip when encountering a homopolymer k-mer.
-        int homoPolymerSkip = k / 2;
+        int homoPolymerSkip = k/4;
 
         // Find a hit within the read
         // While we haven't fallen off the end
@@ -1170,7 +1170,13 @@ void processReadsSingleSA(single_parser * parser,
             auto numHits = hits.size();
             hctr.totHits += numHits;
 
-            if (hits.size() > 0 and hits.size() < maxNumHits) {
+            if (hits.size() > 0 and hits.size() <= maxNumHits) {
+                /*
+                std::sort(hits.begin(), hits.end(),
+                            [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                                return a.tid < b.tid;
+                            });
+                */
                 rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,
                                                        hctr, hits, sstream);
             }
