@@ -1208,8 +1208,10 @@ void processReadsSingleSA(single_parser * parser,
         if (!noOutput) {
             std::string outStr(sstream.str());
             // Get rid of last newline
-            outStr.pop_back();
-            outQueue->info() << std::move(outStr);
+            if (!outStr.empty()) {
+                outStr.pop_back();
+                outQueue->info() << std::move(outStr);
+            }
             sstream.clear();
             /*
              iomutex->lock();
@@ -1310,8 +1312,10 @@ void processReadsPairSA(paired_parser* parser,
         if (!noOutput) {
             std::string outStr(sstream.str());
             // Get rid of last newline
-            outStr.pop_back();
-            outQueue->info() << std::move(outStr);
+            if (!outStr.empty()) {
+                outStr.pop_back();
+                outQueue->info() << std::move(outStr);
+            }
             sstream.clear();
 	        /*
             iomutex->lock();
