@@ -273,7 +273,7 @@ namespace rapmap {
         inline uint32_t transcriptID() { return tid; }
         inline double score() { return 1.0; }
         inline uint32_t fragLength() { return fragLen; }
-        inline int32_t hitPos() { std::min(pos, matePos); }
+        inline int32_t hitPos() { return std::min(pos, matePos); }
         double logProb{HUGE_VAL};
         double logBias{HUGE_VAL};
         inline LibraryFormat libFormat() { return format; }
