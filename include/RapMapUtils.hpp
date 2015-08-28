@@ -261,9 +261,9 @@ namespace rapmap {
         QuasiAlignment(QuasiAlignment&& other) = default;
         QuasiAlignment& operator=(const QuasiAlignment&) = default;
         QuasiAlignment& operator=(QuasiAlignment&) = default;
-        QuasiAlignment(const QuasiAlignment& o) = default;
         QuasiAlignment& operator=(QuasiAlignment&& o) = default;
-
+        QuasiAlignment(const QuasiAlignment& o) = default;
+        QuasiAlignment(QuasiAlignment& o) = default;
 
         // Some convenience functions to allow salmon interop
 #ifdef RAPMAP_SALMON_SUPPORT
