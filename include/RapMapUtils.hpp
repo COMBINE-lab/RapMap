@@ -257,7 +257,11 @@ namespace rapmap {
                 bool isPairedIn = false) :
             tid(tidIn), pos(posIn), fwd(fwdIn),
             readLen(readLenIn), fragLen(fragLenIn),
-            isPaired(isPairedIn) {}
+            isPaired(isPairedIn)
+#ifdef RAPMAP_SALMON_SUPPORT
+        ,format(LibraryFormat::formatFromID(0))
+#endif // RAPMAP_SALMON_SUPPORT
+        {}
         QuasiAlignment(QuasiAlignment&& other) = default;
         QuasiAlignment& operator=(QuasiAlignment&) = default;
         QuasiAlignment& operator=(QuasiAlignment&& o) = default;
