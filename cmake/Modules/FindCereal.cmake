@@ -7,7 +7,7 @@
 # CEREAL_DEFINITIONS - Compiler flags for Cereal.
 
 find_path(CEREAL_INCLUDE_DIR cereal
-	HINTS "$ENV{CEREAL_ROOT}/include" "/usr/include" "$ENV{PROGRAMFILES}/cereal/include")
+	HINTS "${CEREAL_ROOT}/include" "$ENV{CEREAL_ROOT}/include" "/usr/include" "$ENV{PROGRAMFILES}/cereal/include")
 
 set(CEREAL_INCLUDE_DIRS ${CEREAL_INCLUDE_DIR})
 

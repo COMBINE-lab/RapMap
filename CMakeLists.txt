@@ -162,29 +162,41 @@ ExternalProject_Add(libsparsehash
 )
 
 
+if (NOT CEREAL_ROOT)
+	set(CEREAL_ROOT ${GAT_SOURCE_DIR}/external/install)
+endif()
+
 find_package (Cereal)
 if (NOT CEREAL_FOUND)
-    
-message("Build system will fetch and build the Cereal serialization library")
-message("==================================================================")
-include(ExternalProject)
-ExternalProject_Add(libcereal
-    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-    DOWNLOAD_COMMAND curl -k -L https://github.com/USCiLab/cereal/archive/v1.1.2.tar.gz -o cereal-v1.1.2.tar.gz &&
-        tar -xzvf cereal-v1.1.2.tar.gz 
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.1.2
-    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
-    UPDATE_COMMAND sh -c "mkdir -p <SOURCE_DIR>/build"
-    BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.1.2/build
-    CONFIGURE_COMMAND ""
-    BUILD_COMMAND ""
-    INSTALL_COMMAND sh -c "mkdir -p <INSTALL_DIR>/include && cp -r <SOURCE_DIR>/include/cereal <INSTALL_DIR>/include"
-)
+	    
+	message("Build system will fetch and build the Cereal serialization library")
+	message("==================================================================")
+	include(ExternalProject)
+	ExternalProject_Add(libcereal
+	    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
+	    DOWNLOAD_COMMAND curl -k -L https://github.com/USCiLab/cereal/archive/v1.1.2.tar.gz -o cereal-v1.1.2.tar.gz &&
+		tar -xzvf cereal-v1.1.2.tar.gz 
+	    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.1.2
+	    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
+	    UPDATE_COMMAND sh -c "mkdir -p <SOURCE_DIR>/build"
+	    BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.1.2/build
+	    CONFIGURE_COMMAND ""
+	    BUILD_COMMAND ""
+	    INSTALL_COMMAND sh -c "mkdir -p <INSTALL_DIR>/include && cp -r <SOURCE_DIR>/include/cereal <INSTALL_DIR>/include"
+	)
 
-set(CEREAL_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/external/install/include)
+	set(CEREAL_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/external/install/include)
 
 endif()
 
+
+if (NOT JELLYFISH_ROOT)
+	set(JELLYFISH_ROOT ${GAT_SOURCE_DIR}/external/install)
+endif()
+
+find_package(Jellyfish)
+
+if (NOT JELLYFISH_FOUND)
 message("Build system will fetch and build Jellyfish")
 message("==================================================================")
 ExternalProject_Add(libjellyfish
@@ -199,6 +211,7 @@ ExternalProject_Add(libjellyfish
                     cp config.h <INSTALL_DIR>/include/jellyfish-2.1.3/jellyfish/ &&
                     cp config.h <INSTALL_DIR>/include/
 )
+endif()
 
 set (FAST_MALLOC_LIB "")
 set (HAVE_FAST_MALLOC FALSE)

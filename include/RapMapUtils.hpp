@@ -2,6 +2,7 @@
 #define __RAP_MAP_UTILS_HPP__
 
 #include <atomic>
+#include <cmath>
 #include <memory>
 #include "xxhash.h"
 #include <cereal/archives/binary.hpp>
@@ -9,6 +10,10 @@
 #include "spdlog/spdlog.h"
 #include "spdlog/details/format.h"
 #include "PairSequenceParser.hpp"
+
+#ifdef RAPMAP_SALMON_SUPPORT
+#include "LibraryFormat.hpp"
+#endif
 
 #ifdef __GNUC__
 #define LIKELY(x) __builtin_expect((x),1)
@@ -251,6 +256,19 @@ namespace rapmap {
             isPaired(isPairedIn) {}
         QuasiAlignment(QuasiAlignment&& other) = default;
         QuasiAlignment& operator=(const QuasiAlignment&) = default;
+
+        // Some convenience functions to allow salmon interop
+#ifdef RAPMAP_SALMON_SUPPORT
+        inline uint32_t transcriptID() { return tid; }
+        inline double score() { return 1.0; }
+        inline uint32_t fragLength() { return fragLen; }
+        inline int32_t hitPos() { std::min(pos, matePos); }
+        double logProb{HUGE_VAL};
+        double logBias{HUGE_VAL};
+        inline LibraryFormat libFormat() { return format; }
+        LibraryFormat format;
+#endif // RAPMAP_SALMON_SUPPORT
+
         // Only 1 since the mate must have the same tid
         // we won't call *chimeric* alignments here.
         uint32_t tid;
