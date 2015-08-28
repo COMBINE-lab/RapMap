@@ -259,7 +259,6 @@ namespace rapmap {
             readLen(readLenIn), fragLen(fragLenIn),
             isPaired(isPairedIn) {}
         QuasiAlignment(QuasiAlignment&& other) = default;
-        QuasiAlignment& operator=(const QuasiAlignment&) = default;
         QuasiAlignment& operator=(QuasiAlignment&) = default;
         QuasiAlignment& operator=(QuasiAlignment&& o) = default;
         QuasiAlignment(const QuasiAlignment& o) = default;
