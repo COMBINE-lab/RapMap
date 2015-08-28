@@ -27,7 +27,7 @@
 #include <cereal/archives/json.hpp>
 
 #include "HitManager.hpp"
-#include "SIMDCompressionAndIntersection/intersection.h"
+//#include "SIMDCompressionAndIntersection/intersection.h"
 #include "xxhash.h"
 
 #include "spdlog/spdlog.h"
