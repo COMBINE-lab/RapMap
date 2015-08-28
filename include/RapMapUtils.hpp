@@ -245,7 +245,11 @@ namespace rapmap {
 		fwd(true),
 		readLen(std::numeric_limits<uint32_t>::max()),
 		fragLen(std::numeric_limits<uint32_t>::max()),
-		isPaired(false) {}
+		isPaired(false)
+#ifdef RAPMAP_SALMON_SUPPORT
+        ,format(LibraryFormat::formatFromID(0))
+#endif // RAPMAP_SALMON_SUPPORT
+        {}
 
         QuasiAlignment(uint32_t tidIn, uint32_t posIn,
                 bool fwdIn, uint32_t readLenIn,
@@ -256,6 +260,7 @@ namespace rapmap {
             isPaired(isPairedIn) {}
         QuasiAlignment(QuasiAlignment&& other) = default;
         QuasiAlignment& operator=(const QuasiAlignment&) = default;
+        QuasiAlignment& operator=(QuasiAlignment&) = default;
         QuasiAlignment(const QuasiAlignment& o) = default;
         QuasiAlignment& operator=(QuasiAlignment&& o) = default;
 
