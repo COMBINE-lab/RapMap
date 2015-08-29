@@ -180,7 +180,7 @@ class SACollector {
             // T[SA[lb]:] and T[SA[ub-1]:]
             auto remainingLength = std::distance(rb, readEndIt);
             auto lce = saSearcher.lce(lbLeftFwd, ubLeftFwd-1, matchLen, remainingLength);
-            auto fwdSkip = lce - skipOverlap;
+            auto fwdSkip = std::max(matchLen + 1, lce - skipOverlap);
 
             size_t nextInformativePosition = std::min(
                     std::max(0, static_cast<int>(readLen)- static_cast<int>(k)),
@@ -238,7 +238,7 @@ class SACollector {
                             //break;
                         }
 
-                        fwdSkip = matchedLen - skipOverlap;
+                        fwdSkip = matchedLen + 1;
                         rb += fwdSkip;
                         re = rb + k;
 
@@ -246,12 +246,13 @@ class SACollector {
                             rb -= fwdSkip;
                             auto remainingDistance = std::distance(rb, readEndIt);
                             auto lce = saSearcher.lce(lbRightFwd, ubRightFwd-1, matchedLen, remainingDistance);
-                            rb += lce - skipOverlap;
+                            //rb += lce - skipOverlap;
+                            rb += std::max(static_cast<uint32_t>(fwdSkip), lce - skipOverlap);
                             re = rb + k;
                         }
 
                     } else {
-                        rb += sampFactor;//re;
+                        rb += sampFactor;
                         re = rb + k;
                     }
                 }
@@ -320,7 +321,7 @@ class SACollector {
                         //break;
                     }
 
-                    auto fwdSkip = matchedLen - skipOverlap;
+                    auto fwdSkip = matchedLen + 1;
                     revRB += fwdSkip;
                     revRE = revRB + k;
 
@@ -328,8 +329,9 @@ class SACollector {
                         revRB -= fwdSkip;
                         auto remainingDistance = std::distance(revRB, revReadEndIt);
                         auto lce = saSearcher.lce(lbRightRC, ubRightRC-1, matchedLen, remainingDistance);
-                        revRB += lce - skipOverlap;
-                        revRE = revRE + k;
+                        //revRB += lce - skipOverlap;
+                        revRB += std::max(static_cast<uint32_t>(fwdSkip), lce - skipOverlap);
+                        revRE = revRB + k;
                     }
 
                 } else {
