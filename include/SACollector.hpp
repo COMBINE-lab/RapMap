@@ -71,7 +71,7 @@ class SACollector {
         // the k-mer size) must overlap.
         int skipOverlap = k-1;
         // Number of nucleotides to skip when encountering a homopolymer k-mer.
-        int homoPolymerSkip = k/4;
+        int homoPolymerSkip = k/2;
 
         // Find a hit within the read
         // While we haven't fallen off the end
@@ -178,9 +178,10 @@ class SACollector {
             // of the k-mer we found.  The NIP (next informative position) in the sequence
             // is the position after the LCE (longest common extension) of
             // T[SA[lb]:] and T[SA[ub-1]:]
-            auto remainingLength = std::distance(rb, readEndIt);
+            auto remainingLength = std::distance(rb + matchLen, readEndIt);
             auto lce = saSearcher.lce(lbLeftFwd, ubLeftFwd-1, matchLen, remainingLength);
-            auto fwdSkip = lce - skipOverlap;// std::max(matchLen + 1, lce - skipOverlap);
+            //auto fwdSkip = matchLen + 1 - skipOverlap;//lce - skipOverlap;
+            auto fwdSkip = std::max(matchLen + 1 - skipOverlap, lce - skipOverlap);
 
             size_t nextInformativePosition = std::min(
                     std::max(0, static_cast<int>(readLen)- static_cast<int>(k)),
@@ -217,10 +218,18 @@ class SACollector {
                 if (re <= readEndIt) {
 
                     mer = rapmap::utils::my_mer(read.c_str() + pos);
-                    if (mer.is_homopolymer()) { rb += homoPolymerSkip; re += homoPolymerSkip; continue; }
+                    if (mer.is_homopolymer()) { rb += homoPolymerSkip; re = rb + k; continue; }
                     auto merIt = khash.find(mer.get_bits(0, 2*k));
 
                     if (merIt != khash.end()) {
+                        /*
+                        if (!leftRCHit) {
+                            auto rcMer = mer.get_reverse_complement();
+                            auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
+                            if (rcMerIt != khash.end()) { leftRCHit = true; }
+                        }
+                        */
+
                         lbRightFwd = merIt->second.begin;
                         ubRightFwd = merIt->second.end;
 
@@ -235,19 +244,26 @@ class SACollector {
                             auto queryStart = std::distance(read.begin(), rb);
                             fwdSAInts.emplace_back(lbRightFwd, ubRightFwd, matchedLen, queryStart, false);
                             rightFwdHit = true;
-                            //break;
                         }
 
-                        fwdSkip = matchedLen - skipOverlap;//matchedLen + 1;
-                        rb += fwdSkip;
-                        re = rb + k;
+                        //fwdSkip = matchedLen - skipOverlap;
 
-                        if (re <= readEndIt) {
-                            rb -= fwdSkip;
-                            auto remainingDistance = std::distance(rb, readEndIt);
+                        auto mismatchIt = rb + matchedLen;
+                        if ((mismatchIt + 1 - skipOverlap) <= readEndIt) {
+                            auto remainingDistance = std::distance(mismatchIt, readEndIt);
                             auto lce = saSearcher.lce(lbRightFwd, ubRightFwd-1, matchedLen, remainingDistance);
-                            rb += lce - skipOverlap;
+                            //rb += lce - skipOverlap;
                             //rb += std::max(static_cast<uint32_t>(fwdSkip), lce - skipOverlap);
+
+                            // Where we would jump if we just used the MMP
+                            auto skipMatch = mismatchIt + 1 - skipOverlap;
+                            // Where we would jump if we used the LCE
+                            auto skipLCE = rb + lce - skipOverlap;
+                            // Pick the larger of the two
+                            rb = std::max(skipLCE, skipMatch);
+                            re = rb + k;
+                        } else {
+                            rb = mismatchIt + 1 - skipOverlap;
                             re = rb + k;
                         }
 
@@ -271,7 +287,7 @@ class SACollector {
             while (revRE <= revReadEndIt){
 
                 revRE = revRB + k;
-                if (revRE >= revReadEndIt) { break; }
+                if (revRE > revReadEndIt) { break; }
 
                 // See if this k-mer would contain an N
                 // only check if we don't yet know that there are no remaining
@@ -318,19 +334,26 @@ class SACollector {
                         auto queryStart = std::distance(revRB + matchedLen, revReadEndIt);
                         rcSAInts.emplace_back(lbRightRC, ubRightRC, matchedLen, queryStart, true);
                         rightRCHit = true;
-                        //break;
                     }
 
-                    auto fwdSkip = matchedLen - skipOverlap;//matchedLen + 1;
-                    revRB += fwdSkip;
-                    revRE = revRB + k;
+                    //auto fwdSkip = matchedLen - skipOverlap;
+                    //auto fwdSkip = matchedLen + 1;
+                    auto mismatchIt = revRB + matchedLen;
 
-                    if (revRE <= revReadEndIt) {
-                        revRB -= fwdSkip;
-                        auto remainingDistance = std::distance(revRB, revReadEndIt);
+                    if ((mismatchIt + 1 - skipOverlap) <= revReadEndIt) {
+                    //if (revRE <= revReadEndIt) {
+                        auto remainingDistance = std::distance(mismatchIt, revReadEndIt);
                         auto lce = saSearcher.lce(lbRightRC, ubRightRC-1, matchedLen, remainingDistance);
-                        revRB += lce - skipOverlap;
-                        //revRB += std::max(static_cast<uint32_t>(fwdSkip), lce - skipOverlap);
+
+                        // Where we would jump if we just used the MMP
+                        auto skipMatch = mismatchIt + 1 - skipOverlap;
+                        // Where we would jump if we used the lce
+                        auto skipLCE = revRB + lce - skipOverlap;
+                        // Choose the larger of the two
+                        revRB = std::max(skipLCE, skipMatch);
+                        revRE = revRB + k;
+                    } else {
+                        revRB = mismatchIt + 1 - skipOverlap;
                         revRE = revRB + k;
                     }
 
@@ -352,8 +375,8 @@ class SACollector {
                 for (int i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
                         auto globalPos = SA[i];
                         //auto txpID = posIDs[globalPos];
-			//auto txpID = rankDict.Rank(globalPos, 1);
-			auto txpID = rmi_->transcriptAtPosition(globalPos);
+            			//auto txpID = rankDict.Rank(globalPos, 1);
+		            	auto txpID = rmi_->transcriptAtPosition(globalPos);
                         // the offset into this transcript
                         auto pos = globalPos - txpStarts[txpID];
                         hits.emplace_back(txpID, pos, true, readLen);
