@@ -481,7 +481,11 @@ int rapMapSAMap(int argc, char* argv[]) {
             for (auto& t : threads) { t.join(); }
         }
 	std::cerr << "\n\n";
-    consoleLog->info("done mapping reads.");
+    
+        
+    consoleLog->info("Done mapping reads.");
+    consoleLog->info("In total saw {} reads.", hctrs.numReads);
+    consoleLog->info("Final # hits per read = {}", hctrs.totHits / static_cast<float>(hctrs.numReads));
 	consoleLog->info("flushing output queue.");
 	outLog->flush();
 	/*
