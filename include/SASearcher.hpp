@@ -601,7 +601,7 @@ class SASearcher {
                      bool verbose=false) {
             std::string& seq = *seq_;
             std::vector<int>& SA = *sa_;
-            uint32_t len{startAt};
+            uint32_t len = static_cast<uint32_t>(startAt);
             auto o1 = SA[p1] + startAt;
             auto o2 = SA[p2] + startAt;
             auto maxIndex = std::max(o1, o2);
