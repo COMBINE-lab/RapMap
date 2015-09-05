@@ -7,7 +7,7 @@
 #include "xxhash.h"
 #include <cereal/archives/binary.hpp>
 #include "jellyfish/mer_dna.hpp"
-#include "spdlog/spdlog.h"t
+#include "spdlog/spdlog.h"
 #include "spdlog/details/format.h"
 #include "PairSequenceParser.hpp"
 
