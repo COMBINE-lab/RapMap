@@ -7,7 +7,7 @@
 #include "xxhash.h"
 #include <cereal/archives/binary.hpp>
 #include "jellyfish/mer_dna.hpp"
-#include "spdlog/spdlog.h"
+#include "spdlog/spdlog.h"t
 #include "spdlog/details/format.h"
 #include "PairSequenceParser.hpp"
 
@@ -270,7 +270,7 @@ namespace rapmap {
 
         // Some convenience functions to allow salmon interop
 #ifdef RAPMAP_SALMON_SUPPORT
-        inline uint32_t transcriptID() { return tid; }
+        inline uint32_t transcriptID() const { return tid; }
         inline double score() { return 1.0; }
         inline uint32_t fragLength() { return fragLen; }
         inline int32_t hitPos() { return std::min(pos, matePos); }
