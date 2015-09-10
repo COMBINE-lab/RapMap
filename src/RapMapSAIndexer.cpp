@@ -123,7 +123,9 @@ void indexTranscriptsSA(ParserT* parser,
                 uint32_t txpIndex = n++;
 
 		// The name of the current transcript
-                transcriptNames.push_back(j->data[i].header);
+                auto& recHeader = j->data[i].header;
+                transcriptNames.emplace_back(recHeader.substr(0, recHeader.find_first_of(" \t")));
+
 		// The position at which this transcript starts
                 transcriptStarts.push_back(currIndex);
 
