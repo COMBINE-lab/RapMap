@@ -227,7 +227,10 @@ namespace rapmap {
                 bool haveRev1{false};
                 bool haveRev2{false};
                 bool* haveRev = nullptr;
+                size_t i{0};
                 for (auto& qa : jointHits) {
+
+                    ++i;
                     auto& transcriptName = txpNames[qa.tid];
                     // === SAM
                     if (qa.isPaired) {

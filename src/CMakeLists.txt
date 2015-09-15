@@ -93,7 +93,7 @@ target_link_libraries(rapmap
 #  This ensures that the salmon executable should work with or without `make install`
 ##
 if (APPLE)
-	add_custom_command(TARGET salmon
+	add_custom_command(TARGET rapmap
 		POST_BUILD
 		COMMAND install_name_tool -add_rpath ${GAT_SOURCE_DIR}/external/install/lib rapmap
 		COMMAND install_name_tool -add_rpath @executable_path/../lib rapmap

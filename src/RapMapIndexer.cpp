@@ -225,7 +225,7 @@ void processTranscripts(ParserT* parser,
                 uint32_t txpIndex = n++;
                 transcriptLengths.push_back(readLen);
                 auto& recHeader = j->data[i].header;
-                std::string transcriptNames(recHeader.substr(0, recHeader.find_first_of(" \t")));
+                transcriptNames.emplace_back(recHeader.substr(0, recHeader.find_first_of(" \t")));
 
                 rapmap::utils::my_mer mer;
                 mer.polyT();
