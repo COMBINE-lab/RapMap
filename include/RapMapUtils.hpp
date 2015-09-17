@@ -454,9 +454,15 @@ namespace rapmap {
 	    } else if (qa.mateStatus == MateStatus::PAIRED_END_LEFT ) {
 		    // left read mapped
 		    adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr1);
+		    // right read un-mapped will just be read length * S
+		    cigarStr2.clear();
+		    cigarStr2.write("{}S", qa.mateLen);
 	    } else if (qa.mateStatus == MateStatus::PAIRED_END_RIGHT) {
 		    // right read mapped
 		    adjustOverhang(qa.pos, qa.readLen, txpLen, cigarStr2);
+		    // left read un-mapped will just be read length * S
+		    cigarStr1.clear();
+		    cigarStr1.write("{}S", qa.readLen);
 	    }
     }
 
