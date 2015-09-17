@@ -390,13 +390,14 @@ namespace rapmap {
                                 << *qstr << '\t' // QUAL
                                 << numHitFlag << '\n';
 
+
                         // Output the info for the unaligned mate.
                         sstream << unalignedName->c_str() << '\t' // QNAME
                             << unalignedFlags << '\t' // FLAGS
                             << transcriptName << '\t' // RNAME (same as mate)
                             << qa.pos + 1 << '\t' // POS (same as mate)
                             << 0 << '\t' // MAPQ
-                            << readSeq->length() << 'M' << '\t' // CIGAR
+                            << unalignedSeq->length() << 'S' << '\t' // CIGAR
                             << '=' << '\t' // RNEXT
                             << qa.pos + 1 << '\t' // PNEXT (only 1 read in template)
                             << 0 << '\t' // TLEN (spec says 0, not read len)
