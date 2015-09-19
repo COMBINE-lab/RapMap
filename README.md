@@ -1,9 +1,8 @@
 # What is RapMap?
 
-RapMap is a testing ground for ideas in lightweight / pseudo / quasi transcriptome alignment.  That means that, at this point, it is **very** experimental and there are no guarantees on stability / compatibility between commits.  Eventually, I hope 
-that RapMap will become a stand-alone lightweight / pseudo / quasi-aligner that can be used with other tools.
+RapMap is a testing ground for ideas in lightweight / quasi / pseudo transcriptome alignment.  That means that, at this point, it is somewhat experimental and there are no guarantees on stability / compatibility between commits.  Currently, RapMap is a stand-alone quasi-mapper that can be used with other tools.  It is also being used as part of [Sailfish](https://github.com/kingsfordgroup/sailfish) and [Salmon](https://github.com/COMBINE-lab/salmon).  Eventually, the hope is to create and stabilize an API so that it can be used as a library from other tools.
 
-Lightweight / pseudo / quasi-alignment is the term I'm using here for the type of information required for certain tasks (e.g. 
+Lightweight / quasi / pseudo-alignment is the term I'm using here for the type of information required for certain tasks (e.g. 
 transcript quantification) that is less "heavyweight" than what is provided by traditional alignment. For example, one may
 only need to know the transcripts / contigs to which a read aligns and, perhaps, the position within those transcripts rather
 than the optimal alignment and base-for-base `CIGAR` string that aligns the read and substring of the transcript.
@@ -41,8 +40,7 @@ Again, we're too early in development for a comprehensive benchmark or answer to
 
 # Caveats
 
-RapMap is **highly** experimental, and the code exists primarily at this point for me to test out ideas.  This means that 
-there are shortcuts and hacks abound.  It also means that I've not yet put much effort into size or speed optimizaiton.  There are numerous ways that the code can be sped up and the memory footprint reduced, but that hasn't been the focus yet --- it will be eventualy.  All of this being said --- RapMap is open to the community because I'd like feedback / help / thoughts.  So, if you're not scared off by any of the above, *dig in*!
+RapMap is experimental, and the code, at this point, is subject to me testing out new ideas. This also means that little effort has been put into size or speed optimizaiton (but it's already *very* fast --- see above).  There are numerous ways that the code can be sped up and the memory footprint reduced, but that hasn't been the focus yet --- it will be eventualy.  All of this being said --- RapMap is open to the community because I'd like feedback / help / thoughts.  So, if you're not scared off by any of the above, *dig in*!
 
 # External dependencies
 
@@ -52,4 +50,4 @@ there are shortcuts and hacks abound.  It also means that I've not yet put much 
 
 # License 
 
-Recently a hot issue in Bioinformatics :).  Since RapMap uses Jellyfish, it must be released under the GPL.  However, this is currently the only GPL dependency.  If it can be replaced, I'd like to re-license RapMap under the BSD license.  I'd be happy to accept pull-requests that replace the Jellyfish components with a library released under a more liberal license (BSD-compatible), but note that I will *not* accept such pull requests if they reduce the speed or increase the memory consumption over the Jellyfish-based version.
+Since RapMap uses Jellyfish, it must be released under the GPL.  However, this is currently the only GPL dependency.  If it can be replaced, I'd like to re-license RapMap under the BSD license.  I'd be happy to accept pull-requests that replace the Jellyfish components with a library released under a more liberal license (BSD-compatible), but note that I will *not* accept such pull requests if they reduce the speed or increase the memory consumption over the Jellyfish-based version.
