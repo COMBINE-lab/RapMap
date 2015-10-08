@@ -8,12 +8,15 @@
 #include <algorithm>
 #include <iterator>
 
+template <typename RapMapIndexT>
 class SACollector {
     public:
-    SACollector(RapMapSAIndex* rmi) : rmi_(rmi) {}
+    using OffsetT = typename RapMapIndexT::IndexType;
+
+    SACollector(RapMapIndexT* rmi) : rmi_(rmi) {}
     bool operator()(std::string& read,
             std::vector<rapmap::utils::QuasiAlignment>& hits,
-            SASearcher& saSearcher,
+            SASearcher<OffsetT>& saSearcher,
             rapmap::utils::MateStatus mateStatus) {
 
         using QuasiAlignment = rapmap::utils::QuasiAlignment;
@@ -39,11 +42,11 @@ class SACollector {
 
         auto rb = read.begin();
         auto re = rb + k;
-        int lbLeftFwd = 0, ubLeftFwd = 0;
-        int lbLeftRC = 0, ubLeftRC = 0;
-        int lbRightFwd = 0, ubRightFwd = 0;
-        int lbRightRC = 0, ubRightRC = 0;
-        int matchedLen;
+        OffsetT lbLeftFwd = 0, ubLeftFwd = 0;
+        OffsetT lbLeftRC = 0, ubLeftRC = 0;
+        OffsetT lbRightFwd = 0, ubRightFwd = 0;
+        OffsetT lbRightRC = 0, ubRightRC = 0;
+        OffsetT matchedLen;
 
         bool leftFwdHit = false;
         bool leftRCHit = false;
@@ -62,16 +65,16 @@ class SACollector {
 
         std::vector<uint32_t> leftTxps, leftTxpsRC;
         std::vector<uint32_t> rightTxps, rightTxpsRC;
-        int maxInterval{1000};
+        OffsetT maxInterval{1000};
 
         // The number of bases that a new query position (to which
         // we skipped) should overlap the previous extension. A
         // value of 0 means no overlap (the new search begins at the next
         // base) while a value of (k - 1) means that k-1 bases (one less than
         // the k-mer size) must overlap.
-        int skipOverlap = k-1;
+        OffsetT skipOverlap = k-1;
         // Number of nucleotides to skip when encountering a homopolymer k-mer.
-        int homoPolymerSkip = k/2;
+        OffsetT homoPolymerSkip = k/2;
 
         // Find a hit within the read
         // While we haven't fallen off the end
@@ -99,11 +102,11 @@ class SACollector {
 
             // If we can find the k-mer in the hash, get its SA interval
             if (merIt != khash.end()) {
-                int lb = merIt->second.begin;
-                int ub = merIt->second.end;
+                OffsetT lb = merIt->second.begin;
+                OffsetT ub = merIt->second.end;
 
                 // lb must be 1 *less* then the current lb
-                auto lbRestart = std::max(static_cast<int>(0), lb-1);
+                auto lbRestart = std::max(static_cast<OffsetT>(0), lb-1);
                 // Extend the SA interval using the read sequence as far as
                 // possible
                 std::tie(lbLeftFwd, ubLeftFwd, matchedLen) =
@@ -131,7 +134,7 @@ class SACollector {
 
                 // If the SA interval is valid, and not too wide, then record
                 // the hit.
-                int diff = ubLeftFwd - lbLeftFwd;
+                OffsetT diff = ubLeftFwd - lbLeftFwd;
                 if (ubLeftFwd > lbLeftFwd and diff < maxInterval) {
                     auto queryStart = std::distance(read.begin(), rb);
                     fwdSAInts.emplace_back(lbLeftFwd, ubLeftFwd, matchedLen, queryStart, false);
@@ -143,7 +146,7 @@ class SACollector {
             if (rcMerIt != khash.end()) {
                 lbLeftRC = rcMerIt->second.begin;
                 ubLeftRC = rcMerIt->second.end;
-                int diff = ubLeftRC - lbLeftRC;
+                OffsetT diff = ubLeftRC - lbLeftRC;
                 if (ubLeftRC > lbLeftRC and diff < maxInterval) {
                     /* Don't actually push here since we can't extend
                     auto queryStart = std::distance(read.begin(), rb);
@@ -184,8 +187,8 @@ class SACollector {
             auto fwdSkip = std::max(matchLen + 1 - skipOverlap, lce - skipOverlap);
 
             size_t nextInformativePosition = std::min(
-                    std::max(0, static_cast<int>(readLen)- static_cast<int>(k)),
-                    static_cast<int>(std::distance(readStartIt, rb) + fwdSkip)
+                    std::max(0, static_cast<OffsetT>(readLen)- static_cast<OffsetT>(k)),
+                    static_cast<OffsetT>(std::distance(readStartIt, rb) + fwdSkip)
                     );
 
             rb = read.begin() + nextInformativePosition;
@@ -239,7 +242,7 @@ class SACollector {
                             saSearcher.extendSearchNaive(lbRightFwd, ubRightFwd,
                                     k, rb, readEndIt);
 
-                        int diff = ubRightFwd - lbRightFwd;
+                        OffsetT diff = ubRightFwd - lbRightFwd;
                         if (ubRightFwd > lbRightFwd and diff < maxInterval) {
                             auto queryStart = std::distance(read.begin(), rb);
                             fwdSAInts.emplace_back(lbRightFwd, ubRightFwd, matchedLen, queryStart, false);
@@ -329,7 +332,7 @@ class SACollector {
                         saSearcher.extendSearchNaive(lbRightRC, ubRightRC, k,
                                 revRB, revReadEndIt, true);
 
-                    int diff = ubRightRC - lbRightRC;
+                    OffsetT diff = ubRightRC - lbRightRC;
                     if (ubRightRC > lbRightRC and diff < maxInterval) {
                         auto queryStart = std::distance(revRB + matchedLen, revReadEndIt);
                         rcSAInts.emplace_back(lbRightRC, ubRightRC, matchedLen, queryStart, true);
@@ -372,7 +375,7 @@ class SACollector {
         } else if (fwdSAInts.size() == 1) { // only 1 hit!
                 auto& saIntervalHit = fwdSAInts.front();
                 auto initialSize = hits.size();
-                for (int i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
+                for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
                         auto globalPos = SA[i];
                         //auto txpID = posIDs[globalPos];
             			//auto txpID = rankDict.Rank(globalPos, 1);
@@ -410,7 +413,7 @@ class SACollector {
         } else if (rcSAInts.size() == 1) { // only 1 hit!
             auto& saIntervalHit = rcSAInts.front();
             auto initialSize = hits.size();
-            for (int i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
+            for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
                 auto globalPos = SA[i];
                 //auto txpID = posIDs[globalPos];
 		//auto txpID = rankDict.Rank(globalPos, 1);

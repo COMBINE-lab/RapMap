@@ -12,14 +12,14 @@ set(CPACK_GENERATOR "TGZ")
 set(CPACK_SOURCE_GENERATOR "TGZ")
 set(CPACK_PACKAGE_VENDOR "Stony Brook University")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "RapMap - Wicked-fast quasi/pseudo/lightweight alignment")
-set(CPACK_PACKAGE_NAME 
+set(CPACK_PACKAGE_NAME
   "${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME
   "${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}-Source")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 
-set (WARNING_IGNORE_FLAGS "-Wno-deprecated-register -Wno-c++11-narrowing") 
+set (WARNING_IGNORE_FLAGS "-Wno-deprecated-register -Wno-c++11-narrowing")
 set (BOOST_CXX_FLAGS "-Wno-deprecated-register -std=c++11")
 ## Prefer static to dynamic libraries
 SET(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
@@ -45,7 +45,7 @@ else()
 endif()
 
 set( BOOST_EXTRA_FLAGS "--layout=tagged" )
-## this get's set differently below if we 
+## this get's set differently below if we
 ## are on clang & apple
 set (NON_APPLECLANG_LIBS gomp rt)
 set (PTHREAD_LIB)
@@ -69,7 +69,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
     endif ()
 
     set (GCC TRUE)
-    
+
     # Put complete static linking on hold for the time-being
     # If we're not on OSX, make an attempt to compile everything statically
     #if (NOT APPLE)
@@ -78,9 +78,9 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
     set (PTHREAD_LIB "pthread")
     #endif()
 
-    # If we're on Linux (i.e. not OSX) and we're using 
+    # If we're on Linux (i.e. not OSX) and we're using
     # gcc, then set the -static-libstdc++ flag
-    if (NOT APPLE) 
+    if (NOT APPLE)
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++")
     endif()
 
@@ -92,7 +92,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
 # Tentatively, we support clang now
 elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
     set(CLANG TRUE)
-    # If we have libc++, then try and use it 
+    # If we have libc++, then try and use it
     include(CheckCXXCompilerFlag)
     check_cxx_compiler_flag(-stdlib=libc++ HAVE_LIBCPP)
     if (HAVE_LIBCPP)
@@ -103,7 +103,7 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 	    set (BCXX_FLAGS "-stdlib=libc++ -DBOOST_HAS_INT128")
 	    set (BOOST_EXTRA_FLAGS toolset=clang cxxflags=${BCXX_FLAGS} linkflags="-stdlib=libc++")
         set (JELLYFISH_CXX_FLAGS "-stdlib=libc++")
-    # Otherwise, use libstdc++ (and make it static) 
+    # Otherwise, use libstdc++ (and make it static)
     else()
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++")
     endif()
@@ -148,17 +148,31 @@ if (NOT ZLIB_FOUND)
 endif()
 
 
+message("Build system will build libdivsufsort")
+message("==================================================================")
+include(ExternalProject)
+ExternalProject_Add(libdivsufsort
+    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
+    URL ${CMAKE_CURRENT_SOURCE_DIR}/external/libdivsufsort.zip
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libdivsufsort-master
+    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
+    UPDATE_COMMAND sh -c "mkdir -p <SOURCE_DIR>/build"
+    BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libdivsufsort-master/build
+    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR> -DBUILD_DIVSUFSORT64=TRUE -DUSE_OPENMP=TRUE -DBUILD_SHARED_LIBS=FALSE
+)
+set(SUFFARRAY_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/external/install/include)
+
 message("Build system will fetch and build SparseHash")
 message("==================================================================")
 ExternalProject_Add(libsparsehash
     DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
     DOWNLOAD_COMMAND curl -k -L https://github.com/COMBINE-lab/sparsehash/archive/sparsehash-2.0.2.tar.gz -o sparsehash-2.0.2.tar.gz &&
-        tar -xzf sparsehash-2.0.2.tar.gz 
+        tar -xzf sparsehash-2.0.2.tar.gz
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/sparsehash-sparsehash-2.0.2
     BUILD_IN_SOURCE TRUE
     INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
     CONFIGURE_COMMAND sh -c "CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} ./configure --prefix=<INSTALL_DIR>"
-    INSTALL_COMMAND make install 
+    INSTALL_COMMAND make install
 )
 
 
@@ -168,14 +182,14 @@ endif()
 
 find_package (Cereal)
 if (NOT CEREAL_FOUND)
-	    
+
 	message("Build system will fetch and build the Cereal serialization library")
 	message("==================================================================")
 	include(ExternalProject)
 	ExternalProject_Add(libcereal
 	    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
 	    DOWNLOAD_COMMAND curl -k -L https://github.com/USCiLab/cereal/archive/v1.1.2.tar.gz -o cereal-v1.1.2.tar.gz &&
-		tar -xzvf cereal-v1.1.2.tar.gz 
+		tar -xzvf cereal-v1.1.2.tar.gz
 	    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.1.2
 	    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
 	    UPDATE_COMMAND sh -c "mkdir -p <SOURCE_DIR>/build"
@@ -209,7 +223,7 @@ ExternalProject_Add(libjellyfish
     CONFIGURE_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/external/jellyfish-2.2.3/configure --prefix=<INSTALL_DIR> CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
     BUILD_COMMAND ${MAKE} CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
     BUILD_IN_SOURCE 1
-    INSTALL_COMMAND make install && 
+    INSTALL_COMMAND make install &&
                     cp config.h <INSTALL_DIR>/include/jellyfish-2.2.3/jellyfish/ &&
                     cp config.h <INSTALL_DIR>/include/
 )
@@ -243,7 +257,7 @@ if (NOT HAVE_FAST_MALLOC)
     ExternalProject_Add(libjemalloc
         DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
         DOWNLOAD_COMMAND curl -k -L https://github.com/COMBINE-lab/jemalloc/archive/3.6.0.tar.gz -o jemalloc-3.6.0.tar.gz &&
-        tar -xzf jemalloc-3.6.0.tar.gz 
+        tar -xzf jemalloc-3.6.0.tar.gz
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/jemalloc-3.6.0
         BUILD_IN_SOURCE TRUE
         INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
@@ -261,7 +275,7 @@ endif ()
 #
 ###
 
-set (CPACK_SOURCE_IGNORE_FILES 
+set (CPACK_SOURCE_IGNORE_FILES
 ".git/")
 
 message("CPACK_SOURCE_IGNORE_FILES = ${CPACK_SOURCE_IGNORE_FILES}")
@@ -271,4 +285,3 @@ add_subdirectory ( src )
 
 # build a CPack driven installer package
 include (CPack)
-

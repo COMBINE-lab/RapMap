@@ -2,15 +2,18 @@
 #include <future>
 #include <thread>
 
-RapMapSAIndex::RapMapSAIndex() {}
+template <typename IndexT>
+RapMapSAIndex<IndexT>::RapMapSAIndex() {}
 
 // Given a position, p, in the concatenated text,
 // return the corresponding transcript
-uint32_t RapMapSAIndex::transcriptAtPosition(uint32_t p) {
+template <typename IndexT>
+IndexT RapMapSAIndex<IndexT>::transcriptAtPosition(IndexT p) {
     return rankDict->rank(p);
 }
 
-bool RapMapSAIndex::load(const std::string& indDir) {
+template <typename IndexT>
+bool RapMapSAIndex<IndexT>::load(const std::string& indDir) {
 
     auto logger = spdlog::get("stderrLog");
     size_t n{0};
@@ -25,7 +28,7 @@ bool RapMapSAIndex::load(const std::string& indDir) {
             cereal::BinaryInputArchive hashArchive(hashStream);
             hashArchive(k);
             khash.unserialize(google::dense_hash_map<uint64_t,
-                    rapmap::utils::SAInterval,
+                    rapmap::utils::SAInterval<IndexT>,
                     rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
 
             //hashArchive(khash);
@@ -106,4 +109,3 @@ bool RapMapSAIndex::load(const std::string& indDir) {
     logger->info("Done loading index");
     return true;
 }
-

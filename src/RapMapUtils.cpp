@@ -456,9 +456,17 @@ namespace rapmap {
 }
 
 // Explicit instantiations
-template uint32_t rapmap::utils::writeAlignmentsToStream<std::pair<header_sequence_qual, header_sequence_qual>, RapMapSAIndex*>(
+template uint32_t rapmap::utils::writeAlignmentsToStream<std::pair<header_sequence_qual, header_sequence_qual>, RapMapSAIndex<int32_t>*>(
                 std::pair<header_sequence_qual, header_sequence_qual>& r,
-                PairAlignmentFormatter<RapMapSAIndex*>& formatter,
+                PairAlignmentFormatter<RapMapSAIndex<int32_t>*>& formatter,
+                rapmap::utils::HitCounters& hctr,
+                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
+                fmt::MemoryWriter& sstream
+                );
+
+template uint32_t rapmap::utils::writeAlignmentsToStream<std::pair<header_sequence_qual, header_sequence_qual>, RapMapSAIndex<int64_t>*>(
+                std::pair<header_sequence_qual, header_sequence_qual>& r,
+                PairAlignmentFormatter<RapMapSAIndex<int64_t>*>& formatter,
                 rapmap::utils::HitCounters& hctr,
                 std::vector<rapmap::utils::QuasiAlignment>& jointHits,
                 fmt::MemoryWriter& sstream
@@ -471,13 +479,23 @@ template uint32_t rapmap::utils::writeAlignmentsToStream<std::pair<header_sequen
                 std::vector<rapmap::utils::QuasiAlignment>& jointHits,
                 fmt::MemoryWriter& sstream
                 );
-template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_sequence_qual, RapMapSAIndex*>(
+
+  template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_sequence_qual, RapMapSAIndex<int32_t>*>(
                 jellyfish::header_sequence_qual& r,
-                SingleAlignmentFormatter<RapMapSAIndex*>& formatter,
+                SingleAlignmentFormatter<RapMapSAIndex<int32_t>*>& formatter,
                 rapmap::utils::HitCounters& hctr,
                 std::vector<rapmap::utils::QuasiAlignment>& jointHits,
                 fmt::MemoryWriter& sstream
                 );
+
+template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_sequence_qual, RapMapSAIndex<int64_t>*>(
+                jellyfish::header_sequence_qual& r,
+                SingleAlignmentFormatter<RapMapSAIndex<int64_t>*>& formatter,
+                rapmap::utils::HitCounters& hctr,
+                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
+                fmt::MemoryWriter& sstream
+                );
+
 template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_sequence_qual, RapMapIndex*>(
                 jellyfish::header_sequence_qual& r,
                 SingleAlignmentFormatter<RapMapIndex*>& formatter,
@@ -485,5 +503,3 @@ template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_seque
                 std::vector<rapmap::utils::QuasiAlignment>& jointHits,
                 fmt::MemoryWriter& sstream
                 );
-
-

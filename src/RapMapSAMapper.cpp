@@ -92,9 +92,9 @@ using FixedWriter = rapmap::utils::FixedWriter;
 
 
 
-template <typename CollectorT, typename MutexT>
+template <typename RapMapIndexT, typename CollectorT, typename MutexT>
 void processReadsSingleSA(single_parser * parser,
-        RapMapSAIndex& rmi,
+        RapMapIndexT& rmi,
     	CollectorT& hitCollector,
         MutexT* iomutex,
     	std::shared_ptr<spdlog::logger> outQueue,
@@ -193,9 +193,9 @@ void processReadsSingleSA(single_parser * parser,
 /**
  *  Map reads from a collection of paired-end files.
  */
-template <typename CollectorT, typename MutexT>
+template <typename RapMapIndexT, typename CollectorT, typename MutexT>
 void processReadsPairSA(paired_parser* parser,
-        RapMapSAIndex& rmi,
+        RapMapIndexT& rmi,
     	CollectorT& hitCollector,
         MutexT* iomutex,
 	    std::shared_ptr<spdlog::logger> outQueue,
@@ -293,6 +293,61 @@ void processReadsPairSA(paired_parser* parser,
 
 }
 
+template <typename RapMapIndexT, typename MutexT>
+bool spawnProcessReadsThreads(
+        uint32_t nthread,
+        std::unique_ptr<paired_parser> parser,
+        RapMapIndexT& rmi,
+        MutexT* iomutex,
+	      std::shared_ptr<spdlog::logger> outQueue,
+        HitCounters& hctr,
+        uint32_t maxNumHits,
+        bool noOutput) {
+
+            SACollector<RapMapIndexT> saCollector(&rmi);
+            for (size_t i = 0; i < nthread; ++i) {
+                threads.emplace_back(processReadsPairSA<SACollector<RapMapIndexT>, SpinLockT>,
+                        parser.get(),
+                        std::ref(rmi),
+                        std::ref(saCollector),
+                        &iomutex,
+            			      outLog,
+                        std::ref(hctrs),
+                        maxNumHits,
+                        noout);
+            }
+
+            for (auto& t : threads) { t.join(); }
+            return true;
+        }
+
+template <typename RapMapIndexT, typename MutexT>
+bool spawnProcessReadsThreads(
+        uint32_t nthread,
+        std::unique_ptr<single_parser> parser,
+        RapMapIndexT& rmi,
+        MutexT* iomutex,
+	      std::shared_ptr<spdlog::logger> outQueue,
+        HitCounters& hctr,
+        uint32_t maxNumHits,
+        bool noOutput) {
+
+            SACollector<RapMapIndexT> saCollector(&rmi);
+            for (size_t i = 0; i < nthread; ++i) {
+                threads.emplace_back(processReadsSingleSA<SACollector<RapMapIndexT>, SpinLockT>,
+                        singleParserPtr.get(),
+                        std::ref(rmi),
+                        std::ref(saCollector),
+                        &iomutex,
+            			      outLog,
+                        std::ref(hctrs),
+                        maxNumHits,
+                        noout);
+            }
+            for (auto& t : threads) { t.join(); }
+            return true;
+        }
+
 int rapMapSAMap(int argc, char* argv[]) {
     std::cerr << "RapMap Mapper (SA-based)\n";
 
@@ -374,6 +429,8 @@ int rapMapSAMap(int argc, char* argv[]) {
 	    std::exit(1);
 	}
 
+  if (h.bigSA())
+
 	RapMapSAIndex rmi;
 	rmi.load(indexPrefix);
 
@@ -438,20 +495,9 @@ int rapMapSAMap(int argc, char* argv[]) {
                         concurrentFile,
                         pairFileList, pairFileList+numFiles));
 
-            SACollector saCollector(&rmi);
-            for (size_t i = 0; i < nthread; ++i) {
-                threads.emplace_back(processReadsPairSA<SACollector, SpinLockT>,
-                        pairParserPtr.get(),
-                        std::ref(rmi),
-                        std::ref(saCollector),
-                        &iomutex,
-            			outLog,
-                        std::ref(hctrs),
-                        maxNumHits.getValue(),
-                        noout.getValue());
-            }
+            spawnProcessReadsThreds(nthread, pairParserPtr, rmi, iomutex,
+              outLog, hctrs, maxNumHits.getValue(), noout.getValue());
 
-            for (auto& t : threads) { t.join(); }
             delete [] pairFileList;
         } else {
             std::vector<std::thread> threads;
@@ -466,23 +512,12 @@ int rapMapSAMap(int argc, char* argv[]) {
                         streams));
 
             /** Create the threads depending on the collector type **/
-            SACollector saCollector(&rmi);
-            for (size_t i = 0; i < nthread; ++i) {
-                threads.emplace_back(processReadsSingleSA<SACollector, SpinLockT>,
-                        singleParserPtr.get(),
-                        std::ref(rmi),
-                        std::ref(saCollector),
-                        &iomutex,
-            			outLog,
-                        std::ref(hctrs),
-                        maxNumHits.getValue(),
-                        noout.getValue());
-            }
-            for (auto& t : threads) { t.join(); }
+            spawnProcessReadsThreds(nthread, singleParserPtr, rmi, iomutex,
+              outLog, hctrs, maxNumHits.getValue(), noout.getValue());
         }
 	std::cerr << "\n\n";
-    
-        
+
+
     consoleLog->info("Done mapping reads.");
     consoleLog->info("In total saw {} reads.", hctrs.numReads);
     consoleLog->info("Final # hits per read = {}", hctrs.totHits / static_cast<float>(hctrs.numReads));
@@ -505,133 +540,3 @@ int rapMapSAMap(int argc, char* argv[]) {
     }
 
 }
-
-
-/*
-bool verbose{false};
-if (verbose) {
-    if (lb == lbLeftFwd and ub == ubLeftFwd) {
-	//std::cerr << "couldn't narrow interval at all!\n";
-    } else {
-	diffCount += 1;
-	int lbNaive, ubNaive, blah;
-
-	//std::cerr << "before naive search . . . ";
-	std::tie(lbNaive, ubNaive, blah) =
-	    saSearcher.extendSearch(0, SA.size(), 0, rb, readEndIt);
-	//std::cerr << "after naive search\n";
-
-	if (ubNaive - lbNaive > ubLeftFwd - lbLeftFwd and blah >= matchedLen) {//lbLeftFwd != lbNaive or ubLeftFwd != ubNaive) {
-	    diffCount += 1;
-	//}
-	//if (ubNaive - lbNaive > ubLeftFwd - lbLeftFwd and !verbose) {
-	    std::cerr << "narrowed interval from "
-		<< "[ " << lb << ", " << ub << ") to "
-		<< "[ "<< lbLeftFwd << ", " << ubLeftFwd << ")\n";
-
-	    std::cerr << "mer is    : " << mer << "\n";
-	    std::cerr << "string is : ";
-	    for (auto it = rb; it != rb + matchedLen; ++it) {
-		std::cerr << *it;
-	    } std::cerr << "\n";
-	    std::cerr << "read is   : " << read << "\n";
-
-	    std::cerr << "narrowed len = " << matchedLen << "\n";
-	    std::cerr << "naive len = " << blah << "\n";
-
-	    std::cerr << "entries at narrowed interval:\n";
-	    for (auto x = lbLeftFwd - 1; x < ubLeftFwd + 1; ++x) {
-		std::cerr << "\tT[SA[" << x << "] = "
-		    << rmi_->seq.substr(SA[x], matchedLen) << "\n";
-	    }
-
-	    std::cerr << "naive interval is [" << lbNaive << ", " << ubNaive << ")\n";
-
-	    std::cerr << "entries at naive interval:\n";
-	    for (auto x = lbNaive - 1; x < ubNaive + 1; ++x) {
-		std::cerr << "\tT[SA[" << x << "] = "
-		    << rmi_->seq.substr(SA[x], blah) << "\n";
-	    }
-	    std::exit(1);
-	}
-    }
-
-}
-*/
-/* Old read output code
-if (leftHits.size() > 0) {
-auto leftIt = leftHits.begin();
-auto leftEnd = leftHits.end();
-auto leftLen = std::distance(leftIt, leftEnd);
-if (rightHits.size() > 0) {
-auto rightIt = rightHits.begin();
-auto rightEnd = rightHits.end();
-auto rightLen = std::distance(rightIt, rightEnd);
-size_t numHits{0};
-jointHits.reserve(std::min(leftLen, rightLen));
-uint32_t leftTxp, rightTxp;
-while (leftIt != leftEnd && rightIt != rightEnd) {
-	// The left and right transcipt ids
-	leftTxp = leftIt->tid;
-	rightTxp = rightIt->tid;
-
-	// They don't point to the same transcript
-	if (leftTxp < rightTxp) {
-		++leftIt;
-	} else {
-
-		// The left and right iterators point to the same transcript
-		if (!(rightTxp < leftTxp)) {
-			int32_t startRead1 = leftIt->pos;
-			int32_t startRead2 = rightIt->pos;
-			int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
-			int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
-			uint32_t fragLen = fragEndPos - fragStartPos;
-			jointHits.emplace_back(leftTxp,
-					startRead1,
-					leftIt->fwd,
-					leftIt->readLen,
-					fragLen, true);
-			// Fill in the mate info
-			auto& qaln = jointHits.back();
-			qaln.mateLen = rightIt->readLen;
-			qaln.matePos = startRead2;
-			qaln.mateIsFwd = rightIt->fwd;
-			jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
-			++numHits;
-			if (numHits > maxNumHits) { tooManyHits = true; break; }
-			++leftIt;
-		}
-		++rightIt;
-	}
-}
-}
-if (tooManyHits) { jointHits.clear(); ++hctr.tooManyHits; }
-}
-
-// If we had proper paired hits
-if (jointHits.size() > 0) {
-hctr.peHits += jointHits.size();
-orphanStatus = 0;
-} else if (leftHits.size() + rightHits.size() > 0 and !tooManyHits) {
-// If there weren't proper paired hits, then either
-// there were too many hits, and we forcibly discarded the read
-// or we take the single end hits.
-auto numHits = leftHits.size() + rightHits.size();
-hctr.seHits += numHits;
-orphanStatus = 0;
-orphanStatus |= (leftHits.size() > 0) ? 0x1 : 0;
-orphanStatus |= (rightHits.size() > 0) ? 0x2 : 0;
-jointHits.insert(jointHits.end(),
-	std::make_move_iterator(leftHits.begin()),
-	std::make_move_iterator(leftHits.end()));
-jointHits.insert(jointHits.end(),
-	std::make_move_iterator(rightHits.begin()),
-	std::make_move_iterator(rightHits.end()));
-}
-*/
-
-
-
-
-

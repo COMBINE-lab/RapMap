@@ -23,27 +23,30 @@
 #include <fstream>
 #include "RapMapUtils.hpp"
 
+template <typename IndexT>
 class RapMapSAIndex {
     public:
-	struct BitArrayDeleter {
-	   void operator()(BIT_ARRAY* b) {
-	       if(b != nullptr) {
-	           bit_array_free(b);
-	       }
-	   }
-	};
+    using IndexType = IndexT;
 
-	using BitArrayPointer = std::unique_ptr<BIT_ARRAY, BitArrayDeleter>;
+      struct BitArrayDeleter {
+        void operator()(BIT_ARRAY* b) {
+          if(b != nullptr) {
+            bit_array_free(b);
+          }
+        }
+      };
+
+	  using BitArrayPointer = std::unique_ptr<BIT_ARRAY, BitArrayDeleter>;
 
     RapMapSAIndex();
 
-	// Given a position, p, in the concatenated text,
-	// return the corresponding transcript
-	uint32_t transcriptAtPosition(uint32_t p);
+  	// Given a position, p, in the concatenated text,
+  	// return the corresponding transcript
+  	IndexT transcriptAtPosition(IndexT p);
 
     bool load(const std::string& indDir);
 
-    std::vector<int> SA;
+    std::vector<IndexT> SA;
     //rsdic::RSDic rankDictSafe;
 
     BitArrayPointer bitArray{nullptr};
@@ -51,11 +54,11 @@ class RapMapSAIndex {
 
     std::string seq;
     std::vector<std::string> txpNames;
-    std::vector<uint32_t> txpOffsets;
-    std::vector<uint32_t> txpLens;
-    std::vector<uint32_t> positionIDs;
+    std::vector<IndexT> txpOffsets;
+    std::vector<IndexT> txpLens;
+    std::vector<IndexT> positionIDs;
     google::dense_hash_map<uint64_t,
-                        rapmap::utils::SAInterval,
+                        rapmap::utils::SAInterval<IndexT>,
                         rapmap::utils::KmerKeyHasher> khash;
                        // ::NopointerSerializer(), &hashStream);
         /*
@@ -64,4 +67,8 @@ class RapMapSAIndex {
                        rapmap::utils::KmerKeyHasher> khash;
                        */
 };
+
+template class RapMapSAIndex<int32_t>;
+template class RapMapSAIndex<int64_t>;
+
 #endif //__RAPMAP_SA_INDEX_HPP__

@@ -30,7 +30,6 @@ template <typename IndexT>
 class SingleAlignmentFormatter;
 
 // Forward-declare because the C++ compiler is dumb
-class RapMapSAIndex;
 class RapMapIndex;
 
 namespace rapmap {
@@ -108,10 +107,10 @@ namespace rapmap {
     };
 
 
-
+    template <typename IndexT>
     struct SAInterval {
-        uint32_t begin;
-        uint32_t end;
+        IndexT begin;
+        IndexT end;
         template <typename Archive>
             void load(Archive& ar) { ar(begin, end); }
 
@@ -315,12 +314,13 @@ namespace rapmap {
         bool queryRC;
     };
 
+    template <typename OffsetT>
     struct SAIntervalHit {
-        SAIntervalHit(int beginIn, int endIn, uint32_t lenIn, uint32_t queryPosIn, bool queryRCIn) :
+        SAIntervalHit(OffsetT beginIn, OffsetT endIn, uint32_t lenIn, uint32_t queryPosIn, bool queryRCIn) :
             begin(beginIn), end(endIn), len(lenIn), queryPos(queryPosIn), queryRC(queryRCIn) {}
 
-	int span() { return end - begin; }
-        int begin, end;
+	      OffsetT span() { return end - begin; }
+        OffsetT begin, end;
         uint32_t len, queryPos;
         bool queryRC;
     };

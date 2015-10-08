@@ -30,7 +30,7 @@ set (RSDICT_LIB_SRCS
     RSDicBuilder.cpp
 )
 
-include_directories( 
+include_directories(
 ${GAT_SOURCE_DIR}/include
 #${GAT_SOURCE_DIR}/include/eigen3
 ${GAT_SOURCE_DIR}/external
@@ -42,7 +42,7 @@ ${CEREAL_INCLUDE_DIRS}
 #${Boost_INCLUDE_DIRS}
 )
 
-link_directories( 
+link_directories(
 ${GAT_SOURCE_DIR}/lib
 ${GAT_SOURCE_DIR}/external/install/lib
 #${Boost_LIBRARY_DIRS}
@@ -53,10 +53,10 @@ ${GAT_SOURCE_DIR}/external/install/lib
 
 #message("Boost_LIBRARIES = ${Boost_LIBRARIES}")
 
-# Set the RPATH 
+# Set the RPATH
 if (APPLE)
-    ## This DOES NOT do what I / any one sane, expects.  Setting the 
-    ## linker path on OSX is messed up.  Just tell the user to use 
+    ## This DOES NOT do what I / any one sane, expects.  Setting the
+    ## linker path on OSX is messed up.  Just tell the user to use
     ## DYLD_FALLBACK_LIBRARY_PATH for now
     set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 else()
@@ -73,13 +73,19 @@ add_executable(rapmap ${RAPMAP_MAIN_SRCS})
 
 #set_target_properties(salmon_core salmon PROPERTIES LINK_SEARCH_END_STATIC TRUE)
 
+# our suffix array construction libraries
+set (SUFFARRAY_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort.a)
+set (SUFFARRAY_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort64.a)
+
 # Link the executable
 target_link_libraries(rapmap
     rsdic
     ${PTHREAD_LIB}
-    #${Boost_LIBRARIES} 
-    ${ZLIB_LIBRARY} 
-    ${GAT_SOURCE_DIR}/external/install/lib/libjellyfish-2.0.a 
+    #${Boost_LIBRARIES}
+    ${ZLIB_LIBRARY}
+    ${SUFFARRAY_LIB}
+    ${SUFFARRAY64_LIB}
+    ${GAT_SOURCE_DIR}/external/install/lib/libjellyfish-2.0.a
     m
     ${LIBLZMA_LIBRARIES}
     #${LIBSALMON_LINKER_FLAGS}
@@ -115,8 +121,8 @@ set(INSTALL_INCLUDE_DIR include )
 # install(FILES ${Boost_LIBRARIES}
 # 	           DESTINATION ${INSTALL_LIB_DIR})
 
-install(TARGETS rapmap 
-                RUNTIME DESTINATION bin 
+install(TARGETS rapmap
+                RUNTIME DESTINATION bin
                 LIBRARY DESTINATION lib
                 ARCHIVE DESTINATION lib
         )
@@ -124,11 +130,11 @@ install(TARGETS rapmap
     #set(POST_INSTALL_SCRIPT ${GAT_SOURCE_DIR}/cmake/PostInstall.cmake)
 
     #install(
-    #    CODE 
+    #    CODE
     #    "
     #    execute_process(COMMAND \"${CMAKE_COMMAND}\"
     #                            -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
-    #                            -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} 
+    #                            -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
     #                            -P \"${POST_INSTALL_SCRIPT}\")
     #    "
     #)

@@ -22,7 +22,9 @@ namespace rapmap {
         using QuasiAlignment = rapmap::utils::QuasiAlignment;
         using TxpQueryPos = rapmap::utils::TxpQueryPos;
         using SATxpQueryPos = rapmap::utils::SATxpQueryPos;
-        using SAIntervalHit = rapmap::utils::SAIntervalHit;
+
+        template <typename T>
+        using SAIntervalHit = rapmap::utils::SAIntervalHit<T>;
         using SAHitMap = std::map<int, rapmap::utils::ProcessedSAHit>;
         using ProcessedSAHit = rapmap::utils::ProcessedSAHit;
 
@@ -68,13 +70,15 @@ namespace rapmap {
         void intersectWithOutput(HitInfo& h2, RapMapIndex& rmi,
                 std::vector<ProcessedHit>& outHits);
 
-        void intersectSAIntervalWithOutput(SAIntervalHit& h,
-                RapMapSAIndex& rmi,
-		uint32_t intervalCounter,
+        template <typename RapMapIndexT>
+        void intersectSAIntervalWithOutput(SAIntervalHit<typename RapMapIndexT::IndexType>& h,
+                RapMapIndexT& rmi,
+		            uint32_t intervalCounter,
                 SAHitMap& outHits);
 
-        void intersectSAIntervalWithOutput2(SAIntervalHit& h,
-                RapMapSAIndex& rmi,
+        template <typename RapMapIndexT>
+        void intersectSAIntervalWithOutput2(SAIntervalHit<typename RapMapIndexT::IndexType>& h,
+                RapMapIndexT& rmi,
                 SAProcessedHitVec& outStructs);
 
         /*
@@ -87,13 +91,15 @@ namespace rapmap {
                 std::vector<HitInfo>& inHits,
                 RapMapIndex& rmi);
 
+        template <typename RapMapIndexT>
         SAHitMap intersectSAHits(
-                std::vector<SAIntervalHit>& inHits,
-                RapMapSAIndex& rmi);
+                std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
+                RapMapIndexT& rmi);
 
+        template <typename RapMapIndexT>
         std::vector<ProcessedSAHit> intersectSAHits2(
-                std::vector<SAIntervalHit>& inHits,
-                RapMapSAIndex& rmi);
+                std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
+                RapMapIndexT& rmi);
     }
 }
 

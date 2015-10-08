@@ -238,8 +238,9 @@ namespace rapmap {
                 }
             }
 
-        void intersectSAIntervalWithOutput2(SAIntervalHit& h,
-                RapMapSAIndex& rmi,
+          template <typename RapMapIndexT>
+        void intersectSAIntervalWithOutput2(SAIntervalHit<RapMapIndexT::IndexType>& h,
+                RapMapIndexT& rmi,
                 //fbs::eytzinger_array_bfp<uint32_t, uint32_t, true>& outTxps,
                 //std::vector<uint32_t>& outTxps,
                 SAProcessedHitVec& processedHits) {
@@ -342,35 +343,36 @@ namespace rapmap {
 
 
 
+        template <typename RapMapIndexT>
+        void intersectSAIntervalWithOutput(SAIntervalHit<RapMapIndexT::IndexType>& h,
+          RapMapIndexT& rmi,
+          uint32_t intervalCounter,
+          SAHitMap& outHits) {
+            using OffsetT = typename RapMapIndex::IndexType;
+            // Convenient bindings for variables we'll use
+            auto& SA = rmi.SA;
+            //auto& txpIDs = rmi.positionIDs;
+            auto& rankDict = rmi.rankDict;
+            auto& txpStarts = rmi.txpOffsets;
 
-        void intersectSAIntervalWithOutput(SAIntervalHit& h,
-                        RapMapSAIndex& rmi,
-			uint32_t intervalCounter,
-                        SAHitMap& outHits) {
-                // Convenient bindings for variables we'll use
-                auto& SA = rmi.SA;
-                //auto& txpIDs = rmi.positionIDs;
-		auto& rankDict = rmi.rankDict;
-                auto& txpStarts = rmi.txpOffsets;
-
-                // Walk through every hit in the new interval 'h'
-                for (int i = h.begin; i != h.end; ++i) {
-                        //auto txpID = txpIDs[SA[i]];
-			// auto txpID = rankDict.Rank(SA[i], 1);
-			auto txpID = rmi.transcriptAtPosition(SA[i]);
-                        auto txpListIt = outHits.find(txpID);
-                        // If we found this transcript
-                        // Add this position to the list
-                        if (txpListIt != outHits.end()) {
-				txpListIt->second.numActive += (txpListIt->second.numActive == intervalCounter - 1) ? 1 : 0;
-				if (txpListIt->second.numActive == intervalCounter) {
-                                    auto globalPos = SA[i];
-                                    auto localPos = globalPos - txpStarts[txpID];
-                                    txpListIt->second.tqvec.emplace_back(localPos, h.queryPos, h.queryRC);
-				}
-                        }
+            // Walk through every hit in the new interval 'h'
+            for (OffsetT i = h.begin; i != h.end; ++i) {
+              //auto txpID = txpIDs[SA[i]];
+              // auto txpID = rankDict.Rank(SA[i], 1);
+              auto txpID = rmi.transcriptAtPosition(SA[i]);
+              auto txpListIt = outHits.find(txpID);
+              // If we found this transcript
+              // Add this position to the list
+              if (txpListIt != outHits.end()) {
+                txpListIt->second.numActive += (txpListIt->second.numActive == intervalCounter - 1) ? 1 : 0;
+                if (txpListIt->second.numActive == intervalCounter) {
+                  auto globalPos = SA[i];
+                  auto localPos = globalPos - txpStarts[txpID];
+                  txpListIt->second.tqvec.emplace_back(localPos, h.queryPos, h.queryRC);
                 }
-        }
+              }
+            }
+          }
 
 
 
@@ -480,10 +482,12 @@ namespace rapmap {
             return outHits;
         }
 
+        template <typename RapMapIndexT>
         std::vector<ProcessedSAHit> intersectSAHits2(
-                std::vector<SAIntervalHit>& inHits,
-                RapMapSAIndex& rmi
+                std::vector<SAIntervalHit<RapMapIndexT::IndexType>>& inHits,
+                RapMapIndexT& rmi
                 ) {
+            using OffsetT = RapMapIndexT::IndexType;
 
             // Each inHit is a SAIntervalHit structure that contains
             // an SA interval with all hits for a particuar query location
@@ -508,7 +512,7 @@ namespace rapmap {
 
             // Start with the smallest interval
             // i.e. interval with the fewest hits.
-            SAIntervalHit* minHit = &inHits[0];
+            SAIntervalHit<OffsetT>* minHit = &inHits[0];
             for (auto& h : inHits) {
                 if (h.span() < minHit->span()) {
                     minHit = &h;
@@ -569,12 +573,12 @@ namespace rapmap {
             return outStructs;
         }
 
-
+        template <typename RapMapIndexT>
         SAHitMap intersectSAHits(
-                std::vector<SAIntervalHit>& inHits,
-                RapMapSAIndex& rmi
+                std::vector<SAIntervalHit<RapMapIndexT::IndexType>>& inHits,
+                RapMapIndexT& rmi
                 ) {
-
+            using OffsetT = RapMapIndexT::IndexType;
             // Each inHit is a SAIntervalHit structure that contains
             // an SA interval with all hits for a particuar query location
             // on the read.
@@ -599,7 +603,7 @@ namespace rapmap {
 
             // Start with the smallest interval
             // i.e. interval with the fewest hits.
-            SAIntervalHit* minHit = &inHits[0];
+            SAIntervalHit<OffsetT>* minHit = &inHits[0];
             for (auto& h : inHits) {
                 if (h.span() < minHit->span()) {
                     minHit = &h;

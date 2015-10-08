@@ -26,7 +26,9 @@
 #include "jellyfish/stream_manager.hpp"
 #include "jellyfish/whole_sequence_parser.hpp"
 
-#include "sais.h"
+#include "divsufsort.h"
+#include "divsufsort64.h"
+//#include "sais.h"
 //#include "RSDic.hpp"
 //#include "RSDicBuilder.hpp"
 #include "bit_array.h"
@@ -57,6 +59,254 @@ using TranscriptIDVector = std::vector<TranscriptID>;
 using KmerIDMap = std::vector<TranscriptIDVector>;
 using MerMapT = jellyfish::cooperative::hash_counter<rapmap::utils::my_mer>;
 
+bool buildSA(const std::string& outputDir,
+             std::string& concatText,
+             size_t tlen,
+             std::vector<int64_t>& SA) {
+// IndexT is the signed index type
+// UIndexT is the unsigned index type
+  using IndexT = int64_t;
+  using UIndexT = uint64_t;
+  bool success{false};
+
+  std::ofstream saStream(outputDir + "sa.bin", std::ios::binary);
+  {
+    ScopedTimer timer;
+    SA.resize(tlen, 0);
+    IndexT textLen = static_cast<IndexT>(tlen);
+    std::cerr << "Building suffix array . . . ";
+    auto ret = divsufsort64(reinterpret_cast<unsigned char*>(
+      const_cast<char*>(concatText.data())),
+      SA.data(), tlen);
+
+      success = (ret == 0);
+      if (success) {
+        std::cerr << "success\n";
+        {
+          ScopedTimer timer2;
+          std::cerr << "saving to disk . . . ";
+          cereal::BinaryOutputArchive saArchive(saStream);
+          saArchive(SA);
+          std::cerr << "done\n";
+        }
+      } else {
+        std::cerr << "FAILURE: return code from libdivsufsort64() was " << ret << "\n";
+        saStream.close();
+        std::exit(1);
+      }
+      std::cerr << "done\n";
+    }
+    saStream.close();
+    return success;
+}
+
+bool buildSA(const std::string& outputDir,
+             std::string& concatText,
+             size_t tlen,
+             std::vector<int32_t>& SA) {
+// IndexT is the signed index type
+// UIndexT is the unsigned index type
+  using IndexT = int32_t;
+  using UIndexT = uint32_t;
+  bool success{false};
+
+  std::ofstream saStream(outputDir + "sa.bin", std::ios::binary);
+  {
+    ScopedTimer timer;
+    SA.resize(tlen, 0);
+    IndexT textLen = static_cast<IndexT>(tlen);
+    std::cerr << "Building suffix array . . . ";
+    auto ret = divsufsort(reinterpret_cast<unsigned char*>(
+      const_cast<char*>(concatText.data())),
+      SA.data(), tlen);
+
+      success = (ret == 0);
+      if (success) {
+        std::cerr << "success\n";
+        {
+          ScopedTimer timer2;
+          std::cerr << "saving to disk . . . ";
+          cereal::BinaryOutputArchive saArchive(saStream);
+          saArchive(SA);
+          std::cerr << "done\n";
+        }
+      } else {
+        std::cerr << "FAILURE: return code from libdivsufsort() was " << ret << "\n";
+        saStream.close();
+        std::exit(1);
+      }
+      std::cerr << "done\n";
+    }
+    saStream.close();
+    return success;
+}
+
+// IndexT is the index type.
+// int32_t for "small" suffix arrays
+// int64_t for "large" ones
+template <typename IndexT>
+bool buildHash(const std::string& outputDir,
+               std::string& concatText,
+               size_t tlen,
+               uint32_t k,
+               std::vector<IndexT>& SA
+              ) {
+  // Now, build the k-mer lookup table
+  google::dense_hash_map<uint64_t,
+                      rapmap::utils::SAInterval<IndexT>,
+                      rapmap::utils::KmerKeyHasher> khash;
+  khash.set_empty_key(std::numeric_limits<uint64_t>::max());
+
+  // The start and stop of the current interval
+  IndexT start = 0, stop = 0;
+  // An iterator to the beginning of the text
+  auto textB = concatText.begin();
+  auto textE = concatText.end();
+  // The current k-mer as a string
+  rapmap::utils::my_mer mer;
+  bool currentValid{false};
+  std::string currentKmer;
+  std::string nextKmer;
+  while (stop < tlen) {
+      // Check if the string starting at the
+      // current position is valid (i.e. doesn't contain $)
+      // and is <= k bases from the end of the string
+      nextKmer = concatText.substr(SA[stop], k);
+      if (nextKmer.length() == k and
+          nextKmer.find_first_of('$') == std::string::npos) {
+          // If this is a new k-mer, then hash the current k-mer
+          if (nextKmer != currentKmer) {
+              if (currentKmer.length() == k and
+                  currentKmer.find_first_of('$') == std::string::npos) {
+                  mer = rapmap::utils::my_mer(currentKmer);
+                  auto bits = mer.get_bits(0, 2*k);
+                  auto hashIt = khash.find(bits);
+                  if (hashIt == khash.end()) {
+                      if (start > 1) {
+                          if (concatText.substr(SA[start-1], k) ==
+                              concatText.substr(SA[start], k)) {
+                              std::cerr << "T[SA["
+                                        << start-1 << "]:" << k << "] = "
+                                        << concatText.substr(SA[start-1], k)
+                                        << " = T[SA[" << start << "]:" << k << "]\n";
+                              std::cerr << "start = " << start << ", stop = " << stop << "\n";
+                              std::cerr << "[fatal (1)] THIS SHOULD NOT HAPPEN\n";
+                              std::exit(1);
+                          }
+                      }
+                      if (start == stop) {
+                          std::cerr << "[fatal (2)] Interval is empty! (start = " << start
+                                    << ") = (stop =  " << stop << ")\n";
+                      }
+                      if (start == stop) {
+                          std::cerr << "[fatal (3)] Interval is empty! (start = " << start
+                              << ") = (stop =  " << stop << ")\n";
+                      }
+
+                      khash[bits] = {start, stop};
+                  } else {
+                      std::cerr << "\nERROR (1): trying to add same suffix "
+                                << currentKmer << " (len = "
+                                << currentKmer.length() << ") multiple times!\n";
+                      auto prevInt = hashIt->second;
+                      std::cerr << "existing interval is ["
+                                << prevInt.begin << ", " << prevInt.end << ")\n";
+                      for (auto x = prevInt.begin; x < prevInt.end; ++x) {
+                          auto suff = concatText.substr(SA[x], k);
+                          for (auto c : suff) {
+                              std::cerr << "*" << c << "*";
+                          }
+                          std::cerr << " (len = " << suff.length() <<")\n";
+                      }
+                      std::cerr << "new interval is ["
+                                << start << ", " << stop << ")\n";
+                      for (auto x = start; x < stop; ++x) {
+                          auto suff = concatText.substr(SA[x], k);
+                          for (auto c : suff) {
+                              std::cerr << "*" << c << "*";
+                          }
+                          std::cerr << "\n";
+                      }
+                  }
+              }
+              currentKmer = nextKmer;
+              start = stop;
+          }
+      } else {
+          // If this isn't a valid suffix (contains a $)
+
+          // If the previous interval was valid, put it
+          // in the hash.
+          if (currentKmer.length() == k and
+              currentKmer.find_first_of('$') == std::string::npos) {
+              mer = rapmap::utils::my_mer(currentKmer);
+              auto bits = mer.get_bits(0, 2*k);
+              auto hashIt = khash.find(bits);
+              if (hashIt == khash.end()) {
+                  if (start > 2) {
+                      if (concatText.substr(SA[start-1], k) ==
+                          concatText.substr(SA[start], k)) {
+                          std::cerr << "T[SA["
+                              << start-1 << "]:" << k << "] = "
+                              << concatText.substr(SA[start-1], k)
+                              << " = T[SA[" << start << "]:" << k << "]\n";
+                          std::cerr << "start = " << start << ", stop = " << stop << "\n";
+                          std::cerr << "[fatal (4)] THIS SHOULD NOT HAPPEN\n";
+                          std::exit(1);
+                      }
+                  }
+                  khash[bits] = {start, stop};
+              } else {
+                  std::cerr << "\nERROR (2): trying to add same suffix "
+                            << currentKmer << "multiple times!\n";
+                  auto prevInt = hashIt->second;
+                  std::cerr << "existing interval is ["
+                      << prevInt.begin << ", " << prevInt.end << ")\n";
+                  for (auto x = prevInt.begin; x < prevInt.end; ++x) {
+                      std::cerr << concatText.substr(SA[x], k) << "\n";
+                  }
+                  std::cerr << "new interval is ["
+                      << start << ", " << stop << ")\n";
+                  for (auto x = start; x < stop; ++x) {
+                      std::cerr << concatText.substr(SA[x], k) << "\n";
+                  }
+              }
+
+          }
+          // The current interval is invalid and empty
+          currentKmer = nextKmer;
+          start = stop;
+      }
+      if (stop % 1000000 == 0) {
+          std::cerr << "\r\rprocessed " << stop << " positions";
+      }
+      // We always update the end position
+      ++stop;
+  }
+  if (start < tlen) {
+      if (currentKmer.length() == k and
+          currentKmer.find_first_of('$') != std::string::npos) {
+          mer = rapmap::utils::my_mer(currentKmer);
+          khash[mer.get_bits(0, 2*k)] = {start, stop};
+      }
+  }
+  std::cerr << "\nkhash had " << khash.size() << " keys\n";
+  std::ofstream hashStream(outputDir + "hash.bin", std::ios::binary);
+  {
+      ScopedTimer timer;
+      std::cerr << "saving hash to disk . . . ";
+      cereal::BinaryOutputArchive hashArchive(hashStream);
+      hashArchive(k);
+      khash.serialize(typename google::dense_hash_map<uint64_t,
+                      rapmap::utils::SAInterval<IndexT>,
+                      rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
+      //hashArchive(khash);
+      std::cerr << "done\n";
+  }
+  hashStream.close();
+  return true;
+}
+
 // To use the parser in the following, we get "jobs" until none is
 // available. A job behaves like a pointer to the type
 // jellyfish::sequence_list (see whole_sequence_parser.hpp).
@@ -75,7 +325,7 @@ void indexTranscriptsSA(ParserT* parser,
     uint32_t n{0};
     uint32_t k = rapmap::utils::my_mer::k();
     std::vector<std::string> transcriptNames;
-    std::vector<uint32_t> transcriptStarts;
+    std::vector<uint64_t> transcriptStarts;
     //std::vector<uint32_t> positionIDs;
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
     uint32_t polyAClipLength{10};
@@ -126,9 +376,8 @@ void indexTranscriptsSA(ParserT* parser,
                 auto& recHeader = j->data[i].header;
                 transcriptNames.emplace_back(recHeader.substr(0, recHeader.find_first_of(" \t")));
 
-		// The position at which this transcript starts
+		            // The position at which this transcript starts
                 transcriptStarts.push_back(currIndex);
-
 
                 bool firstBase{true};
                 rapmap::utils::my_mer mer;
@@ -255,6 +504,45 @@ void indexTranscriptsSA(ParserT* parser,
 
     // Build the suffix array
     size_t tlen = concatText.length();
+    size_t maxInt = std::numeric_limits<int32_t>::max();
+    bool largeIndex{false};
+
+    if (tlen + 1 > maxInt) {
+        largeIndex = true;
+        std::cerr << "[info] Building 64-bit suffix array "
+                     "(length of generalized text is " << tlen << " )\n";
+        using IndexT = int64_t;
+        std::vector<IndexT> SA;
+        bool success = buildSA(outputDir, concatText, tlen, SA);
+        if (!success) {
+          std::cerr << "[fatal] Could not build the suffix array!\n";
+          std::exit(1);
+        }
+
+        success = buildHash<IndexT>(outputDir, concatText, tlen, k, SA);
+        if (!success) {
+          std::cerr << "[fatal] Could not build the suffix interval hash!\n";
+          std::exit(1);
+        }
+    } else {
+        std::cerr << "[info] Building 32-bit suffix array "
+                     "(length of generalized text is " << tlen << ")\n";
+        using IndexT = int32_t;
+        std::vector<IndexT> SA;
+        bool success = buildSA(outputDir, concatText, tlen, SA);
+        if (!success) {
+          std::cerr << "[fatal] Could not build the suffix array!\n";
+          std::exit(1);
+        }
+
+        success = buildHash<IndexT>(outputDir, concatText, tlen, k, SA);
+        if (!success) {
+          std::cerr << "[fatal] Could not build the suffix interval hash!\n";
+          std::exit(1);
+        }
+    }
+
+/*
     std::vector<int> SA(tlen, 0);
     std::ofstream saStream(outputDir + "sa.bin", std::ios::binary);
     {
@@ -281,181 +569,11 @@ void indexTranscriptsSA(ParserT* parser,
         std::cerr << "done\n";
     }
     saStream.close();
-
-    // clear things we don't need
-    //LCP.clear();
-    // LCP.shrink_to_fit();
-    // done clearing
-
-    // Now, build the k-mer lookup table
-    /*
-    std::unordered_map<uint64_t,
-                       rapmap::utils::SAInterval,
-                       rapmap::utils::KmerKeyHasher> khash;
-                       */
-    google::dense_hash_map<uint64_t,
-                        rapmap::utils::SAInterval,
-                        rapmap::utils::KmerKeyHasher> khash;
-    khash.set_empty_key(std::numeric_limits<uint64_t>::max());
-
-    /*
-    concatText.erase(std::remove_if(concatText.begin(),
-                                    concatText.end(),
-                                    [] (const char a) -> bool { return !isprint(a); }),
-                     concatText.end());
-                     */
-
-    // The start and stop of the current interval
-    uint32_t start = 0, stop = 0;
-    // An iterator to the beginning of the text
-    auto textB = concatText.begin();
-    auto textE = concatText.end();
-    // The current k-mer as a string
-    rapmap::utils::my_mer mer;
-    bool currentValid{false};
-    std::string currentKmer;
-    std::string nextKmer;
-    while (stop < tlen) {
-        // Check if the string starting at the
-        // current position is valid (i.e. doesn't contain $)
-        // and is <= k bases from the end of the string
-        nextKmer = concatText.substr(SA[stop], k);
-        if (nextKmer.length() == k and
-            nextKmer.find_first_of('$') == std::string::npos) {
-            // If this is a new k-mer, then hash the current k-mer
-            if (nextKmer != currentKmer) {
-                if (currentKmer.length() == k and
-                    currentKmer.find_first_of('$') == std::string::npos) {
-                    mer = rapmap::utils::my_mer(currentKmer);
-                    auto bits = mer.get_bits(0, 2*k);
-                    auto hashIt = khash.find(bits);
-                    if (hashIt == khash.end()) {
-                        if (start > 1) {
-                            if (concatText.substr(SA[start-1], k) ==
-                                concatText.substr(SA[start], k)) {
-                                std::cerr << "T[SA["
-                                          << start-1 << "]:" << k << "] = "
-                                          << concatText.substr(SA[start-1], k)
-                                          << " = T[SA[" << start << "]:" << k << "]\n";
-                                std::cerr << "start = " << start << ", stop = " << stop << "\n";
-                                std::cerr << "(1) THIS SHOULD NOT HAPPEN\n";
-                                std::exit(1);
-                            }
-                        }
-                        if (start == stop) {
-                            std::cerr << "AHH (1) : Interval is empty! (start = " << start
-                                      << ") = (stop =  " << stop << ")\n";
-                        }
-                        if (start == stop) {
-                            std::cerr << "AHH (2) : Interval is empty! (start = " << start
-                                << ") = (stop =  " << stop << ")\n";
-                        }
-
-                        khash[bits] = {start, stop};
-                    } else {
-                        std::cerr << "\nERROR (1): trying to add same suffix "
-                                  << currentKmer << " (len = "
-                                  << currentKmer.length() << ") multiple times!\n";
-                        auto prevInt = hashIt->second;
-                        std::cerr << "existing interval is ["
-                                  << prevInt.begin << ", " << prevInt.end << ")\n";
-                        for (auto x = prevInt.begin; x < prevInt.end; ++x) {
-                            auto suff = concatText.substr(SA[x], k);
-                            for (auto c : suff) {
-                                std::cerr << "*" << c << "*";
-                            }
-                            std::cerr << " (len = " << suff.length() <<")\n";
-                        }
-                        std::cerr << "new interval is ["
-                                  << start << ", " << stop << ")\n";
-                        for (auto x = start; x < stop; ++x) {
-                            auto suff = concatText.substr(SA[x], k);
-                            for (auto c : suff) {
-                                std::cerr << "*" << c << "*";
-                            }
-                            std::cerr << "\n";
-                        }
-                    }
-                }
-                currentKmer = nextKmer;
-                start = stop;
-            }
-        } else {
-            // If this isn't a valid suffix (contains a $)
-
-            // If the previous interval was valid, put it
-            // in the hash.
-            if (currentKmer.length() == k and
-                currentKmer.find_first_of('$') == std::string::npos) {
-                mer = rapmap::utils::my_mer(currentKmer);
-                auto bits = mer.get_bits(0, 2*k);
-                auto hashIt = khash.find(bits);
-                if (hashIt == khash.end()) {
-                    if (start > 2) {
-                        if (concatText.substr(SA[start-1], k) ==
-                            concatText.substr(SA[start], k)) {
-                            std::cerr << "T[SA["
-                                << start-1 << "]:" << k << "] = "
-                                << concatText.substr(SA[start-1], k)
-                                << " = T[SA[" << start << "]:" << k << "]\n";
-                            std::cerr << "start = " << start << ", stop = " << stop << "\n";
-                            std::cerr << "(2) THIS SHOULD NOT HAPPEN\n";
-                            std::exit(1);
-                        }
-                    }
-                    khash[bits] = {start, stop};
-                } else {
-                    std::cerr << "\nERROR (2): trying to add same suffix "
-                              << currentKmer << "multiple times!\n";
-                    auto prevInt = hashIt->second;
-                    std::cerr << "existing interval is ["
-                        << prevInt.begin << ", " << prevInt.end << ")\n";
-                    for (auto x = prevInt.begin; x < prevInt.end; ++x) {
-                        std::cerr << concatText.substr(SA[x], k) << "\n";
-                    }
-                    std::cerr << "new interval is ["
-                        << start << ", " << stop << ")\n";
-                    for (auto x = start; x < stop; ++x) {
-                        std::cerr << concatText.substr(SA[x], k) << "\n";
-                    }
-                }
-
-            }
-            // The current interval is invalid and empty
-            currentKmer = nextKmer;
-            start = stop;
-        }
-        if (stop % 1000000 == 0) {
-            std::cerr << "\r\rprocessed " << stop << " positions";
-        }
-        // We always update the end position
-        ++stop;
-    }
-    if (start < tlen) {
-        if (currentKmer.length() == k and
-            currentKmer.find_first_of('$') != std::string::npos) {
-            mer = rapmap::utils::my_mer(currentKmer);
-            khash[mer.get_bits(0, 2*k)] = {start, stop};
-        }
-    }
-    std::cerr << "\nkhash had " << khash.size() << " keys\n";
-    std::ofstream hashStream(outputDir + "hash.bin", std::ios::binary);
-    {
-        ScopedTimer timer;
-        std::cerr << "saving hash to disk . . . ";
-        cereal::BinaryOutputArchive hashArchive(hashStream);
-        hashArchive(k);
-        khash.serialize(google::dense_hash_map<uint64_t,
-                        rapmap::utils::SAInterval,
-                        rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
-        //hashArchive(khash);
-        std::cerr << "done\n";
-    }
-    hashStream.close();
+    */
 
 
-    std::string indexVersion = "q0";
-    IndexHeader header(IndexType::QUASI, indexVersion, true, k);
+    std::string indexVersion = "q1";
+    IndexHeader header(IndexType::QUASI, indexVersion, true, k, largeIndex);
     // Finally (since everything presumably succeeded) write the header
     std::ofstream headerStream(outputDir + "header.json");
     {
@@ -521,5 +639,3 @@ int rapMapSAIndex(int argc, char* argv[]) {
     indexTranscriptsSA(transcriptParserPtr.get(), indexDir, iomutex);
     return 0;
 }
-
-
