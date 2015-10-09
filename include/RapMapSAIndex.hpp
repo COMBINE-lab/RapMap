@@ -68,7 +68,4 @@ class RapMapSAIndex {
                        */
 };
 
-template class RapMapSAIndex<int32_t>;
-template class RapMapSAIndex<int64_t>;
-
 #endif //__RAPMAP_SA_INDEX_HPP__

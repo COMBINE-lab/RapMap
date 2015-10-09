@@ -102,8 +102,8 @@ void processReadsSingleSA(single_parser * parser,
         uint32_t maxNumHits,
         bool noOutput) {
 
+    using OffsetT = typename RapMapIndexT::IndexType;
     auto& txpNames = rmi.txpNames;
-    std::vector<uint32_t>& txpOffsets = rmi.txpOffsets;
     auto& txpLens = rmi.txpLens;
     uint32_t n{0};
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
@@ -118,9 +118,9 @@ void processReadsSingleSA(single_parser * parser,
 	bool tooManyHits{false};
     uint16_t flags;
 
-    SingleAlignmentFormatter<RapMapSAIndex*> formatter(&rmi);
+    SingleAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
 
-    SASearcher saSearcher(&rmi);
+    SASearcher<RapMapIndexT> saSearcher(&rmi);
 
     uint32_t orphanStatus{0};
     while(true) {
@@ -202,8 +202,10 @@ void processReadsPairSA(paired_parser* parser,
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput) {
+
+    using OffsetT = typename RapMapIndexT::IndexType;
+
     auto& txpNames = rmi.txpNames;
-    std::vector<uint32_t>& txpOffsets = rmi.txpOffsets;
     auto& txpLens = rmi.txpLens;
     uint32_t n{0};
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
@@ -221,9 +223,9 @@ void processReadsPairSA(paired_parser* parser,
     uint16_t flags1, flags2;
 
     // Create a formatter for alignments
-    PairAlignmentFormatter<RapMapSAIndex*> formatter(&rmi);
+    PairAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
 
-    SASearcher saSearcher(&rmi);
+    SASearcher<RapMapIndexT> saSearcher(&rmi);
 
     uint32_t orphanStatus{0};
     while(true) {
@@ -296,25 +298,26 @@ void processReadsPairSA(paired_parser* parser,
 template <typename RapMapIndexT, typename MutexT>
 bool spawnProcessReadsThreads(
         uint32_t nthread,
-        std::unique_ptr<paired_parser> parser,
+        paired_parser* parser,
         RapMapIndexT& rmi,
-        MutexT* iomutex,
+        MutexT& iomutex,
 	      std::shared_ptr<spdlog::logger> outQueue,
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput) {
 
+            std::vector<std::thread> threads;
             SACollector<RapMapIndexT> saCollector(&rmi);
             for (size_t i = 0; i < nthread; ++i) {
-                threads.emplace_back(processReadsPairSA<SACollector<RapMapIndexT>, SpinLockT>,
-                        parser.get(),
+                threads.emplace_back(processReadsPairSA<RapMapIndexT, SACollector<RapMapIndexT>, MutexT>,
+                        parser,
                         std::ref(rmi),
                         std::ref(saCollector),
                         &iomutex,
-            			      outLog,
-                        std::ref(hctrs),
+            			      outQueue,
+                        std::ref(hctr),
                         maxNumHits,
-                        noout);
+                        noOutput);
             }
 
             for (auto& t : threads) { t.join(); }
@@ -324,25 +327,26 @@ bool spawnProcessReadsThreads(
 template <typename RapMapIndexT, typename MutexT>
 bool spawnProcessReadsThreads(
         uint32_t nthread,
-        std::unique_ptr<single_parser> parser,
+        single_parser* parser,
         RapMapIndexT& rmi,
-        MutexT* iomutex,
+        MutexT& iomutex,
 	      std::shared_ptr<spdlog::logger> outQueue,
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput) {
 
+            std::vector<std::thread> threads;
             SACollector<RapMapIndexT> saCollector(&rmi);
             for (size_t i = 0; i < nthread; ++i) {
-                threads.emplace_back(processReadsSingleSA<SACollector<RapMapIndexT>, SpinLockT>,
-                        singleParserPtr.get(),
+                threads.emplace_back(processReadsSingleSA<RapMapIndexT, SACollector<RapMapIndexT>, MutexT>,
+                        parser,
                         std::ref(rmi),
                         std::ref(saCollector),
                         &iomutex,
-            			      outLog,
-                        std::ref(hctrs),
+            			      outQueue,
+                        std::ref(hctr),
                         maxNumHits,
-                        noout);
+                        noOutput);
             }
             for (auto& t : threads) { t.join(); }
             return true;
@@ -429,10 +433,18 @@ int rapMapSAMap(int argc, char* argv[]) {
 	    std::exit(1);
 	}
 
-  if (h.bigSA())
+  std::unique_ptr<RapMapSAIndex<int32_t>> SAIdxPtr{nullptr};
+  std::unique_ptr<RapMapSAIndex<int64_t>> BigSAIdxPtr{nullptr};
 
-	RapMapSAIndex rmi;
-	rmi.load(indexPrefix);
+  if (h.bigSA()) {
+    std::cerr << "Loading 64-bit suffix array index: \n";
+    BigSAIdxPtr.reset(new RapMapSAIndex<int64_t>);
+	  BigSAIdxPtr->load(indexPrefix);
+  } else {
+    std::cerr << "Loading 32-bit suffix array index: \n";
+    SAIdxPtr.reset(new RapMapSAIndex<int32_t>);
+	  SAIdxPtr->load(indexPrefix);
+  }
 
 	std::cerr << "\n\n\n\n";
 
@@ -464,7 +476,11 @@ int rapMapSAMap(int argc, char* argv[]) {
 	std::unique_ptr<single_parser> singleParserPtr{nullptr};
 
 	if (!noout.getValue()) {
-	    rapmap::utils::writeSAMHeader(rmi, outLog);
+    if (h.bigSA()) {
+      rapmap::utils::writeSAMHeader(*BigSAIdxPtr, outLog);
+    } else {
+      rapmap::utils::writeSAMHeader(*SAIdxPtr, outLog);
+    }
 	}
 
 	SpinLockT iomutex;
@@ -473,7 +489,6 @@ int rapMapSAMap(int argc, char* argv[]) {
 	    HitCounters hctrs;
 	    consoleLog->info("mapping reads . . . \n\n\n");
         if (pairedEnd) {
-            std::vector<std::thread> threads;
             std::vector<std::string> read1Vec = rapmap::utils::tokenize(read1.getValue(), ',');
             std::vector<std::string> read2Vec = rapmap::utils::tokenize(read2.getValue(), ',');
 
@@ -495,12 +510,15 @@ int rapMapSAMap(int argc, char* argv[]) {
                         concurrentFile,
                         pairFileList, pairFileList+numFiles));
 
-            spawnProcessReadsThreds(nthread, pairParserPtr, rmi, iomutex,
-              outLog, hctrs, maxNumHits.getValue(), noout.getValue());
-
+            if (h.bigSA()) {
+              spawnProcessReadsThreads(nthread, pairParserPtr.get(), *BigSAIdxPtr, iomutex,
+                outLog, hctrs, maxNumHits.getValue(), noout.getValue());
+            } else {
+              spawnProcessReadsThreads(nthread, pairParserPtr.get(), *SAIdxPtr, iomutex,
+                outLog, hctrs, maxNumHits.getValue(), noout.getValue());
+            }
             delete [] pairFileList;
         } else {
-            std::vector<std::thread> threads;
             std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(unmatedReads.getValue(), ',');
             size_t maxReadGroup{1000}; // Number of reads in each "job"
             size_t concurrentFile{1};
@@ -512,8 +530,13 @@ int rapMapSAMap(int argc, char* argv[]) {
                         streams));
 
             /** Create the threads depending on the collector type **/
-            spawnProcessReadsThreds(nthread, singleParserPtr, rmi, iomutex,
-              outLog, hctrs, maxNumHits.getValue(), noout.getValue());
+            if (h.bigSA()) {
+              spawnProcessReadsThreads(nthread, singleParserPtr.get(), *BigSAIdxPtr, iomutex,
+                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue());
+            } else {
+              spawnProcessReadsThreads(nthread, singleParserPtr.get(), *SAIdxPtr, iomutex,
+                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue());
+            }
         }
 	std::cerr << "\n\n";
 

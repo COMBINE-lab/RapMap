@@ -75,7 +75,7 @@ add_executable(rapmap ${RAPMAP_MAIN_SRCS})
 
 # our suffix array construction libraries
 set (SUFFARRAY_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort.a)
-set (SUFFARRAY_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort64.a)
+set (SUFFARRAY64_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort64.a)
 
 # Link the executable
 target_link_libraries(rapmap

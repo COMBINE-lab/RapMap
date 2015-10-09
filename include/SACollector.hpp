@@ -16,7 +16,7 @@ class SACollector {
     SACollector(RapMapIndexT* rmi) : rmi_(rmi) {}
     bool operator()(std::string& read,
             std::vector<rapmap::utils::QuasiAlignment>& hits,
-            SASearcher<OffsetT>& saSearcher,
+            SASearcher<RapMapIndexT>& saSearcher,
             rapmap::utils::MateStatus mateStatus) {
 
         using QuasiAlignment = rapmap::utils::QuasiAlignment;
@@ -58,7 +58,7 @@ class SACollector {
         rapmap::utils::my_mer mer;
         rapmap::utils::my_mer rcMer;
 
-        using rapmap::utils::SAIntervalHit;
+        using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
 
         std::vector<SAIntervalHit> fwdSAInts;
         std::vector<SAIntervalHit> rcSAInts;
@@ -184,10 +184,12 @@ class SACollector {
             auto remainingLength = std::distance(rb + matchLen, readEndIt);
             auto lce = saSearcher.lce(lbLeftFwd, ubLeftFwd-1, matchLen, remainingLength);
             //auto fwdSkip = matchLen + 1 - skipOverlap;//lce - skipOverlap;
-            auto fwdSkip = std::max(matchLen + 1 - skipOverlap, lce - skipOverlap);
+            auto fwdSkip = std::max(static_cast<OffsetT>(matchLen) + 1 - skipOverlap,
+                                    static_cast<OffsetT>(lce) - skipOverlap);
 
             size_t nextInformativePosition = std::min(
-                    std::max(0, static_cast<OffsetT>(readLen)- static_cast<OffsetT>(k)),
+                    std::max(static_cast<OffsetT>(0),
+                    static_cast<OffsetT>(readLen)- static_cast<OffsetT>(k)),
                     static_cast<OffsetT>(std::distance(readStartIt, rb) + fwdSkip)
                     );
 
@@ -237,7 +239,7 @@ class SACollector {
                         ubRightFwd = merIt->second.end;
 
                         // lb must be 1 *less* then the current lb
-                        lbRightFwd = std::max(0, lbRightFwd - 1);
+                        lbRightFwd = std::max(static_cast<OffsetT>(0), lbRightFwd - 1);
                         std::tie(lbRightFwd, ubRightFwd, matchedLen) =
                             saSearcher.extendSearchNaive(lbRightFwd, ubRightFwd,
                                     k, rb, readEndIt);
@@ -327,7 +329,7 @@ class SACollector {
 
                     // lb must be 1 *less* then the current lb
                     // We can't move any further in the reverse complement direction
-                    lbRightRC = std::max(0, lbRightRC - 1);
+                    lbRightRC = std::max(static_cast<OffsetT>(0), lbRightRC - 1);
                     std::tie(lbRightRC, ubRightRC, matchedLen) =
                         saSearcher.extendSearchNaive(lbRightRC, ubRightRC, k,
                                 revRB, revReadEndIt, true);
@@ -462,7 +464,7 @@ class SACollector {
     }
 
     private:
-        RapMapSAIndex* rmi_;
+        RapMapIndexT* rmi_;
 };
 
 #endif // SA_COLLECTOR_HPP

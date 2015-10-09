@@ -27,7 +27,7 @@ bool RapMapSAIndex<IndexT>::load(const std::string& indDir) {
             logger->info("Loading Position Hash");
             cereal::BinaryInputArchive hashArchive(hashStream);
             hashArchive(k);
-            khash.unserialize(google::dense_hash_map<uint64_t,
+            khash.unserialize(typename google::dense_hash_map<uint64_t,
                     rapmap::utils::SAInterval<IndexT>,
                     rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
 
@@ -109,3 +109,6 @@ bool RapMapSAIndex<IndexT>::load(const std::string& indDir) {
     logger->info("Done loading index");
     return true;
 }
+
+template class RapMapSAIndex<int32_t>;
+template class RapMapSAIndex<int64_t>;

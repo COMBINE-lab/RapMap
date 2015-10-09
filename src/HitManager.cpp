@@ -239,7 +239,7 @@ namespace rapmap {
             }
 
           template <typename RapMapIndexT>
-        void intersectSAIntervalWithOutput2(SAIntervalHit<RapMapIndexT::IndexType>& h,
+        void intersectSAIntervalWithOutput2(SAIntervalHit<typename RapMapIndexT::IndexType>& h,
                 RapMapIndexT& rmi,
                 //fbs::eytzinger_array_bfp<uint32_t, uint32_t, true>& outTxps,
                 //std::vector<uint32_t>& outTxps,
@@ -344,11 +344,11 @@ namespace rapmap {
 
 
         template <typename RapMapIndexT>
-        void intersectSAIntervalWithOutput(SAIntervalHit<RapMapIndexT::IndexType>& h,
+        void intersectSAIntervalWithOutput(SAIntervalHit<typename RapMapIndexT::IndexType>& h,
           RapMapIndexT& rmi,
           uint32_t intervalCounter,
           SAHitMap& outHits) {
-            using OffsetT = typename RapMapIndex::IndexType;
+            using OffsetT = typename RapMapIndexT::IndexType;
             // Convenient bindings for variables we'll use
             auto& SA = rmi.SA;
             //auto& txpIDs = rmi.positionIDs;
@@ -484,10 +484,10 @@ namespace rapmap {
 
         template <typename RapMapIndexT>
         std::vector<ProcessedSAHit> intersectSAHits2(
-                std::vector<SAIntervalHit<RapMapIndexT::IndexType>>& inHits,
+                std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi
                 ) {
-            using OffsetT = RapMapIndexT::IndexType;
+            using OffsetT = typename RapMapIndexT::IndexType;
 
             // Each inHit is a SAIntervalHit structure that contains
             // an SA interval with all hits for a particuar query location
@@ -575,10 +575,10 @@ namespace rapmap {
 
         template <typename RapMapIndexT>
         SAHitMap intersectSAHits(
-                std::vector<SAIntervalHit<RapMapIndexT::IndexType>>& inHits,
+                std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi
                 ) {
-            using OffsetT = RapMapIndexT::IndexType;
+            using OffsetT = typename RapMapIndexT::IndexType;
             // Each inHit is a SAIntervalHit structure that contains
             // an SA interval with all hits for a particuar query location
             // on the read.
@@ -643,5 +643,24 @@ namespace rapmap {
             return outHits;
         }
 
+
+        /**
+        * Need to explicitly instantiate the versions we use
+        */
+        template
+        void intersectSAIntervalWithOutput<RapMapSAIndex<int32_t>>(SAIntervalHit<int32_t>& h,
+          RapMapSAIndex<int32_t>& rmi, uint32_t intervalCounter, SAHitMap& outHits);
+
+        template
+        void intersectSAIntervalWithOutput<RapMapSAIndex<int64_t>>(SAIntervalHit<int64_t>& h,
+          RapMapSAIndex<int64_t>& rmi, uint32_t intervalCounter, SAHitMap& outHits);
+
+        template
+        SAHitMap intersectSAHits<RapMapSAIndex<int32_t>>(std::vector<SAIntervalHit<int32_t>>& inHits,
+          RapMapSAIndex<int32_t>& rmi);
+
+        template
+        SAHitMap intersectSAHits<RapMapSAIndex<int64_t>>(std::vector<SAIntervalHit<int64_t>>& inHits,
+          RapMapSAIndex<int64_t>& rmi);
     }
 }

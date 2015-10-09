@@ -325,7 +325,7 @@ void indexTranscriptsSA(ParserT* parser,
     uint32_t n{0};
     uint32_t k = rapmap::utils::my_mer::k();
     std::vector<std::string> transcriptNames;
-    std::vector<uint64_t> transcriptStarts;
+    std::vector<int64_t> transcriptStarts;
     //std::vector<uint32_t> positionIDs;
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
     uint32_t polyAClipLength{10};
@@ -342,7 +342,7 @@ void indexTranscriptsSA(ParserT* parser,
     std::cerr << "\n[Step 1 of 4] : counting k-mers\n";
 
     //rsdic::RSDicBuilder rsdb;
-    std::vector<uint32_t> onePos; // Positions in the bit array where we should write a '1'
+    std::vector<uint64_t> onePos; // Positions in the bit array where we should write a '1'
     fmt::MemoryWriter txpSeqStream;
     {
         ScopedTimer timer;
@@ -415,6 +415,10 @@ void indexTranscriptsSA(ParserT* parser,
     // And clear the stream
     txpSeqStream.clear();
 
+    // Build the suffix array
+    size_t tlen = concatText.length();
+    size_t maxInt = std::numeric_limits<int32_t>::max();
+    bool largeIndex = (tlen + 1 > maxInt);
 
     // Make our dense bit arrray
     BIT_ARRAY* bitArray = bit_array_create(concatText.length());
@@ -422,58 +426,16 @@ void indexTranscriptsSA(ParserT* parser,
 	    bit_array_set_bit(bitArray, p);
     }
 
-    /** SANITY CHECKS RELATED TO THE RANK structure **/
-    /*
-    uint64_t nextSetBit{0};
-    uint64_t offset{0};
-    auto numBits = bit_array_length(bitArray);
-    while (offset < numBits and bit_array_find_next_set_bit(bitArray, offset, &nextSetBit)) {
-	if (concatText[nextSetBit] != '$') {
-		std::cerr << "Bit # " << nextSetBit << " is set to 1, but the "
-			  << "corresponding character in the text is " << concatText[nextSetBit] << "\n";
-	}
-	offset = nextSetBit + 1;
-    }
-
-    if (bit_array_num_bits_set(bitArray) != onePos.size()) {
-	std::cerr << "ERROR: Bit array has " << bit_array_num_bits_set(bitArray)
-		  << " bits set, but this should be " << onePos.size() << "!\n";
-	std::exit(1);
-    }
-
-    rank9b bitmap(bitArray->words, bitArray->num_of_bits);
-    for (size_t i = 0; i < onePos.size() - 1; ++i) {
-	    auto pos = onePos[i];
-	    auto r = bitmap.rank(pos+1);
-
-	    if (r != i+1) {
-		std::cerr << "rank should be " << i+1 << " but it's " << r << "\n";
-		std::cerr << "text is " << concatText[pos] < "\n\n";
-		std::cerr << "bit vector says " << (bit_array_get_bit(bitArray, pos) ? '1' : '0') << "\n";
-	    }
-    }
-
-    std::ofstream rsStream(outputDir + "rsdSafe.bin", std::ios::binary);
-    {
-        ScopedTimer timer;
-        rsdic::RSDic rsd;
-        rsdb.Build(rsd);
-        rsd.Save(rsStream);
-        std::cerr << "done\n";
-    }
-    rsStream.close();
-    */
-    /** END OF SANITY CHECK **/
     onePos.clear();
     onePos.shrink_to_fit();
 
     std::string rsFileName = outputDir + "rsd.bin";
     FILE* rsFile = fopen(rsFileName.c_str(), "w");
     {
-        ScopedTimer timer;
-        std::cerr << "Building rank-select dictionary and saving to disk ";
-	bit_array_save(bitArray, rsFile);
-        std::cerr << "done\n";
+      ScopedTimer timer;
+      std::cerr << "Building rank-select dictionary and saving to disk ";
+      bit_array_save(bitArray, rsFile);
+      std::cerr << "done\n";
     }
     fclose(rsFile);
     bit_array_free(bitArray);
@@ -485,7 +447,20 @@ void indexTranscriptsSA(ParserT* parser,
         std::cerr << "Writing sequence data to file . . . ";
         cereal::BinaryOutputArchive seqArchive(seqStream);
         seqArchive(transcriptNames);
-        seqArchive(transcriptStarts);
+        if (largeIndex) {
+          seqArchive(transcriptStarts);
+        } else {
+          std::vector<int32_t> txpStarts(transcriptStarts.size(), 0);
+          size_t numTranscriptStarts = transcriptStarts.size();
+          for (size_t i = 0; i < numTranscriptStarts; ++i) {
+            txpStarts[i] = static_cast<int32_t>(transcriptStarts[i]);
+          }
+          transcriptStarts.clear();
+          transcriptStarts.shrink_to_fit();
+          {
+            seqArchive(txpStarts);
+          }
+        }
         //seqArchive(positionIDs);
         seqArchive(concatText);
         std::cerr << "done\n";
@@ -502,12 +477,7 @@ void indexTranscriptsSA(ParserT* parser,
     // done clearing
 
 
-    // Build the suffix array
-    size_t tlen = concatText.length();
-    size_t maxInt = std::numeric_limits<int32_t>::max();
-    bool largeIndex{false};
-
-    if (tlen + 1 > maxInt) {
+    if (largeIndex) {
         largeIndex = true;
         std::cerr << "[info] Building 64-bit suffix array "
                      "(length of generalized text is " << tlen << " )\n";
@@ -639,3 +609,47 @@ int rapMapSAIndex(int argc, char* argv[]) {
     indexTranscriptsSA(transcriptParserPtr.get(), indexDir, iomutex);
     return 0;
 }
+
+
+  /** SANITY CHECKS RELATED TO THE RANK structure **/
+    /*
+    uint64_t nextSetBit{0};
+    uint64_t offset{0};
+    auto numBits = bit_array_length(bitArray);
+    while (offset < numBits and bit_array_find_next_set_bit(bitArray, offset, &nextSetBit)) {
+	if (concatText[nextSetBit] != '$') {
+		std::cerr << "Bit # " << nextSetBit << " is set to 1, but the "
+			  << "corresponding character in the text is " << concatText[nextSetBit] << "\n";
+	}
+	offset = nextSetBit + 1;
+    }
+
+    if (bit_array_num_bits_set(bitArray) != onePos.size()) {
+	std::cerr << "ERROR: Bit array has " << bit_array_num_bits_set(bitArray)
+		  << " bits set, but this should be " << onePos.size() << "!\n";
+	std::exit(1);
+    }
+
+    rank9b bitmap(bitArray->words, bitArray->num_of_bits);
+    for (size_t i = 0; i < onePos.size() - 1; ++i) {
+	    auto pos = onePos[i];
+	    auto r = bitmap.rank(pos+1);
+
+	    if (r != i+1) {
+		std::cerr << "rank should be " << i+1 << " but it's " << r << "\n";
+		std::cerr << "text is " << concatText[pos] < "\n\n";
+		std::cerr << "bit vector says " << (bit_array_get_bit(bitArray, pos) ? '1' : '0') << "\n";
+	    }
+    }
+
+    std::ofstream rsStream(outputDir + "rsdSafe.bin", std::ios::binary);
+    {
+        ScopedTimer timer;
+        rsdic::RSDic rsd;
+        rsdb.Build(rsd);
+        rsd.Save(rsStream);
+        std::cerr << "done\n";
+    }
+    rsStream.close();
+    */
+    /** END OF SANITY CHECK **/
