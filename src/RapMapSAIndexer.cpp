@@ -313,7 +313,8 @@ bool buildHash(const std::string& outputDir,
 template <typename ParserT>//, typename CoverageCalculator>
 void indexTranscriptsSA(ParserT* parser,
             		std::string& outputDir,
-                        std::mutex& iomutex) {
+        			bool noClipPolyA,
+                    std::mutex& iomutex) {
     // Seed with a real random value, if available
     std::random_device rd;
 
@@ -330,12 +331,14 @@ void indexTranscriptsSA(ParserT* parser,
     constexpr char bases[] = {'A', 'C', 'G', 'T'};
     uint32_t polyAClipLength{10};
     uint32_t numPolyAsClipped{0};
+    uint32_t numNucleotidesReplaced{0};
     std::string polyA(polyAClipLength, 'A');
 
     using TranscriptList = std::vector<uint32_t>;
     using eager_iterator = MerMapT::array::eager_iterator;
     using KmerBinT = uint64_t;
 
+    bool clipPolyA = !noClipPolyA;
     size_t numDistinctKmers{0};
     size_t numKmers{0};
     size_t currIndex{0};
@@ -355,33 +358,9 @@ void indexTranscriptsSA(ParserT* parser,
                                [](const char a) -> bool {
                                     return !(isprint(a));
                                 }), readStr.end());
-                // Do Kallisto-esque clipping of polyA tails
-                if (readStr.size() > polyAClipLength and
-                        readStr.substr(readStr.length() - polyAClipLength) == polyA) {
 
-                    auto newEndPos = readStr.find_last_not_of("Aa");
-                    // If it was all As
-                    if (newEndPos == std::string::npos) {
-                        readStr.resize(0);
-                    } else {
-                        readStr.resize(newEndPos + 1);
-                    }
-                    ++numPolyAsClipped;
-                }
-
-                uint32_t readLen  = readStr.size();
-                uint32_t txpIndex = n++;
-
-		// The name of the current transcript
-                auto& recHeader = j->data[i].header;
-                transcriptNames.emplace_back(recHeader.substr(0, recHeader.find_first_of(" \t")));
-
-		            // The position at which this transcript starts
-                transcriptStarts.push_back(currIndex);
-
-                bool firstBase{true};
-                rapmap::utils::my_mer mer;
-                mer.polyT();
+                uint32_t readLen = readStr.size();
+                // First, replace non ATCG nucleotides
                 for (size_t b = 0; b < readLen; ++b) {
                     readStr[b] = ::toupper(readStr[b]);
                     int c = jellyfish::mer_dna::code(readStr[b]);
@@ -390,16 +369,40 @@ void indexTranscriptsSA(ParserT* parser,
                         char rbase = bases[dis(eng)];
                         c = jellyfish::mer_dna::code(rbase);
                         readStr[b] = rbase;
+                        ++numNucleotidesReplaced;
                     }
-                    //positionIDs.push_back(txpIndex);
-		    //rsdb.PushBack(0);
                 }
+
+                // Now, do Kallisto-esque clipping of polyA tails
+                if (clipPolyA) {
+                    if (readStr.size() > polyAClipLength and
+                            readStr.substr(readStr.length() - polyAClipLength) == polyA) {
+
+                        auto newEndPos = readStr.find_last_not_of("Aa");
+                        // If it was all As
+                        if (newEndPos == std::string::npos) {
+                            readStr.resize(0);
+                        } else {
+                            readStr.resize(newEndPos + 1);
+                        }
+                        ++numPolyAsClipped;
+                    }
+                }
+
+                readLen  = readStr.size();
+                uint32_t txpIndex = n++;
+
+                // The name of the current transcript
+                auto& recHeader = j->data[i].header;
+                transcriptNames.emplace_back(recHeader.substr(0, recHeader.find_first_of(" \t")));
+
+                // The position at which this transcript starts
+                transcriptStarts.push_back(currIndex);
+
                 txpSeqStream << readStr;
                 txpSeqStream << '$';
-                //positionIDs.push_back(txpIndex);
-		//rsdb.PushBack(1);
                 currIndex += readLen + 1;
-		onePos.push_back(currIndex - 1);
+                onePos.push_back(currIndex - 1);
             }
             if (n % 10000 == 0) {
                 std::cerr << "\r\rcounted k-mers for " << n << " transcripts";
@@ -408,6 +411,7 @@ void indexTranscriptsSA(ParserT* parser,
     }
     std::cerr << "\n";
 
+    std::cerr << "Replaced " << numNucleotidesReplaced << " non-ATCG nucleotides\n";
     std::cerr << "Clipped poly-A tails from " << numPolyAsClipped << " transcripts\n";
 
     // Put the concatenated text in a string
@@ -563,9 +567,11 @@ int rapMapSAIndex(int argc, char* argv[]) {
     TCLAP::ValueArg<std::string> transcripts("t", "transcripts", "The transcript file to be indexed", true, "", "path");
     TCLAP::ValueArg<std::string> index("i", "index", "The location where the index should be written", true, "", "path");
     TCLAP::ValueArg<uint32_t> kval("k", "klen", "The length of k-mer to index", false, 31, "positive integer less than 32");
+    TCLAP::SwitchArg  	      noClip("n", "noClip", "Don't clip poly-A tails from the ends of target sequences", false);
     cmd.add(transcripts);
     cmd.add(index);
     cmd.add(kval);
+    cmd.add(noClip);
 
     cmd.parse(argc, argv);
 
@@ -605,8 +611,10 @@ int rapMapSAIndex(int argc, char* argv[]) {
     std::unique_ptr<single_parser> transcriptParserPtr{nullptr};
     transcriptParserPtr.reset(new single_parser(4 * numThreads, maxReadGroup,
                               concurrentFile, streams));
+
+    bool noClipPolyA = noClip.getValue();
     std::mutex iomutex;
-    indexTranscriptsSA(transcriptParserPtr.get(), indexDir, iomutex);
+    indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA, iomutex);
     return 0;
 }
 

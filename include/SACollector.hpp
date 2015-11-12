@@ -17,7 +17,8 @@ class SACollector {
     bool operator()(std::string& read,
             std::vector<rapmap::utils::QuasiAlignment>& hits,
             SASearcher<RapMapIndexT>& saSearcher,
-            rapmap::utils::MateStatus mateStatus) {
+            rapmap::utils::MateStatus mateStatus,
+            bool strictCheck=false) {
 
         using QuasiAlignment = rapmap::utils::QuasiAlignment;
         using MateStatus = rapmap::utils::MateStatus;
@@ -48,15 +49,29 @@ class SACollector {
         OffsetT lbRightRC = 0, ubRightRC = 0;
         OffsetT matchedLen;
 
-        bool leftFwdHit = false;
-        bool leftRCHit = false;
-        bool leftHit = false;
-        bool rightFwdHit = false;
-        bool rightRCHit = false;
-        bool rightHit = false;
+        uint32_t fwdHit{0};
+        uint32_t rcHit{0};
+
+        bool foundHit = false;
         bool isRev = false;
         rapmap::utils::my_mer mer;
         rapmap::utils::my_mer rcMer;
+
+        enum HitStatus { ABSENT = -1, UNTESTED = 0, PRESENT = 1 };
+        // Record if k-mers are hits in the
+        // fwd direction, rc direction or both
+        struct KmerDirScore {
+            KmerDirScore(rapmap::utils::my_mer kmerIn, HitStatus fwdScoreIn, HitStatus rcScoreIn) :
+                kmer(kmerIn), fwdScore(fwdScoreIn), rcScore(rcScoreIn) {}
+            KmerDirScore() : fwdScore(UNTESTED), rcScore(UNTESTED) {}
+            rapmap::utils::my_mer kmer;
+            HitStatus fwdScore{UNTESTED};
+            HitStatus rcScore{UNTESTED};
+        };
+
+        // This allows implementing our heurisic for comparing
+        // forward and reverse-complement strand matches
+        std::vector<KmerDirScore> kmerScores;
 
         using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
 
@@ -111,26 +126,6 @@ class SACollector {
                 // possible
                 std::tie(lbLeftFwd, ubLeftFwd, matchedLen) =
                     saSearcher.extendSearchNaive(lbRestart, ub, k, rb, readEndIt);
-                /*
-                   if (read.substr(pos, matchedLen) == text.substr(SA[lbLeftFwd - 1], matchedLen)) {
-                   std::cerr << "INTERVAL LOOKS WRONG!\n";
-                   std::cerr << "Start interval - 2 = " << text.substr(SA[lbLeftFwd - 2], matchedLen) << '\n';
-                   std::cerr << "Start interval - 1 = " << text.substr(SA[lbLeftFwd - 1], matchedLen) << '\n';
-                   std::cerr << "Interval start     = " << text.substr(SA[lbLeftFwd], matchedLen) << '\n';
-                   }
-
-                   if (read.substr(pos, matchedLen) == text.substr(SA[ubLeftFwd], matchedLen)) {
-                   std::cerr << "INTERVAL LOOKS WRONG!\n";
-                   std::cerr << "kmer                = " << mer << '\n';
-                   std::cerr << "read substring      = " << read.substr(pos, matchedLen) << '\n';
-                   std::cerr << "Before interval end = " << text.substr(SA[ubLeftFwd - 1], matchedLen) << '\n';
-                   std::cerr << "Interval end        = " << text.substr(SA[ubLeftFwd], matchedLen) << '\n';
-                   std::cerr << "Interval end + 1    = " << text.substr(SA[ubLeftFwd + 1], matchedLen) << '\n';
-                   std::exit(1);
-                   }
-                //matchedLen = k;
-                //lbLeftFwd = lb; ubLeftFwd = ub;
-                */
 
                 // If the SA interval is valid, and not too wide, then record
                 // the hit.
@@ -138,7 +133,28 @@ class SACollector {
                 if (ubLeftFwd > lbLeftFwd and diff < maxInterval) {
                     auto queryStart = std::distance(read.begin(), rb);
                     fwdSAInts.emplace_back(lbLeftFwd, ubLeftFwd, matchedLen, queryStart, false);
-                    leftFwdHit = true;
+                    if (strictCheck) {
+                        ++fwdHit;
+                        // If we also match this k-mer in the rc direction
+                        if (rcMerIt != khash.end()) {
+                            ++rcHit;
+                            kmerScores.emplace_back(mer, PRESENT, PRESENT);
+                        } else { // Otherwise it doesn't match in the rc direction
+                            kmerScores.emplace_back(mer, PRESENT, ABSENT);
+                        }
+
+                        // If we didn't end the match b/c we exhausted the query
+                        // test the mismatching k-mer in the other strand
+                        // TODO: check for 'N'?
+                        if (rb + matchedLen < readEndIt){
+                            auto kmerPos = std::distance(readStartIt, rb + matchedLen - skipOverlap);
+                            mer = rapmap::utils::my_mer(read.c_str() + kmerPos);
+                            kmerScores.emplace_back(mer , ABSENT, UNTESTED);
+                        }
+                    } else { // no strict check
+                        ++fwdHit;
+                        if (rcMerIt != khash.end()) { ++rcHit; }
+                    }
                 }
             }
 
@@ -147,19 +163,21 @@ class SACollector {
                 lbLeftRC = rcMerIt->second.begin;
                 ubLeftRC = rcMerIt->second.end;
                 OffsetT diff = ubLeftRC - lbLeftRC;
-                if (ubLeftRC > lbLeftRC and diff < maxInterval) {
-                    /* Don't actually push here since we can't extend
-                    auto queryStart = std::distance(read.begin(), rb);
-                    rcSAInts.emplace_back(lbLeftRC, ubLeftRC, k, queryStart, true);
-                    */
-                    leftRCHit = true;
+                if (ubLeftRC > lbLeftRC) {
+                    // The original k-mer didn't match in the foward direction
+                    if (!fwdHit) {
+                        ++rcHit;
+                        if (strictCheck) {
+                            kmerScores.emplace_back(rcMer, ABSENT, PRESENT);
+                        }
+                    }
                 }
             }
 
             // If we had a hit with either k-mer then we can
             // break out of this loop to look for the next informative position
-            if (leftFwdHit or leftRCHit) {
-                leftHit = true;
+            if (fwdHit + rcHit > 0) {
+                foundHit = true;
                 break;
             }
             ++rb; ++re;
@@ -167,10 +185,11 @@ class SACollector {
 
         // If we went the entire length of the read without finding a hit
         // then we can bail.
-        if (!leftHit) { return false; }
+        if (!foundHit) { return false; }
 
+        bool lastSearch{false};
         // If we had a hit on the forward strand
-        if (leftFwdHit) {
+        if (fwdHit) {
 
             // The length of this match
             auto matchLen = fwdSAInts.front().len;
@@ -183,8 +202,7 @@ class SACollector {
             // T[SA[lb]:] and T[SA[ub-1]:]
             auto remainingLength = std::distance(rb + matchLen, readEndIt);
             auto lce = saSearcher.lce(lbLeftFwd, ubLeftFwd-1, matchLen, remainingLength);
-            //auto fwdSkip = matchLen + 1 - skipOverlap;//lce - skipOverlap;
-            auto fwdSkip = std::max(static_cast<OffsetT>(matchLen) + 1 - skipOverlap,
+            auto fwdSkip = std::max(static_cast<OffsetT>(matchLen) - skipOverlap,
                                     static_cast<OffsetT>(lce) - skipOverlap);
 
             size_t nextInformativePosition = std::min(
@@ -227,13 +245,16 @@ class SACollector {
                     auto merIt = khash.find(mer.get_bits(0, 2*k));
 
                     if (merIt != khash.end()) {
-                        /*
-                        if (!leftRCHit) {
+                        if (strictCheck) {
+                            ++fwdHit;
+                            kmerScores.emplace_back(mer, PRESENT, UNTESTED);
                             auto rcMer = mer.get_reverse_complement();
                             auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
-                            if (rcMerIt != khash.end()) { leftRCHit = true; }
+                            if (rcMerIt != khash.end()) {
+                                ++rcHit;
+                                kmerScores.back().rcScore = PRESENT;
+                            }
                         }
-                        */
 
                         lbRightFwd = merIt->second.begin;
                         ubRightFwd = merIt->second.end;
@@ -248,27 +269,37 @@ class SACollector {
                         if (ubRightFwd > lbRightFwd and diff < maxInterval) {
                             auto queryStart = std::distance(read.begin(), rb);
                             fwdSAInts.emplace_back(lbRightFwd, ubRightFwd, matchedLen, queryStart, false);
-                            rightFwdHit = true;
+                            // If we didn't end the match b/c we exhausted the query
+                            // test the mismatching k-mer in the other strand
+                            // TODO: check for 'N'?
+                            if (strictCheck and rb + matchedLen < readEndIt){
+                                auto kmerPos = std::distance(readStartIt, rb + matchedLen - skipOverlap);
+                                mer = rapmap::utils::my_mer(read.c_str() + kmerPos);
+                                kmerScores.emplace_back(mer , ABSENT, UNTESTED);
+                            }
+
                         }
 
-                        //fwdSkip = matchedLen - skipOverlap;
-
+                        if (lastSearch) { break; }
                         auto mismatchIt = rb + matchedLen;
-                        if ((mismatchIt + 1 - skipOverlap) <= readEndIt) {
+                        if (mismatchIt < readEndIt) {
                             auto remainingDistance = std::distance(mismatchIt, readEndIt);
                             auto lce = saSearcher.lce(lbRightFwd, ubRightFwd-1, matchedLen, remainingDistance);
-                            //rb += lce - skipOverlap;
-                            //rb += std::max(static_cast<uint32_t>(fwdSkip), lce - skipOverlap);
 
                             // Where we would jump if we just used the MMP
-                            auto skipMatch = mismatchIt + 1 - skipOverlap;
+                            auto skipMatch = mismatchIt - skipOverlap;
                             // Where we would jump if we used the LCE
                             auto skipLCE = rb + lce - skipOverlap;
                             // Pick the larger of the two
                             rb = std::max(skipLCE, skipMatch);
+                            if (rb > (readEndIt - k)) {
+                                rb = readEndIt - k;
+                                lastSearch = true;
+                            }
                             re = rb + k;
                         } else {
-                            rb = mismatchIt + 1 - skipOverlap;
+                            lastSearch = true;
+                            rb = readEndIt - k;
                             re = rb + k;
                         }
 
@@ -280,7 +311,8 @@ class SACollector {
             }
         }
 
-        if (leftRCHit) {
+        lastSearch = false;
+        if (rcHit >= fwdHit) {
             size_t pos{read.length() - k};
 
             auto revReadEndIt = read.rend();
@@ -324,6 +356,17 @@ class SACollector {
 
                 // If we found the k-mer
                 if (rcMerIt != khash.end()) {
+                    if (strictCheck) {
+                        ++rcHit;
+                        kmerScores.emplace_back(mer, UNTESTED, PRESENT);
+                        auto merIt = khash.find(mer.get_bits(0, 2*k));
+                        if (merIt != khash.end()) {
+                            ++fwdHit;
+                            kmerScores.back().fwdScore = PRESENT;
+                        }
+                    }
+
+
                     lbRightRC = rcMerIt->second.begin;
                     ubRightRC = rcMerIt->second.end;
 
@@ -336,35 +379,87 @@ class SACollector {
 
                     OffsetT diff = ubRightRC - lbRightRC;
                     if (ubRightRC > lbRightRC and diff < maxInterval) {
-                        auto queryStart = std::distance(revRB + matchedLen, revReadEndIt);
+                        auto queryStart = std::distance(read.rbegin(), revRB);
                         rcSAInts.emplace_back(lbRightRC, ubRightRC, matchedLen, queryStart, true);
-                        rightRCHit = true;
+                        // If we didn't end the match b/c we exhausted the query
+                        // test the mismatching k-mer in the other strand
+                        // TODO: check for 'N'?
+                        if (strictCheck and revRB + matchedLen < revReadEndIt){
+                            auto kmerPos = std::distance(revRB + matchedLen, revReadEndIt);
+                            mer = rapmap::utils::my_mer(read.c_str() + kmerPos);
+                            kmerScores.emplace_back(mer , UNTESTED, ABSENT);
+                        }
                     }
 
-                    //auto fwdSkip = matchedLen - skipOverlap;
-                    //auto fwdSkip = matchedLen + 1;
+                    if (lastSearch) { break; }
                     auto mismatchIt = revRB + matchedLen;
-
-                    if ((mismatchIt + 1 - skipOverlap) <= revReadEndIt) {
-                    //if (revRE <= revReadEndIt) {
+                    if (mismatchIt < revReadEndIt) {
                         auto remainingDistance = std::distance(mismatchIt, revReadEndIt);
                         auto lce = saSearcher.lce(lbRightRC, ubRightRC-1, matchedLen, remainingDistance);
 
                         // Where we would jump if we just used the MMP
-                        auto skipMatch = mismatchIt + 1 - skipOverlap;
+                        auto skipMatch = mismatchIt - skipOverlap;
                         // Where we would jump if we used the lce
                         auto skipLCE = revRB + lce - skipOverlap;
                         // Choose the larger of the two
                         revRB = std::max(skipLCE, skipMatch);
+                        if (revRB > (revReadEndIt - k)) {
+                            revRB = revReadEndIt - k;
+                            lastSearch = true;
+                        }
                         revRE = revRB + k;
                     } else {
-                        revRB = mismatchIt + 1 - skipOverlap;
+                        lastSearch = true;
+                        revRB = revReadEndIt - k;
                         revRE = revRB + k;
                     }
 
                 } else {
                     revRB += sampFactor;
                     revRE = revRB + k;
+                }
+            }
+        }
+
+        if (strictCheck) {
+            // The first two conditions shouldn't happen
+            // but I'm just being paranoid here
+            if (fwdHit > 0 and rcHit == 0) {
+                rcSAInts.clear();
+            } else if (rcHit > 0 and fwdHit == 0) {
+                fwdSAInts.clear();
+            } else {
+                // Compute the score for the k-mers we need to
+                // test in both the forward and rc directions.
+                int32_t fwdScore{0};
+                int32_t rcScore{0};
+                // For every kmer score structure
+                for (auto& kms : kmerScores) {
+                    // If the forward k-mer is untested, then test it
+                    if (kms.fwdScore == UNTESTED) {
+                        auto merIt = khash.find(mer.get_bits(0, 2*k));
+                        kms.fwdScore = (merIt != khash.end()) ? PRESENT : ABSENT;
+                    }
+                    // accumulate the score
+                    fwdScore += kms.fwdScore;
+
+                    // If the rc k-mer is untested, then test it
+                    if (kms.rcScore == UNTESTED) {
+                        rcMer = kms.kmer.get_reverse_complement();
+                        auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
+                        kms.rcScore = (rcMerIt != khash.end()) ? PRESENT : ABSENT;
+                    }
+                    // accumulate the score
+                    rcScore += kms.rcScore;
+                }
+                // If the forward score is strictly greater
+                // then get rid of the rc hits.
+                if (fwdScore > rcScore) {
+                    rcSAInts.clear();
+                } else if (rcScore > fwdScore) {
+                    // If the rc score is strictly greater
+                    // get rid of the forward hits
+                    fwdSAInts.clear();
                 }
             }
         }
@@ -379,8 +474,6 @@ class SACollector {
                 auto initialSize = hits.size();
                 for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
                         auto globalPos = SA[i];
-                        //auto txpID = posIDs[globalPos];
-            			//auto txpID = rankDict.Rank(globalPos, 1);
 		            	auto txpID = rmi_->transcriptAtPosition(globalPos);
                         // the offset into this transcript
                         auto pos = globalPos - txpStarts[txpID];
@@ -417,9 +510,7 @@ class SACollector {
             auto initialSize = hits.size();
             for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
                 auto globalPos = SA[i];
-                //auto txpID = posIDs[globalPos];
-		//auto txpID = rankDict.Rank(globalPos, 1);
-		auto txpID = rmi_->transcriptAtPosition(globalPos);
+		        auto txpID = rmi_->transcriptAtPosition(globalPos);
                 // the offset into this transcript
                 auto pos = globalPos - txpStarts[txpID];
                 hits.emplace_back(txpID, pos, false, readLen);
@@ -460,7 +551,7 @@ class SACollector {
             hits.resize(std::distance(hits.begin(), newEnd));
         }
         // Return true if we had any valid hits and false otherwise.
-        return (rcHitsEnd > fwdHitsStart);
+        return foundHit;
     }
 
     private:

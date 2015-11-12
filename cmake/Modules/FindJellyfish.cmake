@@ -6,8 +6,8 @@
 # JELLYFISH_INCLUDE_DIRS - Directories containing the Jellyfish include files.
 # JELLYFISH_DEFINITIONS - Compiler flags for Jellyfish.
 
-find_path(JELLYFISH_INCLUDE_DIR cereal
-	HINTS "${JELLYFISH_ROOT}/include" "$ENV{JELLYFISH_ROOT}/include" "/usr/include" "$ENV{PROGRAMFILES}/cereal/include")
+find_path(JELLYFISH_INCLUDE_DIR jellyfish
+	HINTS "${JELLYFISH_ROOT}/include" "$ENV{JELLYFISH_ROOT}/include" "/usr/include" "$ENV{PROGRAMFILES}/jellyfish/include")
 
 set(JELLYFISH_INCLUDE_DIRS ${JELLYFISH_INCLUDE_DIR})
 
