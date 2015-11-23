@@ -65,8 +65,8 @@ class SACollector {
                 kmer(kmerIn), fwdScore(fwdScoreIn), rcScore(rcScoreIn) {}
             KmerDirScore() : fwdScore(UNTESTED), rcScore(UNTESTED) {}
             rapmap::utils::my_mer kmer;
-            HitStatus fwdScore{UNTESTED};
-            HitStatus rcScore{UNTESTED};
+            HitStatus fwdScore;
+            HitStatus rcScore;
         };
 
         // This allows implementing our heurisic for comparing
