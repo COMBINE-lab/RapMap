@@ -240,7 +240,7 @@ namespace rapmap {
     struct QuasiAlignment {
   	QuasiAlignment() :
 		tid(std::numeric_limits<uint32_t>::max()),
-		pos(std::numeric_limits<uint32_t>::max()),
+		pos(std::numeric_limits<int32_t>::max()),
 		fwd(true),
 		readLen(std::numeric_limits<uint32_t>::max()),
 		fragLen(std::numeric_limits<uint32_t>::max()),
@@ -250,7 +250,7 @@ namespace rapmap {
 #endif // RAPMAP_SALMON_SUPPORT
         {}
 
-        QuasiAlignment(uint32_t tidIn, uint32_t posIn,
+        QuasiAlignment(uint32_t tidIn, int32_t posIn,
                 bool fwdIn, uint32_t readLenIn,
                 uint32_t fragLenIn = 0,
                 bool isPairedIn = false) :
