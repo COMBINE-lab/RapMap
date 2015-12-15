@@ -477,7 +477,8 @@ class SACollector {
 		            	auto txpID = rmi_->transcriptAtPosition(globalPos);
                         // the offset into this transcript
                         auto pos = globalPos - txpStarts[txpID];
-                        hits.emplace_back(txpID, pos, true, readLen);
+                        int32_t hitPos = pos - saIntervalHit.queryPos;
+                        hits.emplace_back(txpID, hitPos, true, readLen);
                         hits.back().mateStatus = mateStatus;
                 }
                 // Now sort by transcript ID (then position) and eliminate
@@ -513,7 +514,8 @@ class SACollector {
 		        auto txpID = rmi_->transcriptAtPosition(globalPos);
                 // the offset into this transcript
                 auto pos = globalPos - txpStarts[txpID];
-                hits.emplace_back(txpID, pos, false, readLen);
+                int32_t hitPos = pos - saIntervalHit.queryPos;
+                hits.emplace_back(txpID, hitPos, false, readLen);
                 hits.back().mateStatus = mateStatus;
             }
             // Now sort by transcript ID (then position) and eliminate
