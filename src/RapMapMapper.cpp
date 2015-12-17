@@ -743,7 +743,7 @@ void processReadsSingle(single_parser* parser,
             auto numHits = hits.size();
             hctr.totHits += numHits;
 
-            if (hits.size() > 0 and hits.size() < maxNumHits) {
+             if (hits.size() > 0 and !noOutput and hits.size() <= maxNumHits) {
                 rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,
                         hctr, hits, sstream);
             }
