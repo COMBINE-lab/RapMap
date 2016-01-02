@@ -42,6 +42,12 @@ ${CEREAL_INCLUDE_DIRS}
 #${Boost_INCLUDE_DIRS}
 )
 
+if (JELLYFISH_FOUND)
+    include_directories(${JELLYFISH_INCLUDE_DIR})
+else()
+    include_directories(${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.3)
+endif()
+
 link_directories(
 ${GAT_SOURCE_DIR}/lib
 ${GAT_SOURCE_DIR}/external/install/lib

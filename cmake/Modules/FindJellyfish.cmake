@@ -12,7 +12,12 @@ find_path(JELLYFISH_INCLUDE_DIR jellyfish
 set(JELLYFISH_INCLUDE_DIRS ${JELLYFISH_INCLUDE_DIR})
 
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(Jellyfish DEFAULT_MSG JELLYFISH_INCLUDE_DIR)
+#message("Required Jellyfish version ${Jellyfish_FIND_VERSION}")
+find_package_handle_standard_args(Jellyfish 
+                                 DEFAULT_MSG 
+                                 FOUND_VAR JELLYFISH_FOUND 
+                                  REQUIRED_VARS JELLYFISH_INCLUDE_DIR 
+                                  VERSION_VAR Jellyfish_FOUND_VERSION)
 
 mark_as_advanced(JELLYFISH_INCLUDE_DIR)
 

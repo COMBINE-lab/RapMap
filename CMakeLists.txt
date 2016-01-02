@@ -208,7 +208,7 @@ if (NOT JELLYFISH_ROOT)
 	set(JELLYFISH_ROOT ${GAT_SOURCE_DIR}/external/install)
 endif()
 
-find_package(Jellyfish)
+find_package(Jellyfish 2.2.3)
 
 if (NOT JELLYFISH_FOUND)
 message("Build system will fetch and build Jellyfish")
