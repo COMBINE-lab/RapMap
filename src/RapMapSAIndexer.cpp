@@ -157,7 +157,7 @@ bool buildHash(const std::string& outputDir,
   size_t hashSize = 100000000;
   double logTextLen = std::log2(concatText.length());
   uint16_t bitsPerVal = static_cast<uint16_t>(std::ceil(logTextLen));
-  MerMapT khash(hashSize, rapmap::utils::my_mer::k()*2, bitsPerVal, 1, 126);
+  MerMapT* khash = new MerMapT(hashSize, rapmap::utils::my_mer::k()*2, bitsPerVal, 1);
   std::vector<rapmap::utils::SAInterval<IndexT>> saIntervals;
   saIntervals.reserve(hashSize);
 
@@ -191,7 +191,7 @@ bool buildHash(const std::string& outputDir,
                   currentKmer.find_first_of('$') == std::string::npos) {
                   mer = rapmap::utils::my_mer(currentKmer);
                   UIndexT val;
-                  auto found = khash.ary()->get_val_for_key(mer, &val);
+                  auto found = khash->ary()->get_val_for_key(mer, &val);
                   if (!found) {
                       if (start > 1) {
                           if (concatText.substr(SA[start-1], k) ==
@@ -213,7 +213,7 @@ bool buildHash(const std::string& outputDir,
                           std::cerr << "[fatal (3)] Interval is empty! (start = " << start
                               << ") = (stop =  " << stop << ")\n";
                       }
-                      khash.add(mer, saIntervals.size());
+                      khash->add(mer, saIntervals.size());
                       saIntervals.push_back({start, stop});
                   } else {
                       std::cerr << "\nERROR (1): trying to add same suffix "
@@ -252,7 +252,7 @@ bool buildHash(const std::string& outputDir,
               currentKmer.find_first_of('$') == std::string::npos) {
               mer = rapmap::utils::my_mer(currentKmer);
               UIndexT val;
-              auto found = khash.ary()->get_val_for_key(mer, &val);
+              auto found = khash->ary()->get_val_for_key(mer, &val);
               if (!found) {
                   if (start > 2) {
                       if (concatText.substr(SA[start-1], k) ==
@@ -266,7 +266,7 @@ bool buildHash(const std::string& outputDir,
                           std::exit(1);
                       }
                   }
-                  khash.add(mer, saIntervals.size());
+                  khash->add(mer, saIntervals.size());
                   saIntervals.push_back({start, stop});
               } else {
                   std::cerr << "\nERROR (2): trying to add same suffix "
@@ -299,25 +299,10 @@ bool buildHash(const std::string& outputDir,
       if (currentKmer.length() == k and
           currentKmer.find_first_of('$') != std::string::npos) {
           mer = rapmap::utils::my_mer(currentKmer);
-          khash.add(mer, saIntervals.size());
+          khash->add(mer, saIntervals.size());
           saIntervals.push_back({start, stop});
       }
   }
-
-    using JFFileHeader = jellyfish::file_header;
-    using JFDumper = jellyfish::binary_dumper<MerMapT::array>;
-
-    SpecialHeader fh;
-    fh.update_from_ary(*khash.ary());
-    fh.canonical(false);
-    fh.format("gus/special"); // Thanks, Guillaume
-    fh.counter_len(bitsPerVal); // size of counter in bits
-    fh.fill_standard();
-
-    std::ofstream jfos(outputDir + "kmers.jfhash");
-    fh.write(jfos);
-    khash.ary()->write(jfos);
-    jfos.close();
 
     std::cerr << "\nkhash had " << saIntervals.size() << " keys\n";
     {
@@ -334,6 +319,28 @@ bool buildHash(const std::string& outputDir,
         saIntervalStream.close();
         std::cerr << "done\n";
     }
+
+    std::cerr << "\ndumping JF hash\n";
+    {
+        ScopedTimer timer;
+        using JFFileHeader = jellyfish::file_header;
+        using JFDumper = jellyfish::binary_dumper<MerMapT::array>;
+
+        SpecialHeader fh;
+        fh.update_from_ary(*(khash->ary()));
+        fh.canonical(false);
+        fh.format("gus/special"); // Thanks, Guillaume
+        fh.counter_len(bitsPerVal); // size of counter in bits
+        fh.fill_standard();
+
+        std::ofstream jfos(outputDir + "kmers.jfhash");
+        fh.write(jfos);
+        khash->ary()->write(jfos);
+        jfos.close();
+        std::cerr << "done\n";
+    }
+    // OK, yes, let the pointer to khash escape this scope
+    // for now, the thing never seems to destruct properly.
     return true;
 }
 
@@ -575,7 +582,6 @@ void indexTranscriptsSA(ParserT* parser,
     saStream.close();
     */
 
-    std::cerr << "writing json header\n";
     std::string indexVersion = "q1";
     IndexHeader header(IndexType::QUASI, indexVersion, true, k, largeIndex);
     // Finally (since everything presumably succeeded) write the header
@@ -585,7 +591,6 @@ void indexTranscriptsSA(ParserT* parser,
 	archive(header);
     }
     headerStream.close();
-    std::cerr << "done writing json header\n";
     return;
 }
 
