@@ -320,9 +320,9 @@ bool buildHash(const std::string& outputDir,
     jfos.close();
 
     std::cerr << "\nkhash had " << saIntervals.size() << " keys\n";
-    std::ofstream saIntervalStream(outputDir + "sa_intervals.bin", std::ios::binary);
     {
         ScopedTimer timer;
+        std::ofstream saIntervalStream(outputDir + "sa_intervals.bin", std::ios::binary);
         std::cerr << "saving hash to disk . . . ";
         cereal::BinaryOutputArchive saIntervalArchive(saIntervalStream);
         //hashArchive(k);
@@ -331,9 +331,9 @@ bool buildHash(const std::string& outputDir,
         //        rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
         //hashArchive(khash);
         saIntervalArchive(saIntervals);
+        saIntervalStream.close();
         std::cerr << "done\n";
     }
-    saIntervalStream.close();
     return true;
 }
 
