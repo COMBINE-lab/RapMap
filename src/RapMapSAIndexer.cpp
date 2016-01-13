@@ -156,7 +156,7 @@ bool buildHash(const std::string& outputDir,
   using UIndexT = uint64_t;//typename std::make_unsigned<IndexT>::type;
   size_t hashSize = 100000000;
   double logTextLen = std::log2(concatText.length());
-  uint16_t bitsPerVal = static_cast<uint16_t>(std::ceil(logTextLen)) * 8;
+  uint16_t bitsPerVal = static_cast<uint16_t>(std::ceil(logTextLen));
   MerMapT khash(hashSize, rapmap::utils::my_mer::k()*2, bitsPerVal, 1, 126);
   std::vector<rapmap::utils::SAInterval<IndexT>> saIntervals;
   saIntervals.reserve(hashSize);
