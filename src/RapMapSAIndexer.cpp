@@ -155,7 +155,8 @@ bool buildHash(const std::string& outputDir,
   // Now, build the k-mer lookup table
   using UIndexT = uint64_t;//typename std::make_unsigned<IndexT>::type;
   size_t hashSize = 100000000;
-  uint16_t bitsPerVal = sizeof(UIndexT) * 8;
+  double logTextLen = std::log2(concatText.length());
+  uint16_t bitsPerVal = static_cast<uint16_t>(std::ceil(logTextLen)) * 8;
   MerMapT khash(hashSize, rapmap::utils::my_mer::k()*2, bitsPerVal, 1, 126);
   std::vector<rapmap::utils::SAInterval<IndexT>> saIntervals;
   saIntervals.reserve(hashSize);
@@ -310,7 +311,7 @@ bool buildHash(const std::string& outputDir,
     fh.update_from_ary(*khash.ary());
     fh.canonical(false);
     fh.format("gus/special"); // Thanks, Guillaume
-    fh.counter_len(8*sizeof(UIndexT)); // size of counter in bits
+    fh.counter_len(bitsPerVal); // size of counter in bits
     fh.fill_standard();
 
     std::ofstream jfos(outputDir + "kmers.jfhash");
@@ -574,7 +575,7 @@ void indexTranscriptsSA(ParserT* parser,
     saStream.close();
     */
 
-
+    std::cerr << "writing json header\n";
     std::string indexVersion = "q1";
     IndexHeader header(IndexType::QUASI, indexVersion, true, k, largeIndex);
     // Finally (since everything presumably succeeded) write the header
@@ -584,7 +585,8 @@ void indexTranscriptsSA(ParserT* parser,
 	archive(header);
     }
     headerStream.close();
-
+    std::cerr << "done writing json header\n";
+    return;
 }
 
 
