@@ -7,6 +7,7 @@
 #include <fstream>
 #include <cctype>
 #include <cstdio>
+#include <type_traits>
 
 #include "tclap/CmdLine.h"
 
@@ -152,10 +153,19 @@ bool buildHash(const std::string& outputDir,
                std::vector<IndexT>& SA
               ) {
   // Now, build the k-mer lookup table
+  using UIndexT = uint64_t;//typename std::make_unsigned<IndexT>::type;
+  size_t hashSize = 100000000;
+  uint16_t bitsPerVal = sizeof(UIndexT) * 8;
+  MerMapT khash(hashSize, rapmap::utils::my_mer::k()*2, bitsPerVal, 1, 126);
+  std::vector<rapmap::utils::SAInterval<IndexT>> saIntervals;
+  saIntervals.reserve(hashSize);
+
+  /*
   google::dense_hash_map<uint64_t,
                       rapmap::utils::SAInterval<IndexT>,
                       rapmap::utils::KmerKeyHasher> khash;
   khash.set_empty_key(std::numeric_limits<uint64_t>::max());
+  */
 
   // The start and stop of the current interval
   IndexT start = 0, stop = 0;
@@ -179,9 +189,9 @@ bool buildHash(const std::string& outputDir,
               if (currentKmer.length() == k and
                   currentKmer.find_first_of('$') == std::string::npos) {
                   mer = rapmap::utils::my_mer(currentKmer);
-                  auto bits = mer.get_bits(0, 2*k);
-                  auto hashIt = khash.find(bits);
-                  if (hashIt == khash.end()) {
+                  UIndexT val;
+                  auto found = khash.ary()->get_val_for_key(mer, &val);
+                  if (!found) {
                       if (start > 1) {
                           if (concatText.substr(SA[start-1], k) ==
                               concatText.substr(SA[start], k)) {
@@ -202,13 +212,13 @@ bool buildHash(const std::string& outputDir,
                           std::cerr << "[fatal (3)] Interval is empty! (start = " << start
                               << ") = (stop =  " << stop << ")\n";
                       }
-
-                      khash[bits] = {start, stop};
+                      khash.add(mer, saIntervals.size());
+                      saIntervals.push_back({start, stop});
                   } else {
                       std::cerr << "\nERROR (1): trying to add same suffix "
                                 << currentKmer << " (len = "
                                 << currentKmer.length() << ") multiple times!\n";
-                      auto prevInt = hashIt->second;
+                      auto prevInt = saIntervals[val];
                       std::cerr << "existing interval is ["
                                 << prevInt.begin << ", " << prevInt.end << ")\n";
                       for (auto x = prevInt.begin; x < prevInt.end; ++x) {
@@ -240,9 +250,9 @@ bool buildHash(const std::string& outputDir,
           if (currentKmer.length() == k and
               currentKmer.find_first_of('$') == std::string::npos) {
               mer = rapmap::utils::my_mer(currentKmer);
-              auto bits = mer.get_bits(0, 2*k);
-              auto hashIt = khash.find(bits);
-              if (hashIt == khash.end()) {
+              UIndexT val;
+              auto found = khash.ary()->get_val_for_key(mer, &val);
+              if (!found) {
                   if (start > 2) {
                       if (concatText.substr(SA[start-1], k) ==
                           concatText.substr(SA[start], k)) {
@@ -255,11 +265,12 @@ bool buildHash(const std::string& outputDir,
                           std::exit(1);
                       }
                   }
-                  khash[bits] = {start, stop};
+                  khash.add(mer, saIntervals.size());
+                  saIntervals.push_back({start, stop});
               } else {
                   std::cerr << "\nERROR (2): trying to add same suffix "
                             << currentKmer << "multiple times!\n";
-                  auto prevInt = hashIt->second;
+                  auto prevInt = saIntervals[val];
                   std::cerr << "existing interval is ["
                       << prevInt.begin << ", " << prevInt.end << ")\n";
                   for (auto x = prevInt.begin; x < prevInt.end; ++x) {
@@ -287,24 +298,42 @@ bool buildHash(const std::string& outputDir,
       if (currentKmer.length() == k and
           currentKmer.find_first_of('$') != std::string::npos) {
           mer = rapmap::utils::my_mer(currentKmer);
-          khash[mer.get_bits(0, 2*k)] = {start, stop};
+          khash.add(mer, saIntervals.size());
+          saIntervals.push_back({start, stop});
       }
   }
-  std::cerr << "\nkhash had " << khash.size() << " keys\n";
-  std::ofstream hashStream(outputDir + "hash.bin", std::ios::binary);
-  {
-      ScopedTimer timer;
-      std::cerr << "saving hash to disk . . . ";
-      cereal::BinaryOutputArchive hashArchive(hashStream);
-      hashArchive(k);
-      khash.serialize(typename google::dense_hash_map<uint64_t,
-                      rapmap::utils::SAInterval<IndexT>,
-                      rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
-      //hashArchive(khash);
-      std::cerr << "done\n";
-  }
-  hashStream.close();
-  return true;
+
+    using JFFileHeader = jellyfish::file_header;
+    using JFDumper = jellyfish::binary_dumper<MerMapT::array>;
+
+    SpecialHeader fh;
+    fh.update_from_ary(*khash.ary());
+    fh.canonical(false);
+    fh.format("gus/special"); // Thanks, Guillaume
+    fh.counter_len(8*sizeof(UIndexT)); // size of counter in bits
+    fh.fill_standard();
+
+    std::ofstream jfos(outputDir + "kmers.jfhash");
+    fh.write(jfos);
+    khash.ary()->write(jfos);
+    jfos.close();
+
+    std::cerr << "\nkhash had " << saIntervals.size() << " keys\n";
+    std::ofstream saIntervalStream(outputDir + "sa_intervals.bin", std::ios::binary);
+    {
+        ScopedTimer timer;
+        std::cerr << "saving hash to disk . . . ";
+        cereal::BinaryOutputArchive saIntervalArchive(saIntervalStream);
+        //hashArchive(k);
+        //khash.serialize(typename google::dense_hash_map<uint64_t,
+        //        rapmap::utils::SAInterval<IndexT>,
+        //        rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
+        //hashArchive(khash);
+        saIntervalArchive(saIntervals);
+        std::cerr << "done\n";
+    }
+    saIntervalStream.close();
+    return true;
 }
 
 // To use the parser in the following, we get "jobs" until none is

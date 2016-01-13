@@ -1,4 +1,5 @@
 #include "RapMapSAIndex.hpp"
+#include "ScopedTimer.hpp"
 #include <future>
 #include <thread>
 
@@ -12,6 +13,14 @@ IndexT RapMapSAIndex<IndexT>::transcriptAtPosition(IndexT p) {
     return rankDict->rank(p);
 }
 
+
+// Given a key (k-mer), return a pointer to the SA
+// interval to which it corresponds.
+// NOTE: Returns nullptr if the key is not found.
+// template <typename IndexT>
+// inline rapmap::utils::SAInterval<IndexT>*
+// RapMapSAIndex<IndexT>::intervalForKmer(rapmap::utils::my_mer& key);
+
 template <typename IndexT>
 bool RapMapSAIndex<IndexT>::load(const std::string& indDir) {
 
@@ -20,21 +29,58 @@ bool RapMapSAIndex<IndexT>::load(const std::string& indDir) {
 
     // This part takes the longest, so do it in it's own asynchronous task
     std::future<std::pair<bool, uint32_t>> loadingHash = std::async(std::launch::async, [this, logger, indDir]() -> std::pair<bool, uint32_t> {
-        this->khash.set_empty_key(std::numeric_limits<uint64_t>::max());
-        uint32_t k;
-        std::ifstream hashStream(indDir + "hash.bin");
-        {
-            logger->info("Loading Position Hash");
-            cereal::BinaryInputArchive hashArchive(hashStream);
-            hashArchive(k);
-            khash.unserialize(typename google::dense_hash_map<uint64_t,
-                    rapmap::utils::SAInterval<IndexT>,
-                    rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
+            std::string jfFileName = indDir + "kmers.jfhash";
+            std::string saIntervalFileName = indDir + "sa_intervals.bin";
 
-            //hashArchive(khash);
-        }
-        hashStream.close();
-        return std::make_pair(true, k);
+            // Load the kmer info list first --- this will
+            // give us the # of unique k-mers
+            std::ifstream kmerInfoStream(saIntervalFileName, std::ios::binary);
+            {
+            logger->info("loading k-mer info list . . .");
+            ScopedTimer timer;
+            cereal::BinaryInputArchive kmerInfoArchive(kmerInfoStream);
+            kmerInfoArchive(this->saIntervals);
+            logger->info("done\n");
+            }
+            kmerInfoStream.close();
+
+            // Now load the jellyfish hash
+            size_t numDistinctKmers = saIntervals.size();
+            uint32_t k{0};
+            {
+            ScopedTimer timer;
+            logger->info("loading k-mer => id hash . . . ");
+            std::ifstream bis(jfFileName);
+            const SpecialHeader bh(bis);
+            // mapFile.reset(new jellyfish::mapped_file(jfFileName.c_str()));
+            const size_t sizeInBytes = bh.size_bytes();
+            // Load the hash from file
+            logger->info("\theader format = {}"      , bh.format());
+            logger->info("\t# distinct k-mers = {}"  , numDistinctKmers);
+            logger->info("\thash key len = {}"       , bh.key_len());
+            logger->info("\tcounter len = {}"        , bh.counter_len());
+            logger->info("\tmax reprobe offset = {}" , bh.max_reprobe());
+            logger->info("\tsize in bytes = {}"      , sizeInBytes);
+
+            // Allocate the actual storage
+            rawHashMem.reset(new char[sizeInBytes]);
+            bis.read(this->rawHashMem.get(), sizeInBytes);
+            // We can close the file now
+            bis.close();
+
+            khash.reset( new FileMerArray(this->rawHashMem.get(),//mapFile->base() + bh.offset(),
+                        sizeInBytes,
+                        bh.size(),
+                        bh.key_len(),
+                        bh.counter_len(),
+                        bh.max_reprobe(),
+                        bh.matrix()));
+            // Set the key size
+            rapmap::utils::my_mer::k(bh.key_len() / 2);
+            k = bh.key_len() / 2;
+            logger->info("done");
+            }
+            return std::make_pair(true, k);
     });
 
 

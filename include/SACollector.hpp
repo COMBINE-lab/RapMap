@@ -27,7 +27,7 @@ class SACollector {
         auto& rankDict = rmi_->rankDict;
         auto& txpStarts = rmi_->txpOffsets;
         auto& SA = rmi_->SA;
-        auto& khash = rmi_->khash;
+        //auto& khash = rmi_->khash;
         auto& text = rmi_->seq;
         uint32_t sampFactor{1};
         auto salen = SA.size();
@@ -112,13 +112,15 @@ class SACollector {
             rcMer = mer.get_reverse_complement();
 
             // See if we can find this k-mer in the hash
-            auto merIt = khash.find(mer.get_bits(0, 2*k));
-            auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
+            auto merInterval = rmi_->intervalForKmer(mer);
+            bool foundMer = (merInterval != nullptr);
+            auto rcMerInterval = rmi_->intervalForKmer(rcMer);
+            bool foundRCMer = (rcMerInterval != nullptr);
 
             // If we can find the k-mer in the hash, get its SA interval
-            if (merIt != khash.end()) {
-                OffsetT lb = merIt->second.begin;
-                OffsetT ub = merIt->second.end;
+            if (foundMer) {
+                OffsetT lb = merInterval->begin;
+                OffsetT ub = merInterval->end;
 
                 // lb must be 1 *less* then the current lb
                 auto lbRestart = std::max(static_cast<OffsetT>(0), lb-1);
@@ -136,7 +138,7 @@ class SACollector {
                     if (strictCheck) {
                         ++fwdHit;
                         // If we also match this k-mer in the rc direction
-                        if (rcMerIt != khash.end()) {
+                        if (foundRCMer) {
                             ++rcHit;
                             kmerScores.emplace_back(mer, PRESENT, PRESENT);
                         } else { // Otherwise it doesn't match in the rc direction
@@ -153,15 +155,15 @@ class SACollector {
                         }
                     } else { // no strict check
                         ++fwdHit;
-                        if (rcMerIt != khash.end()) { ++rcHit; }
+                        if (foundRCMer) { ++rcHit; }
                     }
                 }
             }
 
             // See if the reverse complement k-mer is in the hash
-            if (rcMerIt != khash.end()) {
-                lbLeftRC = rcMerIt->second.begin;
-                ubLeftRC = rcMerIt->second.end;
+            if (foundRCMer) {
+                lbLeftRC = rcMerInterval->begin;
+                ubLeftRC = rcMerInterval->end;
                 OffsetT diff = ubLeftRC - lbLeftRC;
                 if (ubLeftRC > lbLeftRC) {
                     // The original k-mer didn't match in the foward direction
@@ -242,22 +244,25 @@ class SACollector {
 
                     mer = rapmap::utils::my_mer(read.c_str() + pos);
                     if (mer.is_homopolymer()) { rb += homoPolymerSkip; re = rb + k; continue; }
-                    auto merIt = khash.find(mer.get_bits(0, 2*k));
 
-                    if (merIt != khash.end()) {
+                    auto merInterval = rmi_->intervalForKmer(mer);
+                    bool foundMer = (merInterval != nullptr);
+
+                    if (foundMer) { //
                         if (strictCheck) {
                             ++fwdHit;
                             kmerScores.emplace_back(mer, PRESENT, UNTESTED);
                             auto rcMer = mer.get_reverse_complement();
-                            auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
-                            if (rcMerIt != khash.end()) {
+                            auto rcMerInterval = rmi_->intervalForKmer(rcMer);
+                            bool foundRCMer = (rcMerInterval != nullptr);
+                            if (foundRCMer) {
                                 ++rcHit;
                                 kmerScores.back().rcScore = PRESENT;
                             }
                         }
 
-                        lbRightFwd = merIt->second.begin;
-                        ubRightFwd = merIt->second.end;
+                        lbRightFwd = merInterval->begin;
+                        ubRightFwd = merInterval->end;
 
                         // lb must be 1 *less* then the current lb
                         lbRightFwd = std::max(static_cast<OffsetT>(0), lbRightFwd - 1);
@@ -352,23 +357,25 @@ class SACollector {
                 mer = rapmap::utils::my_mer(read.c_str() + pos);
                 if (mer.is_homopolymer()) { revRB += homoPolymerSkip; revRE += homoPolymerSkip; continue; }
                 rcMer = mer.get_reverse_complement();
-                auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
+                auto rcMerInterval = rmi_->intervalForKmer(rcMer);
+                bool foundRCMer = (rcMerInterval != nullptr);
 
                 // If we found the k-mer
-                if (rcMerIt != khash.end()) {
+                if (foundRCMer) {
                     if (strictCheck) {
                         ++rcHit;
                         kmerScores.emplace_back(mer, UNTESTED, PRESENT);
-                        auto merIt = khash.find(mer.get_bits(0, 2*k));
-                        if (merIt != khash.end()) {
+                        auto merInterval = rmi_->intervalForKmer(mer);
+                        bool foundMer = (merInterval != nullptr);
+                        if (foundMer) {
                             ++fwdHit;
                             kmerScores.back().fwdScore = PRESENT;
                         }
                     }
 
 
-                    lbRightRC = rcMerIt->second.begin;
-                    ubRightRC = rcMerIt->second.end;
+                    lbRightRC = rcMerInterval->begin;
+                    ubRightRC = rcMerInterval->end;
 
                     // lb must be 1 *less* then the current lb
                     // We can't move any further in the reverse complement direction
@@ -437,8 +444,8 @@ class SACollector {
                 for (auto& kms : kmerScores) {
                     // If the forward k-mer is untested, then test it
                     if (kms.fwdScore == UNTESTED) {
-                        auto merIt = khash.find(mer.get_bits(0, 2*k));
-                        kms.fwdScore = (merIt != khash.end()) ? PRESENT : ABSENT;
+                        auto merInterval = rmi_->intervalForKmer(mer);
+                        kms.fwdScore = (merInterval != nullptr) ? PRESENT : ABSENT;
                     }
                     // accumulate the score
                     fwdScore += kms.fwdScore;
@@ -446,8 +453,8 @@ class SACollector {
                     // If the rc k-mer is untested, then test it
                     if (kms.rcScore == UNTESTED) {
                         rcMer = kms.kmer.get_reverse_complement();
-                        auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
-                        kms.rcScore = (rcMerIt != khash.end()) ? PRESENT : ABSENT;
+                        auto rcMerInterval = rmi_->intervalForKmer(rcMer);
+                        kms.rcScore = (rcMerInterval != nullptr) ? PRESENT : ABSENT;
                     }
                     // accumulate the score
                     rcScore += kms.rcScore;
