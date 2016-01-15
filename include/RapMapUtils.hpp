@@ -565,6 +565,87 @@ namespace rapmap {
                 std::vector<QuasiAlignment>& jointHits,
                 fmt::MemoryWriter& sstream);
 
+        inline void mergeLeftRightHitsFuzzy(
+                bool leftMatches,
+                bool rightMatches,
+                std::vector<QuasiAlignment>& leftHits,
+                std::vector<QuasiAlignment>& rightHits,
+                std::vector<QuasiAlignment>& jointHits,
+                uint32_t readLen,
+                uint32_t maxNumHits,
+                bool& tooManyHits,
+                HitCounters& hctr) {
+
+            if (leftHits.empty()) {
+                if (!leftMatches) {
+                    if (!rightHits.empty()) {
+                        jointHits.insert(jointHits.end(),
+                                std::make_move_iterator(rightHits.begin()),
+                                std::make_move_iterator(rightHits.end()));
+                        hctr.seHits += rightHits.size();
+                    }
+                }
+            } else if (rightHits.empty()) {
+                if (!rightMatches) {
+                    if (!leftHits.empty()) {
+                        jointHits.insert(jointHits.end(),
+                                std::make_move_iterator(leftHits.begin()),
+                                std::make_move_iterator(leftHits.end()));
+                        hctr.seHits += leftHits.size();
+                    }
+                }
+            } else if (leftHits.size() > 0) {
+                auto leftIt = leftHits.begin();
+                auto leftEnd = leftHits.end();
+                auto leftLen = std::distance(leftIt, leftEnd);
+                if (rightHits.size() > 0) {
+                    auto rightIt = rightHits.begin();
+                    auto rightEnd = rightHits.end();
+                    auto rightLen = std::distance(rightIt, rightEnd);
+                    size_t numHits{0};
+                    jointHits.reserve(std::min(leftLen, rightLen));
+                    uint32_t leftTxp, rightTxp;
+                    while (leftIt != leftEnd && rightIt != rightEnd) {
+                        leftTxp = leftIt->tid;
+                        rightTxp = rightIt->tid;
+                        if (leftTxp < rightTxp) {
+                            ++leftIt;
+                        } else {
+                            if (!(rightTxp < leftTxp)) {
+                                int32_t startRead1 = leftIt->pos;
+                                int32_t startRead2 = rightIt->pos;
+                                int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
+                                int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
+                                uint32_t fragLen = fragEndPos - fragStartPos;
+                                jointHits.emplace_back(leftTxp,
+                                        startRead1,
+                                        leftIt->fwd,
+                                        leftIt->readLen,
+                                        fragLen, true);
+                                // Fill in the mate info
+                                auto& qaln = jointHits.back();
+                                qaln.mateLen = rightIt->readLen;
+                                qaln.matePos = startRead2;
+                                qaln.mateIsFwd = rightIt->fwd;
+                                jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
+
+                                ++numHits;
+                                if (numHits > maxNumHits) { tooManyHits = true; break; }
+                                ++leftIt;
+                            }
+                            ++rightIt;
+                        }
+                    }
+                }
+                if (tooManyHits) { jointHits.clear(); ++hctr.tooManyHits; }
+            }
+
+            // If we had proper paired hits
+            if (jointHits.size() > 0) {
+                hctr.peHits += jointHits.size();
+                //orphanStatus = 0;
+            }
+        }
 
         inline void mergeLeftRightHits(
                 std::vector<QuasiAlignment>& leftHits,
