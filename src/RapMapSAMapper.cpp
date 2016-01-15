@@ -134,7 +134,7 @@ void processReadsSingleSA(single_parser * parser,
             hitCollector(j->data[i].seq, hits, saSearcher, MateStatus::SINGLE_END, strictCheck);
             auto numHits = hits.size();
             hctr.totHits += numHits;
-	    
+
 	    if (hits.size() > 0 and !noOutput and hits.size() <= maxNumHits) {
                 /*
                 std::sort(hits.begin(), hits.end(),
@@ -203,7 +203,8 @@ void processReadsPairSA(paired_parser* parser,
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput,
-        bool strictCheck) {
+        bool strictCheck,
+        bool nonStrictMerge) {
 
     using OffsetT = typename RapMapIndexT::IndexType;
 
@@ -250,9 +251,17 @@ void processReadsPairSA(paired_parser* parser,
                         MateStatus::PAIRED_END_RIGHT,
                         strictCheck);
 
-            rapmap::utils::mergeLeftRightHits(
-                    leftHits, rightHits, jointHits,
-                    readLen, maxNumHits, tooManyHits, hctr);
+            if (nonStrictMerge) {
+                rapmap::utils::mergeLeftRightHitsFuzzy(
+                        lh, rh,
+                        leftHits, rightHits, jointHits,
+                        readLen, maxNumHits, tooManyHits, hctr);
+
+            } else {
+                rapmap::utils::mergeLeftRightHits(
+                        leftHits, rightHits, jointHits,
+                        readLen, maxNumHits, tooManyHits, hctr);
+            }
 
             // If we have reads to output, and we're writing output.
             if (jointHits.size() > 0 and !noOutput and jointHits.size() <= maxNumHits) {
@@ -309,7 +318,8 @@ bool spawnProcessReadsThreads(
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput,
-        bool strictCheck) {
+        bool strictCheck,
+        bool fuzzy) {
 
             std::vector<std::thread> threads;
             SACollector<RapMapIndexT> saCollector(&rmi);
@@ -323,7 +333,8 @@ bool spawnProcessReadsThreads(
                         std::ref(hctr),
                         maxNumHits,
                         noOutput,
-                        strictCheck);
+                        strictCheck,
+                        fuzzy);
             }
 
             for (auto& t : threads) { t.join(); }
@@ -379,6 +390,7 @@ int rapMapSAMap(int argc, char* argv[]) {
     TCLAP::ValueArg<std::string> outname("o", "output", "The output file (default: stdout)", false, "", "path");
     TCLAP::SwitchArg noout("n", "noOutput", "Don't write out any alignments (for speed testing purposes)", false);
     TCLAP::SwitchArg strict("s", "strictCheck", "Perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
+    TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
     cmd.add(index);
     cmd.add(noout);
 
@@ -388,6 +400,8 @@ int rapMapSAMap(int argc, char* argv[]) {
     cmd.add(outname);
     cmd.add(numThreads);
     cmd.add(maxNumHits);
+    cmd.add(strict);
+    cmd.add(fuzzy);
 
     auto consoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
     auto consoleLog = spdlog::create("stderrLog", {consoleSink});
@@ -491,6 +505,7 @@ int rapMapSAMap(int argc, char* argv[]) {
 	}
 
     bool strictCheck = strict.getValue();
+    bool fuzzyIntersection = fuzzy.getValue();
 	SpinLockT iomutex;
 	{
 	    ScopedTimer timer;
@@ -520,10 +535,10 @@ int rapMapSAMap(int argc, char* argv[]) {
 
             if (h.bigSA()) {
               spawnProcessReadsThreads(nthread, pairParserPtr.get(), *BigSAIdxPtr, iomutex,
-                outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck);
+                outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, fuzzyIntersection);
             } else {
               spawnProcessReadsThreads(nthread, pairParserPtr.get(), *SAIdxPtr, iomutex,
-                outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck);
+                outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, fuzzyIntersection);
             }
             delete [] pairFileList;
         } else {
