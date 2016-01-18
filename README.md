@@ -5,7 +5,7 @@ RapMap is a testing ground for ideas in lightweight / quasi / pseudo transcripto
 Lightweight / quasi / pseudo-alignment is the term I'm using here for the type of information required for certain tasks (e.g. 
 transcript quantification) that is less "heavyweight" than what is provided by traditional alignment. For example, one may
 only need to know the transcripts / contigs to which a read aligns and, perhaps, the position within those transcripts rather
-than the optimal alignment and base-for-base `CIGAR` string that aligns the read and substring of the transcript.
+than the optimal alignment and base-for-base `CIGAR` string that aligns the read and substring of the transcript.  For details on RapMap (quasi-mapping in particular), please check out the [latest pre-print on bioRxiv](http://biorxiv.org/content/early/2016/01/16/029652). Note: while RapMap implements both quasi-mapping and pseudo-alignment, these two are **not** the same thing --- quasi-mapping is not pseudo-alignment, or an algorithm for obtaining pseudo-alignments. Quasi-mapping and pseudo-alignment are distinct concepts, and RapMap simply happens to implement both.
 
 There are a number of different ways to collect such information, and the idea of RapMap (as the repository grows) will be to explore multiple different strategies in how to most rapidly determine all *feasible* / *compatible* locations for a read within the transcriptome.  In this sense, it is like an *all-mapper*; the alignments it outputs are intended to be (eventually) disambiguated (*Really, it's more like an "all-best" mapper, since it returns all hits in the top "stratum" of lightweight/pseudo/quasi alignments*).  If there is a need for it, *best-mapper* functionality may be added in the future.
 
