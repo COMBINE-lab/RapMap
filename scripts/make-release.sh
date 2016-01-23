@@ -26,7 +26,7 @@ while getopts "v:n:" opt; do
       exit 1
       ;;
   esac
-d``one
+done
 
 echo -e "Preparing binary release\n=====================\n"
 echo -e "Version = ${version}"
@@ -34,10 +34,10 @@ echo -e "Host = ${host}"
 
 # create the binary directory 
 betaname=RapMap-${version}_${host}
-mkdir ${DIR}/../RELEASES
-mkdir ${DIR}/../RELEASES/${betaname}
-mkdir ${DIR}/../RELEASES/${betaname}/bin
-mkdir ${DIR}/../RELEASES/${betaname}/lib
+mkdir -p ${DIR}/../RELEASES
+mkdir -p ${DIR}/../RELEASES/${betaname}
+mkdir -p ${DIR}/../RELEASES/${betaname}/bin
+mkdir -p ${DIR}/../RELEASES/${betaname}/lib
 
 echo -e "Copying over the binary\n"
 cp ${DIR}/../bin/rapmap ${DIR}/../RELEASES/${betaname}/bin/
@@ -57,20 +57,3 @@ cd ${DIR}/../RELEASES
 tar czvf ${betaname}.tar.gz ${betaname}
 
 echo -e "Done making release!"
-
-#echo -e "Pushing the tarball to GitHub\n"
-## Since it's currently unclear to me how to overwrite an asset via the GitHub
-## API, the following code deletes the old asset, and uploads the new one in its place
-#
-## Get the previous asset id of the tarball
-#echo -e "Getting previous asset ID\n"
-#ASSETID=`curl -s -X GET https://api.github.com/repos/COMBINE-lab/salmon/releases/1263754/assets | grep "\"id" | head -1 | awk '{gsub(/,$/,""); print $2}'`
-#
-## Delete the previous tarball
-#echo -e "Deleting previous asset\n"
-#curl -X DELETE -H "Authorization: token ${SALMON_PUSH_KEY}" https://api.github.com/repos/COMBINE-lab/salmon/releases/assets/$ASSETID
-#
-## Upload the new tarball
-#echo -e "Uploading new asset\n"
-#curl -X POST --data-binary "@SalmonBeta-latest_ubuntu-12.04.tar.gz" https://uploads.github.com/repos/COMBINE-lab/salmon/releases/1263754/assets?name=SalmonBeta-latest_ubuntu-12.04.tar.gz --header "Content-Type:application/gzip" -H "Authorization: token ${SALMON_PUSH_KEY}"
-#echo -e "Done!\n"
