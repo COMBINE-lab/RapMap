@@ -594,7 +594,7 @@ namespace rapmap {
                         hctr.seHits += leftHits.size();
                     }
                 }
-            } else if (leftHits.size() > 0) {
+            } else {
                 auto leftIt = leftHits.begin();
                 auto leftEnd = leftHits.end();
                 auto leftLen = std::distance(leftIt, leftEnd);
