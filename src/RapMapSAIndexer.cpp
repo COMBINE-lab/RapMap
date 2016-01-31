@@ -7,6 +7,7 @@
 #include <fstream>
 #include <cctype>
 #include <cstdio>
+#include <memory>
 
 #include "tclap/CmdLine.h"
 
@@ -313,8 +314,9 @@ bool buildHash(const std::string& outputDir,
 template <typename ParserT>//, typename CoverageCalculator>
 void indexTranscriptsSA(ParserT* parser,
             		std::string& outputDir,
-        			bool noClipPolyA,
-                    std::mutex& iomutex) {
+        		bool noClipPolyA,
+                    	std::mutex& iomutex,
+			std::shared_ptr<spdlog::logger> log) {
     // Seed with a real random value, if available
     std::random_device rd;
 
@@ -339,6 +341,11 @@ void indexTranscriptsSA(ParserT* parser,
     using KmerBinT = uint64_t;
 
     bool clipPolyA = !noClipPolyA;
+
+    // http://biology.stackexchange.com/questions/21329/whats-the-longest-transcript-known
+    // longest human transcript is Titin (108861), so this gives us a *lot* of leeway before
+    // we issue any warning.
+    size_t tooLong = 200000;
     size_t numDistinctKmers{0};
     size_t numKmers{0};
     size_t currIndex{0};
@@ -381,6 +388,8 @@ void indexTranscriptsSA(ParserT* parser,
                         auto newEndPos = readStr.find_last_not_of("Aa");
                         // If it was all As
                         if (newEndPos == std::string::npos) {
+			    log->warn("Entry with header [{}] appeared to be all A's; it will be removed from the index!",
+					    j->data[i].header);
                             readStr.resize(0);
                         } else {
                             readStr.resize(newEndPos + 1);
@@ -390,19 +399,31 @@ void indexTranscriptsSA(ParserT* parser,
                 }
 
                 readLen  = readStr.size();
-                uint32_t txpIndex = n++;
+		// If the transcript was completely removed during clipping, don't 
+		// include it in the index.
+		if (readStr.size() > 0 ) {
+		  // If we're suspicious the user has fed in a *genome* rather
+		  // than a transcriptome, say so here.
+		  if (readStr.size() >= tooLong) {
+		    log->warn("Entry with header [{}] was longer than {} nucleotides.  Are you certain that "
+			      "we are indexing a transcriptome and not a genome?", j->data[i].header, tooLong);
+		  }
+		  
 
-                // The name of the current transcript
-                auto& recHeader = j->data[i].header;
-                transcriptNames.emplace_back(recHeader.substr(0, recHeader.find_first_of(" \t")));
+		  uint32_t txpIndex = n++;
 
-                // The position at which this transcript starts
-                transcriptStarts.push_back(currIndex);
+		  // The name of the current transcript
+		  auto& recHeader = j->data[i].header;
+		  transcriptNames.emplace_back(recHeader.substr(0, recHeader.find_first_of(" \t")));
 
-                txpSeqStream << readStr;
-                txpSeqStream << '$';
-                currIndex += readLen + 1;
-                onePos.push_back(currIndex - 1);
+		  // The position at which this transcript starts
+		  transcriptStarts.push_back(currIndex);
+
+		  txpSeqStream << readStr;
+		  txpSeqStream << '$';
+		  currIndex += readLen + 1;
+		  onePos.push_back(currIndex - 1);
+		}
             }
             if (n % 10000 == 0) {
                 std::cerr << "\r\rcounted k-mers for " << n << " transcripts";
@@ -516,36 +537,6 @@ void indexTranscriptsSA(ParserT* parser,
         }
     }
 
-/*
-    std::vector<int> SA(tlen, 0);
-    std::ofstream saStream(outputDir + "sa.bin", std::ios::binary);
-    {
-        ScopedTimer timer;
-        std::cerr << "Building suffix array . . . ";
-        auto ret = sais(reinterpret_cast<unsigned char*>(
-                        const_cast<char*>(concatText.c_str())),
-                        SA.data(), tlen + 1);
-        if (ret == 0) {
-            std::cerr << "success\n";
-            {
-                ScopedTimer timer2;
-                std::cerr << "saving to disk . . . ";
-                cereal::BinaryOutputArchive saArchive(saStream);
-                saArchive(SA);
-		// don't actually need the LCP right now
-                // saArchive(LCP);
-                std::cerr << "done\n";
-            }
-        } else {
-            std::cerr << "FAILURE: return code from sais() was " << ret << "\n";
-	    std::exit(1);
-        }
-        std::cerr << "done\n";
-    }
-    saStream.close();
-    */
-
-
     std::string indexVersion = "q1";
     IndexHeader header(IndexType::QUASI, indexVersion, true, k, largeIndex);
     // Finally (since everything presumably succeeded) write the header
@@ -604,6 +595,13 @@ int rapMapSAIndex(int argc, char* argv[]) {
         rapmap::fs::MakeDir(indexDir.c_str());
     }
 
+    std::string logPath = indexDir + "quasi_index.log";
+    auto fileSink = std::make_shared<spdlog::sinks::simple_file_sink_st>(logPath);
+    auto consoleSink = std::make_shared<spdlog::sinks::stderr_sink_st>();
+    auto consoleLog = spdlog::create("stderrLog", {consoleSink});
+    auto fileLog = spdlog::create("fileLog", {fileSink});
+    auto jointLog = spdlog::create("jointLog", {fileSink, consoleSink});
+
     size_t maxReadGroup{1000}; // Number of reads in each "job"
     size_t concurrentFile{2}; // Number of files to read simultaneously
     size_t numThreads{2};
@@ -614,7 +612,7 @@ int rapMapSAIndex(int argc, char* argv[]) {
 
     bool noClipPolyA = noClip.getValue();
     std::mutex iomutex;
-    indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA, iomutex);
+    indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA, iomutex, jointLog);
     return 0;
 }
 
