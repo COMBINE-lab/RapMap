@@ -1,43 +1,84 @@
+#include "MPHMap.hpp"
 #include "RapMapSAIndex.hpp"
 #include <future>
 #include <thread>
 
+// These are **free** functions that are used for loading the 
+// appropriate type of hash.
 template <typename IndexT>
-RapMapSAIndex<IndexT>::RapMapSAIndex() {}
-
-// Given a position, p, in the concatenated text,
-// return the corresponding transcript
-template <typename IndexT>
-IndexT RapMapSAIndex<IndexT>::transcriptAtPosition(IndexT p) {
-    return rankDict->rank(p);
+bool loadHashFromIndex(const std::string& indexDir,
+                       google::dense_hash_map<uint64_t, 
+                       rapmap::utils::SAInterval<IndexT>, 
+                       rapmap::utils::KmerKeyHasher>& khash) {
+      khash.set_empty_key(std::numeric_limits<uint64_t>::max());
+      std::ifstream hashStream(indexDir + "hash.bin");
+      khash.unserialize(typename google::dense_hash_map<uint64_t,
+                      rapmap::utils::SAInterval<IndexT>,
+                      rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
+      return true;
 }
 
 template <typename IndexT>
-bool RapMapSAIndex<IndexT>::load(const std::string& indDir) {
+bool loadHashFromIndex(const std::string& indexDir,
+		       MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<IndexT>>> & h) {
+    h.load(indexDir);
+    return true;
+}
+
+template <typename IndexT, typename HashT>
+RapMapSAIndex<IndexT, HashT>::RapMapSAIndex() {}
+
+// Given a position, p, in the concatenated text,
+// return the corresponding transcript
+template <typename IndexT, typename HashT>
+IndexT RapMapSAIndex<IndexT, HashT>::transcriptAtPosition(IndexT p) {
+    return rankDict->rank(p);
+}
+
+template <typename IndexT, typename HashT>
+bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir, uint32_t idxK) {
 
     auto logger = spdlog::get("stderrLog");
     size_t n{0};
 
     // This part takes the longest, so do it in it's own asynchronous task
-    std::future<std::pair<bool, uint32_t>> loadingHash = std::async(std::launch::async, [this, logger, indDir]() -> std::pair<bool, uint32_t> {
-        this->khash.set_empty_key(std::numeric_limits<uint64_t>::max());
-        uint32_t k;
-        std::ifstream hashStream(indDir + "hash.bin");
-        {
-            logger->info("Loading Position Hash");
-            cereal::BinaryInputArchive hashArchive(hashStream);
-            hashArchive(k);
-            khash.unserialize(typename google::dense_hash_map<uint64_t,
-                    rapmap::utils::SAInterval<IndexT>,
-                    rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
+    std::future<bool> loadingHash = std::async(std::launch::async, [this, logger, indDir]() -> bool {
+	   if (loadHashFromIndex(indDir, khash)) {
+                logger->info("Successfully loaded position hash");
+                return true;
+            } else {
+                logger->error("Failed to load position hash!");
+                return false;
+            }
+	// If using a google dense hash
+        //this->khash.set_empty_key(std::numeric_limits<uint64_t>::max());
+        //uint32_t k = 31;
+        //std::ifstream hashStream(indDir + "hash.bin");
+        //{
 
+	  //logger->info("Loading Position Hash");
+            //khash.load(hashStream);
+            //cereal::BinaryInputArchive hashArchive(hashStream);
+            //hashArchive(k);
+            //khash.unserialize(typename google::dense_hash_map<uint64_t,
+            //        rapmap::utils::SAInterval<IndexT>,
+            //        rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
             //hashArchive(khash);
-        }
-        hashStream.close();
-        return std::make_pair(true, k);
+	   //}
+        //hashStream.close();
+        //std::cerr << "had " << khash.size() << " entries\n";
+        //return true;
     });
 
-
+    /*
+    std::ifstream intervalStream(indDir + "kintervals.bin");
+    {
+        logger->info("Loading k-mer intervals");
+        cereal::BinaryInputArchive intervalArchive(intervalStream);
+        intervalArchive(kintervals);
+    }
+    intervalStream.close();
+    */
 
     std::ifstream saStream(indDir + "sa.bin");
     {
@@ -98,17 +139,21 @@ bool RapMapSAIndex<IndexT>::load(const std::string& indDir) {
     logger->info("Waiting to finish loading hash");
     loadingHash.wait();
     auto hashLoadRes = loadingHash.get();
-    if (!hashLoadRes.first) {
+    if (!hashLoadRes) {
         logger->error("Failed to load hash!");
         std::exit(1);
     }
-    rapmap::utils::my_mer::k(hashLoadRes.second);
-
-
+    rapmap::utils::my_mer::k(idxK);
 
     logger->info("Done loading index");
     return true;
 }
 
-template class RapMapSAIndex<int32_t>;
-template class RapMapSAIndex<int64_t>;
+template class RapMapSAIndex<int32_t,  google::dense_hash_map<uint64_t,
+                      rapmap::utils::SAInterval<int32_t>,
+                      rapmap::utils::KmerKeyHasher>>;
+template class RapMapSAIndex<int64_t,  google::dense_hash_map<uint64_t,
+                      rapmap::utils::SAInterval<int64_t>,
+                      rapmap::utils::KmerKeyHasher>>;
+template class RapMapSAIndex<int32_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int32_t>>>>;
+template class RapMapSAIndex<int64_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int64_t>>>>;

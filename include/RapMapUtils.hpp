@@ -106,9 +106,37 @@ namespace rapmap {
                 : fmt::Writer(buffer_), buffer_(array, size) {}
     };
 
+    /**
+     * Stores both the key (k-mer)
+     * and the interval to which it corresponds.
+     * This is useful if the hash itself doesn't validate
+     * the key (e.g. a minimum perfect hash).
+     **/
+    template <typename IndexT>
+    struct SAIntervalWithKey {
+        uint64_t kmer;
+      //  SAInterval<IndexT> second;
+        IndexT begin;
+        IndexT end;
+        template <typename Archive>
+            void load(Archive& ar) { ar(kmer, begin, end); }
+
+        template <typename Archive>
+            void save(Archive& ar) const { ar(kmer, begin, end); }
+    };
 
     template <typename IndexT>
     struct SAInterval {
+      /*
+        SAInterval(IndexT beginIn, IndexT endIn) : begin(beginIn), end(endIn) {}
+	SAInterval(std::initializer_list<IndexT> il) {
+	  auto it = il.begin();
+	  begin = *(it);
+	  ++it;
+	  end = *(il.begin());
+	}
+	*/
+
         IndexT begin;
         IndexT end;
         template <typename Archive>

@@ -1,4 +1,5 @@
 set (RAPMAP_MAIN_SRCS
+    EMPHFCommon.cpp
     RapMap.cpp
     RapMapIndexer.cpp
     RapMapSAIndexer.cpp
@@ -9,6 +10,7 @@ set (RAPMAP_MAIN_SRCS
     RapMapSAIndex.cpp
     RapMapIndex.cpp
     HitManager.cpp
+    #sherwood_map.cpp
     rank9b.cpp
     intersection.cpp
     #bitmap.cpp
@@ -36,7 +38,7 @@ ${GAT_SOURCE_DIR}/include
 ${GAT_SOURCE_DIR}/external
 ${GAT_SOURCE_DIR}/external/cereal/include
 ${GAT_SOURCE_DIR}/external/install/include
-${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.3
+${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.3#${GAT_SOURCE_DIR}/external/install/include/emphf
 ${ZLIB_INCLUDE_DIR}
 ${CEREAL_INCLUDE_DIRS}
 #${Boost_INCLUDE_DIRS}

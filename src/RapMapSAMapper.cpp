@@ -46,7 +46,7 @@
 }
 */
 #include "stringpiece.h"
-
+#include "MPHMap.hpp"
 #include "PairSequenceParser.hpp"
 #include "PairAlignmentFormatter.hpp"
 #include "SingleAlignmentFormatter.hpp"
@@ -371,104 +371,23 @@ bool spawnProcessReadsThreads(
             return true;
         }
 
-int rapMapSAMap(int argc, char* argv[]) {
-    std::cerr << "RapMap Mapper (SA-based)\n";
-
-    std::string versionString = rapmap::version;
-    TCLAP::CmdLine cmd(
-            "RapMap Mapper",
-            ' ',
-            versionString);
-    cmd.getProgramName() = "rapmap";
-
-    TCLAP::ValueArg<std::string> index("i", "index", "The location where the index should be written", true, "", "path");
-    TCLAP::ValueArg<std::string> read1("1", "leftMates", "The location of the left paired-end reads", false, "", "path");
-    TCLAP::ValueArg<std::string> read2("2", "rightMates", "The location of the right paired-end reads", false, "", "path");
-    TCLAP::ValueArg<std::string> unmatedReads("r", "unmatedReads", "The location of single-end reads", false, "", "path");
-    TCLAP::ValueArg<uint32_t> numThreads("t", "numThreads", "Number of threads to use", false, 1, "positive integer");
-    TCLAP::ValueArg<uint32_t> maxNumHits("m", "maxNumHits", "Reads mapping to more than this many loci are discarded", false, 200, "positive integer");
-    TCLAP::ValueArg<std::string> outname("o", "output", "The output file (default: stdout)", false, "", "path");
-    TCLAP::SwitchArg noout("n", "noOutput", "Don't write out any alignments (for speed testing purposes)", false);
-    TCLAP::SwitchArg strict("s", "strictCheck", "Perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
-    TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
-    cmd.add(index);
-    cmd.add(noout);
-
-    cmd.add(read1);
-    cmd.add(read2);
-    cmd.add(unmatedReads);
-    cmd.add(outname);
-    cmd.add(numThreads);
-    cmd.add(maxNumHits);
-    cmd.add(strict);
-    cmd.add(fuzzy);
-
-    auto consoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
-    auto consoleLog = spdlog::create("stderrLog", {consoleSink});
-
-    try {
-
-	cmd.parse(argc, argv);
-	bool pairedEnd = (read1.isSet() or read2.isSet());
-	if (pairedEnd and (read1.isSet() != read2.isSet())) {
-	    consoleLog->error("You must set both the -1 and -2 arguments to align "
-		    "paired end reads!");
-	    std::exit(1);
-	}
-
-	if (pairedEnd and unmatedReads.isSet()) {
-	    consoleLog->error("You cannot specify both paired-end and unmated "
-		    "reads in the input!");
-	    std::exit(1);
-	}
-
-	if (!pairedEnd and !unmatedReads.isSet()) {
-	    consoleLog->error("You must specify input; either both paired-end "
-			      "or unmated reads!");
-	    std::exit(1);
-
-	}
-
-	std::string indexPrefix(index.getValue());
-	if (indexPrefix.back() != '/') {
-	    indexPrefix += "/";
-	}
-
-	if (!rapmap::fs::DirExists(indexPrefix.c_str())) {
-	    consoleLog->error("It looks like the index you provided [{}] "
-		    "doesn't exist", indexPrefix);
-	    std::exit(1);
-	}
-
-	IndexHeader h;
-	std::ifstream indexStream(indexPrefix + "header.json");
-	{
-		cereal::JSONInputArchive ar(indexStream);
-		ar(h);
-	}
-	indexStream.close();
-
-	if (h.indexType() != IndexType::QUASI) {
-	    consoleLog->error("The index {} does not appear to be of the "
-			    "appropriate type (quasi)", indexPrefix);
-	    std::exit(1);
-	}
-
-  std::unique_ptr<RapMapSAIndex<int32_t>> SAIdxPtr{nullptr};
-  std::unique_ptr<RapMapSAIndex<int64_t>> BigSAIdxPtr{nullptr};
-
-  if (h.bigSA()) {
-    std::cerr << "Loading 64-bit suffix array index: \n";
-    BigSAIdxPtr.reset(new RapMapSAIndex<int64_t>);
-	  BigSAIdxPtr->load(indexPrefix);
-  } else {
-    std::cerr << "Loading 32-bit suffix array index: \n";
-    SAIdxPtr.reset(new RapMapSAIndex<int32_t>);
-	  SAIdxPtr->load(indexPrefix);
-  }
-
+template <typename RapMapIndexT>
+bool mapReads(RapMapIndexT& rmi,
+	      std::shared_ptr<spdlog::logger> consoleLog,
+	      TCLAP::ValueArg<std::string>& index,
+	      TCLAP::ValueArg<std::string>& read1,
+	      TCLAP::ValueArg<std::string>& read2,
+	      TCLAP::ValueArg<std::string>& unmatedReads,
+	      TCLAP::ValueArg<uint32_t>& numThreads,
+	      TCLAP::ValueArg<uint32_t>& maxNumHits,
+	      TCLAP::ValueArg<std::string>& outname,
+	      TCLAP::SwitchArg& noout,
+	      TCLAP::SwitchArg& strict,
+	      TCLAP::SwitchArg& fuzzy) {
+  
 	std::cerr << "\n\n\n\n";
 
+	bool pairedEnd = (read1.isSet() or read2.isSet());
 	// from: http://stackoverflow.com/questions/366955/obtain-a-stdostream-either-from-stdcout-or-stdofstreamfile
 	// set either a file or cout as the output stream
 	std::streambuf* outBuf;
@@ -497,11 +416,7 @@ int rapMapSAMap(int argc, char* argv[]) {
 	std::unique_ptr<single_parser> singleParserPtr{nullptr};
 
 	if (!noout.getValue()) {
-    if (h.bigSA()) {
-      rapmap::utils::writeSAMHeader(*BigSAIdxPtr, outLog);
-    } else {
-      rapmap::utils::writeSAMHeader(*SAIdxPtr, outLog);
-    }
+	  rapmap::utils::writeSAMHeader(rmi, outLog);
 	}
 
     bool strictCheck = strict.getValue();
@@ -533,13 +448,8 @@ int rapMapSAMap(int argc, char* argv[]) {
                         concurrentFile,
                         pairFileList, pairFileList+numFiles));
 
-            if (h.bigSA()) {
-              spawnProcessReadsThreads(nthread, pairParserPtr.get(), *BigSAIdxPtr, iomutex,
-                outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, fuzzyIntersection);
-            } else {
-              spawnProcessReadsThreads(nthread, pairParserPtr.get(), *SAIdxPtr, iomutex,
-                outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, fuzzyIntersection);
-            }
+            spawnProcessReadsThreads(nthread, pairParserPtr.get(), rmi, iomutex,
+				     outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, fuzzyIntersection);
             delete [] pairFileList;
         } else {
             std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(unmatedReads.getValue(), ',');
@@ -553,13 +463,8 @@ int rapMapSAMap(int argc, char* argv[]) {
                         streams));
 
             /** Create the threads depending on the collector type **/
-            if (h.bigSA()) {
-              spawnProcessReadsThreads(nthread, singleParserPtr.get(), *BigSAIdxPtr, iomutex,
+            spawnProcessReadsThreads(nthread, singleParserPtr.get(), rmi, iomutex,
                                       outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck);
-            } else {
-              spawnProcessReadsThreads(nthread, singleParserPtr.get(), *SAIdxPtr, iomutex,
-                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck);
-            }
         }
 	std::cerr << "\n\n";
 
@@ -579,10 +484,142 @@ int rapMapSAMap(int argc, char* argv[]) {
 	if (haveOutputFile) {
 	    outFile.close();
 	}
-	return 0;
-    } catch (TCLAP::ArgException& e) {
-	consoleLog->error("Exception [{}] when parsing argument {}", e.error(), e.argId());
-	return 1;
+	return true;
+}
+	      
+
+int rapMapSAMap(int argc, char* argv[]) {
+  std::cerr << "RapMap Mapper (SA-based)\n";
+
+  std::string versionString = rapmap::version;
+  TCLAP::CmdLine cmd(
+		     "RapMap Mapper",
+		     ' ',
+		     versionString);
+  cmd.getProgramName() = "rapmap";
+
+  TCLAP::ValueArg<std::string> index("i", "index", "The location where the index should be written", true, "", "path");
+  TCLAP::ValueArg<std::string> read1("1", "leftMates", "The location of the left paired-end reads", false, "", "path");
+  TCLAP::ValueArg<std::string> read2("2", "rightMates", "The location of the right paired-end reads", false, "", "path");
+  TCLAP::ValueArg<std::string> unmatedReads("r", "unmatedReads", "The location of single-end reads", false, "", "path");
+  TCLAP::ValueArg<uint32_t> numThreads("t", "numThreads", "Number of threads to use", false, 1, "positive integer");
+  TCLAP::ValueArg<uint32_t> maxNumHits("m", "maxNumHits", "Reads mapping to more than this many loci are discarded", false, 200, "positive integer");
+  TCLAP::ValueArg<std::string> outname("o", "output", "The output file (default: stdout)", false, "", "path");
+  TCLAP::SwitchArg noout("n", "noOutput", "Don't write out any alignments (for speed testing purposes)", false);
+  TCLAP::SwitchArg strict("s", "strictCheck", "Perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
+  TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
+  cmd.add(index);
+  cmd.add(noout);
+
+  cmd.add(read1);
+  cmd.add(read2);
+  cmd.add(unmatedReads);
+  cmd.add(outname);
+  cmd.add(numThreads);
+  cmd.add(maxNumHits);
+  cmd.add(strict);
+  cmd.add(fuzzy);
+
+  auto consoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
+  auto consoleLog = spdlog::create("stderrLog", {consoleSink});
+
+  try {
+
+    cmd.parse(argc, argv);
+    bool pairedEnd = (read1.isSet() or read2.isSet());
+    if (pairedEnd and (read1.isSet() != read2.isSet())) {
+      consoleLog->error("You must set both the -1 and -2 arguments to align "
+			"paired end reads!");
+      std::exit(1);
     }
+
+    if (pairedEnd and unmatedReads.isSet()) {
+      consoleLog->error("You cannot specify both paired-end and unmated "
+			"reads in the input!");
+      std::exit(1);
+    }
+
+    if (!pairedEnd and !unmatedReads.isSet()) {
+      consoleLog->error("You must specify input; either both paired-end "
+			"or unmated reads!");
+      std::exit(1);
+
+    }
+
+    std::string indexPrefix(index.getValue());
+    if (indexPrefix.back() != '/') {
+      indexPrefix += "/";
+    }
+
+    if (!rapmap::fs::DirExists(indexPrefix.c_str())) {
+      consoleLog->error("It looks like the index you provided [{}] "
+			"doesn't exist", indexPrefix);
+      std::exit(1);
+    }
+
+    IndexHeader h;
+    std::ifstream indexStream(indexPrefix + "header.json");
+    {
+      cereal::JSONInputArchive ar(indexStream);
+      ar(h);
+    }
+    indexStream.close();
+
+    if (h.indexType() != IndexType::QUASI) {
+      consoleLog->error("The index {} does not appear to be of the "
+			"appropriate type (quasi)", indexPrefix);
+      std::exit(1);
+    }
+
+    //std::unique_ptr<RapMapSAIndex<int32_t>> SAIdxPtr{nullptr};
+    //std::unique_ptr<RapMapSAIndex<int64_t>> BigSAIdxPtr{nullptr};
+
+    bool success{false};
+    if (h.bigSA()) {
+      std::cerr << "Loading 64-bit suffix array index: \n";
+      //BigSAIdxPtr.reset(new RapMapSAIndex<int64_t>);
+      //BigSAIdxPtr->load(indexPrefix, h.kmerLen());
+      if (h.perfectHash()) {
+	RapMapSAIndex<int64_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int64_t>>>> rmi;
+	rmi.load(indexPrefix, h.kmerLen());
+	success = mapReads(rmi, consoleLog, index, read1, read2,
+			   unmatedReads, numThreads, maxNumHits,
+			   outname, noout, strict, fuzzy);
+      } else {
+	RapMapSAIndex<int64_t,
+		      google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int64_t>,
+					     rapmap::utils::KmerKeyHasher>> rmi;
+	rmi.load(indexPrefix, h.kmerLen());
+	success = mapReads(rmi, consoleLog, index, read1, read2,
+			   unmatedReads, numThreads, maxNumHits,
+			   outname, noout, strict, fuzzy);
+      }
+
+    } else {
+      std::cerr << "Loading 32-bit suffix array index: \n";
+      //SAIdxPtr.reset(new RapMapSAIndex<int32_t>);
+      //SAIdxPtr->load(indexPrefix, h.kmerLen());
+      if (h.perfectHash()) {
+	RapMapSAIndex<int32_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int32_t>>>> rmi;
+	rmi.load(indexPrefix, h.kmerLen());
+	success = mapReads(rmi, consoleLog, index, read1, read2,
+			   unmatedReads, numThreads, maxNumHits,
+			   outname, noout, strict, fuzzy);
+      } else {
+	RapMapSAIndex<int32_t,
+		      google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int32_t>,
+					     rapmap::utils::KmerKeyHasher>> rmi;
+	rmi.load(indexPrefix, h.kmerLen());
+	success = mapReads(rmi, consoleLog, index, read1, read2,
+			   unmatedReads, numThreads, maxNumHits,
+			   outname, noout, strict, fuzzy);
+      }
+    }
+
+    return success ? 0 : 1;
+  } catch (TCLAP::ArgException& e) {
+    consoleLog->error("Exception [{}] when parsing argument {}", e.error(), e.argId());
+    return 1;
+  }
 
 }

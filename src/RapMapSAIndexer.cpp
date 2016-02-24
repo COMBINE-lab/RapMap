@@ -1,7 +1,9 @@
 #include <iostream>
 #include <mutex>
 #include <vector>
+#include <algorithm>
 #include <random>
+#include <iterator>
 #include <unordered_map>
 #include <type_traits>
 #include <fstream>
@@ -14,11 +16,18 @@
 #include <cereal/types/unordered_map.hpp>
 #include <cereal/types/vector.hpp>
 #include <cereal/types/string.hpp>
+#include <cereal/types/utility.hpp>
 #include <cereal/archives/binary.hpp>
 #include <cereal/archives/json.hpp>
 
 #include "xxhash.h"
 //#include "btree/btree_map.h"
+#include "emphf/common.hpp"
+#include "emphf/mphf.hpp"
+#include "emphf/base_hash.hpp"
+#include "emphf/perfutils.hpp"
+#include "emphf/mmap_memory_model.hpp"
+#include "emphf/hypergraph_sorter_scan.hpp"
 
 #include "spdlog/spdlog.h"
 
@@ -100,6 +109,167 @@ bool buildSA(const std::string& outputDir,
     saStream.close();
     return success;
 }
+
+template <typename IndexT>
+struct SAIntervalWithKeyAdaptor {
+    emphf::byte_range_t operator()(const std::pair<uint64_t, rapmap::utils::SAInterval<IndexT>>& ival) const {
+        const uint8_t* buf = reinterpret_cast<uint8_t const*>(&(ival.first));
+        const uint8_t* end = buf + sizeof(uint64_t);
+        return emphf::byte_range_t(buf, end);
+    }
+};
+
+// From : http://stackoverflow.com/questions/838384/reorder-vector-using-a-vector-of-indices
+template< typename order_iterator, typename value_iterator >
+void reorder_destructive( order_iterator order_begin, order_iterator order_end, value_iterator v )  {
+    using value_t = typename std::iterator_traits< value_iterator >::value_type;
+    using index_t = typename std::iterator_traits< order_iterator >::value_type;
+    using diff_t = typename std::iterator_traits< order_iterator >::difference_type;
+
+    diff_t remaining = order_end - 1 - order_begin;
+    for ( index_t s = index_t(); remaining > 0; ++ s ) {
+    	index_t d = order_begin[s];
+    	if ( d == (diff_t) -1 ) continue;
+    	-- remaining;
+    	value_t temp = v[s];
+    	for ( index_t d2; d != s; d = d2 ) {
+            std::swap( temp, v[d] );
+            std::swap( order_begin[d], d2 = (diff_t) -1 );
+    		-- remaining;
+    	}
+    	v[s] = temp;
+    }
+}
+
+// IndexT is the index type.
+// int32_t for "small" suffix arrays
+// int64_t for "large" ones
+template <typename IndexT>
+bool buildPerfectHash(const std::string& outputDir,
+               std::string& concatText,
+               size_t tlen,
+               uint32_t k,
+               std::vector<IndexT>& SA
+              ) {
+  // Now, build the k-mer lookup table
+  std::vector<std::pair<uint64_t, rapmap::utils::SAInterval<IndexT>>> intervals;
+
+  // The start and stop of the current interval
+  IndexT start = 0, stop = 0;
+  // An iterator to the beginning of the text
+  auto textB = concatText.begin();
+  auto textE = concatText.end();
+  // The current k-mer as a string
+  rapmap::utils::my_mer mer;
+  bool currentValid{false};
+  std::string currentKmer;
+  std::string nextKmer;
+  while (stop < tlen) {
+      // Check if the string starting at the
+      // current position is valid (i.e. doesn't contain $)
+      // and is <= k bases from the end of the string
+      nextKmer = concatText.substr(SA[stop], k);
+      if (nextKmer.length() == k and
+          nextKmer.find_first_of('$') == std::string::npos) {
+          // If this is a new k-mer, then hash the current k-mer
+          if (nextKmer != currentKmer) {
+              if (currentKmer.length() == k and
+                  currentKmer.find_first_of('$') == std::string::npos) {
+                  mer = rapmap::utils::my_mer(currentKmer);
+                  auto bits = mer.get_bits(0, 2*k);
+                  intervals.push_back(std::make_pair<uint64_t, rapmap::utils::SAInterval<IndexT>>(std::move(bits), {start, stop}));
+              }
+              currentKmer = nextKmer;
+              start = stop;
+          }
+      } else {
+          // If this isn't a valid suffix (contains a $)
+          // If the previous interval was valid, put it
+          // in the hash.
+          if (currentKmer.length() == k and
+              currentKmer.find_first_of('$') == std::string::npos) {
+              mer = rapmap::utils::my_mer(currentKmer);
+              auto bits = mer.get_bits(0, 2*k);
+              intervals.push_back(std::make_pair<uint64_t, rapmap::utils::SAInterval<IndexT>>(std::move(bits), {start, stop}));
+          }
+          // The current interval is invalid and empty
+          currentKmer = nextKmer;
+          start = stop;
+      }
+      if (stop % 1000000 == 0) {
+          std::cerr << "\r\rprocessed " << stop << " positions";
+      }
+      // We always update the end position
+      ++stop;
+  }
+  if (start < tlen) {
+      if (currentKmer.length() == k and
+          currentKmer.find_first_of('$') != std::string::npos) {
+          mer = rapmap::utils::my_mer(currentKmer);
+          auto bits = mer.get_bits(0, 2*k);
+          intervals.push_back(std::make_pair<uint64_t, rapmap::utils::SAInterval<IndexT>>(std::move(bits), {start, stop}));
+      }
+  }
+
+  std::cerr << "\nthere are " << intervals.size() << " intervals of the selected depth\n";
+
+  std::cerr << "building perfect hash function\n";
+
+  // from
+  // https://github.com/ot/emphf/blob/a18574fa8252fd1c877fe4ffc4a39ed3751ce19d/compute_mphf_generic.hpp
+  using namespace emphf;
+  using HypergraphSorter32 = hypergraph_sorter_scan<uint32_t, mmap_memory_model>;
+  using HypergraphSorter64 = hypergraph_sorter_scan<uint64_t, mmap_memory_model>;
+
+  SAIntervalWithKeyAdaptor<IndexT> adaptor;
+  using mphf_t = mphf<jenkins64_hasher>;
+  mphf_t mphf;
+
+  size_t n = intervals.size();
+  size_t max_nodes = (size_t(std::ceil(double(n) * 1.23)) + 2) / 3 * 3;
+  if (max_nodes >= uint64_t(1) << 32) {
+      std::cerr << "Using 64-bit sorter" << std::endl;
+      HypergraphSorter64 sorter;
+      mphf_t(sorter, n, intervals, adaptor).swap(mphf);
+  } else {
+      std::cerr << "Using 32-bit sorter" << std::endl;
+      HypergraphSorter32 sorter;
+      mphf_t(sorter, n, intervals, adaptor).swap(mphf);
+  }
+
+  {
+      ScopedTimer timer;
+      std::cerr << "saving hash to disk . . . ";
+      std::ofstream os(outputDir + "hash.bin", std::ios::binary);
+      mphf.save(os);
+      std::cerr << "done\n";
+  }
+
+  // Now we have to re-arrange the interval array according to the
+  // results returned by the perfect hash function.
+  std::vector<IndexT> reorderIndices;
+  reorderIndices.reserve(intervals.size());
+  for (auto& i : intervals) {
+    reorderIndices.push_back(mphf.lookup(i, adaptor));
+  }
+
+  std::cerr << "re-ordering interval list to co-incide with perfect hash function values\n";
+  reorder_destructive(reorderIndices.begin(), reorderIndices.end(), intervals.begin());
+  std::cerr << "done re-ordering\n";
+
+  std::ofstream intervalStream(outputDir + "kintervals.bin", std::ios::binary);
+  {
+      ScopedTimer timer;
+      std::cerr << "dumping k-mer intervals to disk . . . ";
+      cereal::BinaryOutputArchive intervalArchive(intervalStream);
+      intervalArchive(intervals);
+      std::cerr << "done\n";
+  }
+  intervalStream.close();
+
+  return true;
+}
+
 
 bool buildSA(const std::string& outputDir,
              std::string& concatText,
@@ -297,7 +467,7 @@ bool buildHash(const std::string& outputDir,
       ScopedTimer timer;
       std::cerr << "saving hash to disk . . . ";
       cereal::BinaryOutputArchive hashArchive(hashStream);
-      hashArchive(k);
+      //hashArchive(k);
       khash.serialize(typename google::dense_hash_map<uint64_t,
                       rapmap::utils::SAInterval<IndexT>,
                       rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
@@ -315,6 +485,7 @@ template <typename ParserT>//, typename CoverageCalculator>
 void indexTranscriptsSA(ParserT* parser,
             		std::string& outputDir,
         		bool noClipPolyA,
+			bool usePerfectHash,
                     	std::mutex& iomutex,
 			std::shared_ptr<spdlog::logger> log) {
     // Seed with a real random value, if available
@@ -399,7 +570,7 @@ void indexTranscriptsSA(ParserT* parser,
                 }
 
                 readLen  = readStr.size();
-		// If the transcript was completely removed during clipping, don't 
+		// If the transcript was completely removed during clipping, don't
 		// include it in the index.
 		if (readStr.size() > 0 ) {
 		  // If we're suspicious the user has fed in a *genome* rather
@@ -408,7 +579,7 @@ void indexTranscriptsSA(ParserT* parser,
 		    log->warn("Entry with header [{}] was longer than {} nucleotides.  Are you certain that "
 			      "we are indexing a transcriptome and not a genome?", j->data[i].header, tooLong);
 		  }
-		  
+
 
 		  uint32_t txpIndex = n++;
 
@@ -514,7 +685,11 @@ void indexTranscriptsSA(ParserT* parser,
           std::exit(1);
         }
 
-        success = buildHash<IndexT>(outputDir, concatText, tlen, k, SA);
+	if (usePerfectHash) {
+	  success = buildPerfectHash<IndexT>(outputDir, concatText, tlen, k, SA);
+	} else {
+	  success = buildHash<IndexT>(outputDir, concatText, tlen, k, SA);
+	}
         if (!success) {
           std::cerr << "[fatal] Could not build the suffix interval hash!\n";
           std::exit(1);
@@ -530,7 +705,11 @@ void indexTranscriptsSA(ParserT* parser,
           std::exit(1);
         }
 
-        success = buildHash<IndexT>(outputDir, concatText, tlen, k, SA);
+	if (usePerfectHash) {
+	  success = buildPerfectHash<IndexT>(outputDir, concatText, tlen, k, SA);
+	} else {
+	  success = buildHash<IndexT>(outputDir, concatText, tlen, k, SA);
+	}
         if (!success) {
           std::cerr << "[fatal] Could not build the suffix interval hash!\n";
           std::exit(1);
@@ -538,7 +717,7 @@ void indexTranscriptsSA(ParserT* parser,
     }
 
     std::string indexVersion = "q1";
-    IndexHeader header(IndexType::QUASI, indexVersion, true, k, largeIndex);
+    IndexHeader header(IndexType::QUASI, indexVersion, true, k, largeIndex, usePerfectHash);
     // Finally (since everything presumably succeeded) write the header
     std::ofstream headerStream(outputDir + "header.json");
     {
@@ -559,10 +738,12 @@ int rapMapSAIndex(int argc, char* argv[]) {
     TCLAP::ValueArg<std::string> index("i", "index", "The location where the index should be written", true, "", "path");
     TCLAP::ValueArg<uint32_t> kval("k", "klen", "The length of k-mer to index", false, 31, "positive integer less than 32");
     TCLAP::SwitchArg  	      noClip("n", "noClip", "Don't clip poly-A tails from the ends of target sequences", false);
+    TCLAP::SwitchArg          perfectHash("p", "perfectHash", "Use a perfect hash instead of dense hash --- slows construction, but uses less memory", false);
     cmd.add(transcripts);
     cmd.add(index);
     cmd.add(kval);
     cmd.add(noClip);
+    cmd.add(perfectHash);
 
     cmd.parse(argc, argv);
 
@@ -611,8 +792,9 @@ int rapMapSAIndex(int argc, char* argv[]) {
                               concurrentFile, streams));
 
     bool noClipPolyA = noClip.getValue();
+    bool usePerfectHash = perfectHash.getValue();
     std::mutex iomutex;
-    indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA, iomutex, jointLog);
+    indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA, usePerfectHash, iomutex, jointLog);
     return 0;
 }
 

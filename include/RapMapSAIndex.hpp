@@ -15,6 +15,12 @@
 //#include "shared.h"
 #include "rank9b.h"
 
+#include "emphf/common.hpp"
+#include "emphf/mphf.hpp"
+#include "emphf/base_hash.hpp"
+#include "emphf/perfutils.hpp"
+#include "emphf/mmap_memory_model.hpp"
+#include "emphf/hypergraph_sorter_scan.hpp"
 
 #include <cstdio>
 #include <vector>
@@ -23,10 +29,11 @@
 #include <fstream>
 #include "RapMapUtils.hpp"
 
-template <typename IndexT>
+template <typename IndexT, typename HashT>
 class RapMapSAIndex {
     public:
     using IndexType = IndexT;
+    using HashType = HashT;
 
       struct BitArrayDeleter {
         void operator()(BIT_ARRAY* b) {
@@ -44,7 +51,7 @@ class RapMapSAIndex {
   	// return the corresponding transcript
   	IndexT transcriptAtPosition(IndexT p);
 
-    bool load(const std::string& indDir);
+    bool load(const std::string& indDir, uint32_t idxK);
 
     std::vector<IndexT> SA;
     //rsdic::RSDic rankDictSafe;
@@ -57,9 +64,16 @@ class RapMapSAIndex {
     std::vector<IndexT> txpOffsets;
     std::vector<IndexT> txpLens;
     std::vector<IndexT> positionIDs;
+    std::vector<rapmap::utils::SAIntervalWithKey<IndexT>> kintervals;
+    HashT khash;
+  //using mphf_t = emphf::mphf<emphf::jenkins64_hasher>;
+  //mphf_t khash;
+
+    /*
     google::dense_hash_map<uint64_t,
                         rapmap::utils::SAInterval<IndexT>,
                         rapmap::utils::KmerKeyHasher> khash;
+                        */
                        // ::NopointerSerializer(), &hashStream);
         /*
     std::unordered_map<uint64_t,

@@ -1,4 +1,5 @@
 #include "HitManager.hpp"
+#include "MPHMap.hpp"
 #include <type_traits>
 
 namespace rapmap {
@@ -647,20 +648,45 @@ namespace rapmap {
         /**
         * Need to explicitly instantiate the versions we use
         */
-        template
-        void intersectSAIntervalWithOutput<RapMapSAIndex<int32_t>>(SAIntervalHit<int32_t>& h,
-          RapMapSAIndex<int32_t>& rmi, uint32_t intervalCounter, SAHitMap& outHits);
+      using SAIndex32BitDense = RapMapSAIndex<int32_t,google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int32_t>,
+									     rapmap::utils::KmerKeyHasher>>;
+      using SAIndex64BitDense = RapMapSAIndex<int64_t,google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int64_t>,
+									     rapmap::utils::KmerKeyHasher>>;
+      using SAIndex32BitPerfect = RapMapSAIndex<int32_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int32_t>>>>;
+      using SAIndex64BitPerfect = RapMapSAIndex<int64_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int64_t>>>>;
 
         template
-        void intersectSAIntervalWithOutput<RapMapSAIndex<int64_t>>(SAIntervalHit<int64_t>& h,
-          RapMapSAIndex<int64_t>& rmi, uint32_t intervalCounter, SAHitMap& outHits);
+        void intersectSAIntervalWithOutput<SAIndex32BitDense>(SAIntervalHit<int32_t>& h,
+          SAIndex32BitDense& rmi, uint32_t intervalCounter, SAHitMap& outHits);
 
         template
-        SAHitMap intersectSAHits<RapMapSAIndex<int32_t>>(std::vector<SAIntervalHit<int32_t>>& inHits,
-          RapMapSAIndex<int32_t>& rmi);
+        void intersectSAIntervalWithOutput<SAIndex64BitDense>(SAIntervalHit<int64_t>& h,
+          SAIndex64BitDense& rmi, uint32_t intervalCounter, SAHitMap& outHits);
 
         template
-        SAHitMap intersectSAHits<RapMapSAIndex<int64_t>>(std::vector<SAIntervalHit<int64_t>>& inHits,
-          RapMapSAIndex<int64_t>& rmi);
+        SAHitMap intersectSAHits<SAIndex32BitDense>(std::vector<SAIntervalHit<int32_t>>& inHits,
+          SAIndex32BitDense& rmi);
+
+        template
+        SAHitMap intersectSAHits<SAIndex64BitDense>(std::vector<SAIntervalHit<int64_t>>& inHits,
+          SAIndex64BitDense& rmi);
+
+        template
+        void intersectSAIntervalWithOutput<SAIndex32BitPerfect>(SAIntervalHit<int32_t>& h,
+          SAIndex32BitPerfect& rmi, uint32_t intervalCounter, SAHitMap& outHits);
+
+        template
+        void intersectSAIntervalWithOutput<SAIndex64BitPerfect>(SAIntervalHit<int64_t>& h,
+          SAIndex64BitPerfect& rmi, uint32_t intervalCounter, SAHitMap& outHits);
+
+        template
+        SAHitMap intersectSAHits<SAIndex32BitPerfect>(std::vector<SAIntervalHit<int32_t>>& inHits,
+          SAIndex32BitPerfect& rmi);
+
+        template
+        SAHitMap intersectSAHits<SAIndex64BitPerfect>(std::vector<SAIntervalHit<int64_t>>& inHits,
+          SAIndex64BitPerfect& rmi);
+
+
     }
 }
