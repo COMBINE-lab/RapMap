@@ -33,18 +33,6 @@ namespace rapmap {
 		}
 
 
-
-        static constexpr int8_t rc_table[128] = {
-            78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 15
-            78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 31
-            78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 787
-            78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 63
-            78, 84, 78, 71, 78,  78,  78, 67, 78, 78, 78, 78,  78, 78, 78, 78, // 79
-            78, 78,  78, 78,  65, 65, 78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 95
-            78, 84, 78, 71, 78,  78,  78, 67, 78, 78, 78, 78,  78, 78, 78, 78, // 101
-            78, 78,  78, 78,  65, 65, 78, 78,  78, 78, 78, 78,  78, 78, 78, 78  // 127
-        };
-
         // Adapted from
         // https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library/blob/8c9933a1685e0ab50c7d8b7926c9068bc0c9d7d2/src/main.c#L36
         void reverseRead(std::string& seq,
@@ -133,20 +121,21 @@ namespace rapmap {
                         qstr = &(qualTemp);
                     }
 
-                   rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], cigarStr);
+                //rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], cigarStr);
 
                     sstream << readName.c_str() << '\t' // QNAME
                         << flags << '\t' // FLAGS
                         << transcriptName << '\t' // RNAME
                         << qa.pos + 1 << '\t' // POS (1-based)
                         << 255 << '\t' // MAPQ
-                        << cigarStr.c_str() << '\t' // CIGAR
+                        << qa.cigar << '\t' // CIGAR
                         << '*' << '\t' // MATE NAME
                         << 0 << '\t' // MATE POS
                         << qa.fragLen << '\t' // TLEN
                         << *readSeq << '\t' // SEQ
                         << *qstr << '\t' // QSTR
-                        << numHitFlag << '\n';
+                        << numHitFlag << '\t'
+                        << "AS:i:" << qa.score << '\n';
                     ++alnCtr;
                     // === SAM
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
@@ -240,7 +229,7 @@ namespace rapmap {
                         } else {
                             flags2 |= 0x900;
                         }
-                        rapmap::utils::adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
+                        //rapmap::utils::adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
 
                         // Reverse complement the read and reverse
                         // the quality string if we need to
@@ -273,26 +262,28 @@ namespace rapmap {
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
                                 << 1 << '\t' // MAPQ
-                                << cigarStr1.c_str() << '\t' // CIGAR
+                                << qa.cigar << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.matePos + 1 << '\t' // PNEXT
                                 << qa.fragLen << '\t' // TLEN
                                 << *readSeq1 << '\t' // SEQ
                                 << *qstr1 << '\t' // QUAL
-                                << numHitFlag << '\n';
+                                << numHitFlag << '\t'
+                                << "AS:i:" << qa.score << '\n';;
 
                         sstream << mateName.c_str() << '\t' // QNAME
                                 << flags2 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.matePos + 1 << '\t' // POS (1-based)
                                 << 1 << '\t' // MAPQ
-                                << cigarStr2.c_str() << '\t' // CIGAR
+                                << qa.mateCigar << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.pos + 1 << '\t' // PNEXT
                                 << qa.fragLen << '\t' // TLEN
                                 << *readSeq2 << '\t' // SEQ
                                 << *qstr2 << '\t' // QUAL
-                                << numHitFlag << '\n';
+                                << numHitFlag << '\t'
+                                << "AS:i:" << qa.mateScore << '\n';;
                     } else {
                         rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
@@ -319,7 +310,8 @@ namespace rapmap {
                         std::string* readTemp{nullptr};
                         std::string* qualTemp{nullptr};
 
-                        rapmap::utils::FixedWriter* cigarStr;
+                        //rapmap::utils::FixedWriter* cigarStr;
+                        std::string& cigar = qa.cigar;
                         if (qa.mateStatus == MateStatus::PAIRED_END_LEFT) { // left read
                             alignedName = &readName;
                             unalignedName = &mateName;
@@ -333,7 +325,7 @@ namespace rapmap {
                             flags = flags1;
                             unalignedFlags = flags2;
 
-                            cigarStr = &cigarStr1;
+                            //cigarStr = &cigarStr1;
 
                             haveRev = &haveRev1;
                             readTemp = &read1Temp;
@@ -351,7 +343,7 @@ namespace rapmap {
                             flags = flags2;
                             unalignedFlags = flags1;
 
-                            cigarStr = &cigarStr2;
+                            //cigarStr = &cigarStr2;
                             haveRev = &haveRev2;
                             readTemp = &read2Temp;
                             qualTemp = &qual2Temp;
@@ -376,13 +368,13 @@ namespace rapmap {
                         }
                         */
 
-                        rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
+                        //rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
                         sstream << alignedName->c_str() << '\t' // QNAME
                                 << flags << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
                                 << 1 << '\t' // MAPQ
-                                << cigarStr->c_str() << '\t' // CIGAR
+                                << qa.cigar << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.pos+1 << '\t' // PNEXT (only 1 read in templte)
                                 << 0 << '\t' // TLEN (spec says 0, not read len)
@@ -480,7 +472,7 @@ template uint32_t rapmap::utils::writeAlignmentsToStream<std::pair<header_sequen
                 fmt::MemoryWriter& sstream
                 );
 
-  template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_sequence_qual, RapMapSAIndex<int32_t>*>(
+template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_sequence_qual, RapMapSAIndex<int32_t>*>(
                 jellyfish::header_sequence_qual& r,
                 SingleAlignmentFormatter<RapMapSAIndex<int32_t>*>& formatter,
                 rapmap::utils::HitCounters& hctr,

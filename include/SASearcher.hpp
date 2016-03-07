@@ -15,7 +15,7 @@ class SASearcher {
         using OffsetT = typename RapMapIndexT::IndexType;
 
         SASearcher(RapMapIndexT* rmi) :
-            rmi_(rmi), seq_(&rmi->seq), sa_(&rmi->SA) {}
+            rmi_(rmi), seq_(&rmi->seq), sa_(&rmi->SA), textLen_(rmi->seq.length()) {}
 
         int cmp(std::string::iterator abeg,
                 std::string::iterator aend,

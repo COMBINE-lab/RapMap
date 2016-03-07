@@ -41,10 +41,8 @@
 
 #include "tclap/CmdLine.h"
 
-/*extern "C" {
-#include "kseq.h"
-}
-*/
+#include <RapMapAligner.hpp>
+
 #include "stringpiece.h"
 
 #include "PairSequenceParser.hpp"
@@ -61,6 +59,7 @@
 #include "SACollector.hpp"
 
 //#define __TRACK_CORRECT__
+//#define CIGAR_VERIFY 1
 
 using paired_parser = pair_sequence_parser<char**>;
 using stream_manager = jellyfish::stream_manager<std::vector<std::string>::const_iterator>;
@@ -90,6 +89,225 @@ using ProcessedHit = rapmap::utils::ProcessedHit;
 using QuasiAlignment = rapmap::utils::QuasiAlignment;
 using FixedWriter = rapmap::utils::FixedWriter;
 
+// This assumes the readLength < transcriptLength
+template <typename RapMapIndexT>
+inline int alignHit(RapMapIndexT& rmi,
+                    RapMapAligner& beforeAligner,
+                    RapMapAligner& afterAligner,
+                    std::string& read,
+                    uint32_t tid,
+                    int32_t& pos,
+                    uint32_t queryPos,
+                    uint32_t matchLen,
+                    std::string& cigar,
+                    bool align) {
+    auto readLen = read.length();
+    CigarString cigarString;
+    auto extraAlignFactor = 2;
+    int score = 0;
+
+    //     txpHitStart
+    //       |txpStart                   txpHitEnd             txpEnd
+    //       |   |txpMatchStart  txpMatchEnd |                    |
+    //       v   v    v               v      v                    v
+    // ----------|----================----------------------------|---------|
+    //       |---|----================|------|
+    //                ^               ^
+    //            matchStart       matchEnd
+
+    // Get copy of transcript
+    int64_t matchStart = queryPos;
+    int64_t matchEnd = matchStart + matchLen;
+    int64_t txpLen = rmi.txpLens[tid];
+    int64_t txpStart = rmi.txpOffsets[tid];
+    int64_t txpEnd = txpStart + txpLen;
+    int64_t txpHitStart = txpStart + pos;
+    int64_t txpHitEnd = txpHitStart + readLen;
+    int64_t txpMatchStart = txpHitStart + matchStart;
+    int64_t txpMatchEnd = txpHitStart + matchEnd;
+
+    // If the read is over hanging before/after the transcript
+    int64_t clipBefore = std::max(0, -pos);
+    int64_t clipAfter = std::max(0L, txpHitEnd - txpEnd);
+    int64_t alignBeforeLen = std::max(0L, matchStart - clipBefore);
+    int64_t txpAlignBeforeStart = txpMatchStart - alignBeforeLen;
+    int64_t readAlignBeforeStart = matchStart - alignBeforeLen;
+    int64_t alignAfterLen = std::max(0L, txpHitEnd - clipAfter - txpMatchEnd);
+    int64_t txpAlignAfterStart = txpMatchEnd;
+    int64_t readAlignAfterStart = matchEnd;
+
+    // Assumptions
+    assert(txpMatchEnd <= txpEnd);
+    assert(txpMatchStart >= txpStart);
+
+    if (clipAfter > 0) {
+        cigarString.emplace_front(CigarOp::S, clipAfter);
+    }
+
+    if (alignAfterLen > 0) {
+        // align after with some extra space for aligning to transcript
+        int64_t extraLen = std::min(extraAlignFactor * alignAfterLen, txpEnd - txpAlignAfterStart);
+        // Align with *free end gaps* in the transcript
+        if (align) {
+            score += afterAligner.align(rmi.seq, txpAlignAfterStart, extraLen + alignAfterLen,
+                                        read, readAlignAfterStart, alignAfterLen,
+                                        cigarString);
+        } else {
+            cigarString.emplace_front(CigarOp::M, alignAfterLen);
+            score += alignAfterLen;
+        }
+    }
+
+    // align match
+    score += matchLen * beforeAligner.match;
+    cigarString.emplace_front(CigarOp::EQ, matchLen);
+
+    if (alignBeforeLen > 0) {
+        // align before with some extra space for aligning to transcript
+        int64_t extraLen = std::min(extraAlignFactor * alignBeforeLen, txpAlignBeforeStart - txpStart);
+        int64_t txpExtraStart = txpAlignBeforeStart - extraLen;
+        // Align with *free begin gaps* in the transcript
+        if (align) {
+            score += beforeAligner.align(rmi.seq, txpExtraStart, extraLen + alignBeforeLen,
+                                         read, readAlignBeforeStart, alignBeforeLen,
+                                         cigarString);
+        } else {
+            cigarString.emplace_front(CigarOp::M, alignBeforeLen);
+            score += alignBeforeLen;
+        }
+
+    }
+
+    // Clip *before* the match
+    if (clipBefore > 0) {
+        cigarString.emplace_front(CigarOp::S, clipBefore);
+    }
+    cigarString.toString(cigar);
+
+    //Verify CIGAR
+#ifdef CIGAR_VERIFY
+
+    std::string tempTxp = rmi.seq.substr(txpMatchStart); //do something here
+    int txpIndex = 0;
+    std::string tempRead = read;
+    int readIndex = 0;
+    std::string reconstructedTxp;
+
+    //clip before
+    CigarElement f = cigarString.cigar.front();
+    if(f.op==CigarOp::S){
+    	//std::cout << "F: "<< (char)(f.op) << ":" << f.count << std::endl;
+    	reconstructedTxp+=tempRead.substr(readIndex,f.count);
+    	readIndex+=f.count;
+    }
+
+    for(CigarElement c: cigarString.cigar){
+    	int len = c.count;
+    	if(c.op==CigarOp::EQ){ //sequence match
+    		reconstructedTxp+=tempRead.substr(readIndex,len);
+    		readIndex+=len;
+    		txpIndex+=len;
+    	} else if(c.op==CigarOp::X){ //sequence mismatch
+    		reconstructedTxp+=tempRead.substr(readIndex,len);
+    		readIndex+=len;
+    		txpIndex+=len;
+    	} else if(c.op==CigarOp::I){ // insertion into the reference
+    		reconstructedTxp+=tempRead.substr(readIndex,len);
+    		readIndex+=len;
+    	} else if(c.op==CigarOp::D){ //deletion from the reference
+    		txpIndex+=len;
+    	} else {
+    		continue;
+    	}
+    }
+
+    //clip after
+    CigarElement b = cigarString.cigar.back();
+    if(b.op==CigarOp::S){
+        reconstructedTxp+=tempRead.substr(readIndex,b.count);
+        readIndex+=b.count;
+    }
+
+    tempRead = read.substr(matchStart,matchLen);
+    if(reconstructedTxp!=read){
+    	std::cout << reconstructedTxp << "\n" << read << std::endl;
+    	std::cout << rmi.seq.substr(txpMatchStart,readLen) << std::endl;
+    	std::cout << matchStart << "\t" << matchEnd << "\t" << txpLen << "\t" << txpStart << "\t" << txpEnd << "\t" << txpHitStart << "\t" << txpHitEnd << "\t" << txpMatchStart << "\t" << txpMatchEnd << std::endl;
+    } else {
+    	std::cout << ".";
+    }
+
+    assert(reconstructedTxp==read);
+#endif
+
+
+    return score;
+}
+
+template <typename RapMapIndexT>
+void alignSingleAll(RapMapIndexT& rmi,
+                    RapMapAligner& beforeAligner,
+                    RapMapAligner& afterAligner,
+                    std::string& fwdRead,
+                    std::vector<rapmap::utils::QuasiAlignment>& hits,
+                    bool align) {
+    int64_t readLen = fwdRead.length();
+    std::string revRead;
+    for (int64_t i = readLen - 1; i >= 0; --i) {
+        revRead += static_cast<char>(rapmap::utils::rc_table[(int8_t) fwdRead[i]]);
+    }
+    for (auto& qa : hits) {
+        // Forward or reverse?
+        std::string& read = qa.fwd ? fwdRead : revRead;
+        qa.score = alignHit(rmi, beforeAligner, afterAligner, read, qa.tid,
+                            qa.pos, qa.queryPos, qa.matchLen, qa.cigar, align);
+    }
+}
+
+template <typename RapMapIndexT>
+void alignPairedAll(RapMapIndexT& rmi,
+                    RapMapAligner& beforeAligner,
+                    RapMapAligner& afterAligner,
+                    std::string& fwdLeftRead,
+                    std::string& fwdRightRead,
+                    std::vector<rapmap::utils::QuasiAlignment>& hits,
+                    bool align) {
+    std::string revLeftRead, revRightRead;
+    for (int64_t i = fwdLeftRead.length() - 1; i >= 0; --i) {
+        revLeftRead += static_cast<char>(rapmap::utils::rc_table[(int8_t) fwdLeftRead[i]]);
+    }
+    for (int64_t i = fwdRightRead.length() - 1; i >= 0; --i) {
+        revRightRead += static_cast<char>(rapmap::utils::rc_table[(int8_t) fwdRightRead[i]]);
+    }
+    for (auto& qa : hits) {
+        // Forward or reverse?
+        std::string& leftRead = qa.fwd ? fwdLeftRead : revLeftRead;
+        std::string& rightRead = qa.mateIsFwd ? fwdRightRead : revRightRead;
+        switch (qa.mateStatus) {
+            case MateStatus::PAIRED_END_PAIRED:
+                qa.score = alignHit(rmi, beforeAligner, afterAligner,
+                                    leftRead, qa.tid, qa.pos, qa.queryPos,
+                                    qa.matchLen, qa.cigar, align);
+                qa.mateScore = alignHit(rmi, beforeAligner, afterAligner,
+                                        rightRead, qa.tid, qa.matePos,
+                                        qa.mateQueryPos, qa.mateMatchLen,
+                                        qa.mateCigar, align);
+                break;
+            case MateStatus::PAIRED_END_LEFT:
+                qa.score = alignHit(rmi, beforeAligner, afterAligner,
+                                    leftRead, qa.tid, qa.pos, qa.queryPos,
+                                    qa.matchLen, qa.cigar, align);
+                break;
+            case MateStatus::PAIRED_END_RIGHT:
+                qa.score = alignHit(rmi, beforeAligner, afterAligner,
+                                    rightRead, qa.tid, qa.pos, qa.queryPos,
+                                    qa.matchLen, qa.cigar, align);
+                break;
+            default:
+                break;
+        }
+    }
+}
 
 
 template <typename RapMapIndexT, typename CollectorT, typename MutexT>
@@ -101,7 +319,8 @@ void processReadsSingleSA(single_parser * parser,
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput,
-        bool strictCheck) {
+        bool strictCheck,
+        bool doAlign) {
 
     using OffsetT = typename RapMapIndexT::IndexType;
     auto& txpNames = rmi.txpNames;
@@ -124,11 +343,15 @@ void processReadsSingleSA(single_parser * parser,
     SASearcher<RapMapIndexT> saSearcher(&rmi);
 
     uint32_t orphanStatus{0};
+
+    RapMapAligner beforeAligner(true, false);
+    RapMapAligner afterAligner(false, true);
+
     while(true) {
         typename single_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
         if(j.is_empty()) break;                 // If we got nothing, then quit.
         for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
-            readLen = j->data[i].seq.length();
+            //readLen = j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
             hitCollector(j->data[i].seq, hits, saSearcher, MateStatus::SINGLE_END, strictCheck);
@@ -142,10 +365,12 @@ void processReadsSingleSA(single_parser * parser,
                                 return a.tid < b.tid;
                             });
                 */
+            alignSingleAll(rmi, beforeAligner, afterAligner, j->data[i].seq, hits, doAlign);
+            if (!noOutput) {
                 rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,
                                                        hctr, hits, sstream);
             }
-
+        }
             if (hctr.numReads > hctr.lastPrint + 1000000) {
         		hctr.lastPrint.store(hctr.numReads.load());
                 if (iomutex->try_lock()){
@@ -159,6 +384,8 @@ void processReadsSingleSA(single_parser * parser,
                     std::cerr << "saw " << hctr.numReads << " reads\n";
                     std::cerr << "# hits per read = "
                         << hctr.totHits / static_cast<float>(hctr.numReads) << "\n";
+                    std::cerr << "# matches per hit = "
+                        << hctr.totMatchLens / static_cast<float>(hctr.totHits) << "\n";
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                     std::cerr << "The true hit was in the returned set of hits "
                         << 100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads))
@@ -204,7 +431,8 @@ void processReadsPairSA(paired_parser* parser,
         uint32_t maxNumHits,
         bool noOutput,
         bool strictCheck,
-        bool nonStrictMerge) {
+        bool nonStrictMerge,
+        bool doAlign) {
 
     using OffsetT = typename RapMapIndexT::IndexType;
 
@@ -231,6 +459,9 @@ void processReadsPairSA(paired_parser* parser,
     SASearcher<RapMapIndexT> saSearcher(&rmi);
 
     uint32_t orphanStatus{0};
+    RapMapAligner beforeAligner(true, false);
+    RapMapAligner afterAligner(false, true);
+
     while(true) {
         typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
         if(j.is_empty()) break;                 // If we got nothing, quit
@@ -263,10 +494,17 @@ void processReadsPairSA(paired_parser* parser,
                         readLen, maxNumHits, tooManyHits, hctr);
             }
 
+            for (auto& h : jointHits) {
+                hctr.totMatchLens += h.matchLen;
+            }
             // If we have reads to output, and we're writing output.
             if (jointHits.size() > 0 and !noOutput and jointHits.size() <= maxNumHits) {
-                rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,
-                                                       hctr, jointHits, sstream);
+                alignPairedAll(rmi, beforeAligner, afterAligner,
+                               j->data[i].first.seq, j->data[i].second.seq, jointHits, doAlign);
+                if (!noOutput) {
+                    rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,
+                                                           hctr, jointHits, sstream);
+                }
             }
 
             if (hctr.numReads > hctr.lastPrint + 1000000) {
@@ -277,7 +515,9 @@ void processReadsPairSA(paired_parser* parser,
                     }
                     std::cerr << "saw " << hctr.numReads << " reads : "
                               << "pe / read = " << hctr.peHits / static_cast<float>(hctr.numReads)
-                              << " : se / read = " << hctr.seHits / static_cast<float>(hctr.numReads) << ' ';
+                              << " : se / read = " << hctr.seHits / static_cast<float>(hctr.numReads) << " "
+                              << " : matches / hit = "
+                              << hctr.totMatchLens / static_cast<float>(hctr.peHits + hctr.seHits) << " ";
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                     std::cerr << ": true hit \% = "
                         << (100.0 * (hctr.trueHits / static_cast<float>(hctr.numReads)));
@@ -319,7 +559,8 @@ bool spawnProcessReadsThreads(
         uint32_t maxNumHits,
         bool noOutput,
         bool strictCheck,
-        bool fuzzy) {
+        bool fuzzy,
+        bool align) {
 
             std::vector<std::thread> threads;
             SACollector<RapMapIndexT> saCollector(&rmi);
@@ -334,7 +575,8 @@ bool spawnProcessReadsThreads(
                         maxNumHits,
                         noOutput,
                         strictCheck,
-                        fuzzy);
+                        fuzzy,
+                        align);
             }
 
             for (auto& t : threads) { t.join(); }
@@ -351,7 +593,8 @@ bool spawnProcessReadsThreads(
         HitCounters& hctr,
         uint32_t maxNumHits,
         bool noOutput,
-        bool strictCheck) {
+        bool strictCheck,
+        bool align) {
 
             std::vector<std::thread> threads;
             SACollector<RapMapIndexT> saCollector(&rmi);
@@ -365,7 +608,8 @@ bool spawnProcessReadsThreads(
                         std::ref(hctr),
                         maxNumHits,
                         noOutput,
-                        strictCheck);
+                        strictCheck,
+                        align);
             }
             for (auto& t : threads) { t.join(); }
             return true;
@@ -391,6 +635,7 @@ int rapMapSAMap(int argc, char* argv[]) {
     TCLAP::SwitchArg noout("n", "noOutput", "Don't write out any alignments (for speed testing purposes)", false);
     TCLAP::SwitchArg strict("s", "strictCheck", "Perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
     TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
+    TCLAP::SwitchArg align("a", "align", "Compute the optimal alignments (CIGAR) for each mapping position", false);
     cmd.add(index);
     cmd.add(noout);
 
@@ -402,6 +647,7 @@ int rapMapSAMap(int argc, char* argv[]) {
     cmd.add(maxNumHits);
     cmd.add(strict);
     cmd.add(fuzzy);
+    cmd.add(align);
 
     auto consoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
     auto consoleLog = spdlog::create("stderrLog", {consoleSink});
@@ -507,7 +753,6 @@ int rapMapSAMap(int argc, char* argv[]) {
     bool strictCheck = strict.getValue();
     bool fuzzyIntersection = fuzzy.getValue();
 	SpinLockT iomutex;
-	{
 	    ScopedTimer timer;
 	    HitCounters hctrs;
 	    consoleLog->info("mapping reads . . . \n\n\n");
@@ -535,11 +780,12 @@ int rapMapSAMap(int argc, char* argv[]) {
 
             if (h.bigSA()) {
               spawnProcessReadsThreads(nthread, pairParserPtr.get(), *BigSAIdxPtr, iomutex,
-                outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, fuzzyIntersection);
+                outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, fuzzyIntersection, align.getValue());
             } else {
               spawnProcessReadsThreads(nthread, pairParserPtr.get(), *SAIdxPtr, iomutex,
-                outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, fuzzyIntersection);
+                outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, fuzzyIntersection, align.getValue());
             }
+            hctrs.totHits += hctrs.peHits + hctrs.seHits;
             delete [] pairFileList;
         } else {
             std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(unmatedReads.getValue(), ',');
@@ -555,10 +801,10 @@ int rapMapSAMap(int argc, char* argv[]) {
             /** Create the threads depending on the collector type **/
             if (h.bigSA()) {
               spawnProcessReadsThreads(nthread, singleParserPtr.get(), *BigSAIdxPtr, iomutex,
-                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck);
+                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, align.getValue());
             } else {
               spawnProcessReadsThreads(nthread, singleParserPtr.get(), *SAIdxPtr, iomutex,
-                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck);
+                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, align.getValue());
             }
         }
 	std::cerr << "\n\n";
@@ -574,7 +820,6 @@ int rapMapSAMap(int argc, char* argv[]) {
 		    hctrs.tooManyHits, maxNumHits.getValue());
 		    */
 
-	}
 
 	if (haveOutputFile) {
 	    outFile.close();

@@ -99,7 +99,7 @@ class SACollector {
             // And make sure that it's valid (contains no Ns).
             auto pos = std::distance(readStartIt, rb);
             auto invalidPos = read.find_first_of("nN", pos);
-            if (invalidPos <= pos + k) {
+            if (invalidPos < pos + k) {
                 rb = read.begin() + invalidPos + 1;
                 re = rb + k;
                 continue;
@@ -162,7 +162,7 @@ class SACollector {
             if (rcMerIt != khash.end()) {
                 lbLeftRC = rcMerIt->second.begin;
                 ubLeftRC = rcMerIt->second.end;
-                OffsetT diff = ubLeftRC - lbLeftRC;
+
                 if (ubLeftRC > lbLeftRC) {
                     // The original k-mer didn't match in the foward direction
                     if (!fwdHit) {
@@ -315,6 +315,7 @@ class SACollector {
         if (rcHit >= fwdHit) {
             size_t pos{read.length() - k};
 
+            auto revReadStartIt = read.rend();
             auto revReadEndIt = read.rend();
 
             auto revRB = read.rbegin();
@@ -478,7 +479,7 @@ class SACollector {
                         // the offset into this transcript
                         auto pos = globalPos - txpStarts[txpID];
                         int32_t hitPos = pos - saIntervalHit.queryPos;
-                        hits.emplace_back(txpID, hitPos, true, readLen);
+                        hits.emplace_back(txpID, hitPos, true, readLen, saIntervalHit.len, saIntervalHit.queryPos);
                         hits.back().mateStatus = mateStatus;
                 }
                 // Now sort by transcript ID (then position) and eliminate
@@ -515,7 +516,7 @@ class SACollector {
                 // the offset into this transcript
                 auto pos = globalPos - txpStarts[txpID];
                 int32_t hitPos = pos - saIntervalHit.queryPos;
-                hits.emplace_back(txpID, hitPos, false, readLen);
+                hits.emplace_back(txpID, hitPos, false, readLen, saIntervalHit.len, saIntervalHit.queryPos);
                 hits.back().mateStatus = mateStatus;
             }
             // Now sort by transcript ID (then position) and eliminate

@@ -127,6 +127,7 @@ namespace rapmap {
         std::atomic<uint64_t> numReads{0};
         std::atomic<uint64_t> tooManyHits{0};
         std::atomic<uint64_t> lastPrint{0};
+        std::atomic<uint64_t> totMatchLens{0};
     };
 
     class JFMerKeyHasher{
@@ -241,6 +242,8 @@ namespace rapmap {
   	QuasiAlignment() :
 		tid(std::numeric_limits<uint32_t>::max()),
 		pos(std::numeric_limits<int32_t>::max()),
+		matchLen(0),
+		queryPos(0),
 		fwd(true),
 		readLen(std::numeric_limits<uint32_t>::max()),
 		fragLen(std::numeric_limits<uint32_t>::max()),
@@ -252,9 +255,11 @@ namespace rapmap {
 
         QuasiAlignment(uint32_t tidIn, int32_t posIn,
                 bool fwdIn, uint32_t readLenIn,
+                uint32_t matchLenIn = 9999, uint32_t queryPosIn = 9999,
                 uint32_t fragLenIn = 0,
                 bool isPairedIn = false) :
             tid(tidIn), pos(posIn), fwd(fwdIn),
+            matchLen(matchLenIn), queryPos(queryPosIn),
             readLen(readLenIn), fragLen(fragLenIn),
             isPaired(isPairedIn)
 #ifdef RAPMAP_SALMON_SUPPORT
@@ -300,6 +305,14 @@ namespace rapmap {
         // Is this a paired *alignment* or not
         bool isPaired;
         MateStatus mateStatus;
+
+        //Aligner
+        uint32_t matchLen, mateMatchLen;
+        uint32_t queryPos, mateQueryPos;
+        // Alignment scores
+        int score, mateScore;
+        // CIGAR strings
+        std::string cigar, mateCigar;
     };
 
     struct HitInfo {
@@ -326,19 +339,19 @@ namespace rapmap {
     };
 
     struct SATxpQueryPos {
-	SATxpQueryPos(uint32_t posIn, uint32_t qposIn, bool queryRCIn, bool activeIn = false) :
-		pos(posIn), queryPos(qposIn), queryRC(queryRCIn), active(activeIn) {}
-	uint32_t pos, queryPos;
+	SATxpQueryPos(uint32_t posIn, uint32_t lenIn, uint32_t qposIn, bool queryRCIn, bool activeIn = false) :
+		pos(posIn), len(lenIn), queryPos(qposIn), queryRC(queryRCIn), active(activeIn) {}
+	uint32_t pos, len, 	queryPos;
 	bool queryRC, active;
     };
 
     struct ProcessedSAHit {
 	    ProcessedSAHit() : tid(std::numeric_limits<uint32_t>::max()), active(false), numActive(1) {}
 
-	    ProcessedSAHit(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t queryPosIn, bool queryRCIn) :
+	    ProcessedSAHit(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t lenIn, uint32_t queryPosIn, bool queryRCIn) :
 		    tid(txpIDIn), active(false), numActive(1)
 	    {
-		tqvec.emplace_back(txpPosIn, queryPosIn, queryRCIn);
+		tqvec.emplace_back(txpPosIn, lenIn, queryPosIn, queryRCIn);
 	    }
 
 	    uint32_t tid;
@@ -542,7 +555,23 @@ namespace rapmap {
             flags2 |= isRead2;
         }
 
-	// Adapted from
+        //Aligner
+        static constexpr int8_t rc_table[128] = {
+                            78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, // 15
+                            78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, // 31
+                            78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, // 47
+                            78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, // 63
+                            78, 84, 78, 71, 78, 78, 78, 67, 78, 78, 78, 78, 78, 78, 78, 78, // 79
+                            78, 78, 78, 78, 65, 65, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78, // 95
+                            78, 84, 78, 71, 78, 78, 78, 67, 78, 78, 78, 78, 78, 78, 78, 78, // 101
+                            78, 78, 78, 78, 65, 65, 78, 78, 78, 78, 78, 78, 78, 78, 78, 78  // 127
+        };
+
+        inline bool matches(char a, char b) {
+            return rc_table[(int8_t)a] == rc_table[(int8_t)b];
+        }
+
+    	// Adapted from
         // https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library/blob/8c9933a1685e0ab50c7d8b7926c9068bc0c9d7d2/src/main.c#L36
         void reverseRead(std::string& seq,
                 std::string& qual,
@@ -575,7 +604,7 @@ namespace rapmap {
                 uint32_t maxNumHits,
                 bool& tooManyHits,
                 HitCounters& hctr) {
-
+        	std::cout << "mergeLeftRightHitsFuzzy \n";
             if (leftHits.empty()) {
                 if (!leftMatches) {
                     if (!rightHits.empty()) {
@@ -611,23 +640,30 @@ namespace rapmap {
                         if (leftTxp < rightTxp) {
                             ++leftIt;
                         } else {
-                            if (!(rightTxp < leftTxp)) {
+                            if (rightTxp == leftTxp) {
                                 int32_t startRead1 = leftIt->pos;
                                 int32_t startRead2 = rightIt->pos;
                                 int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
                                 int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
                                 uint32_t fragLen = fragEndPos - fragStartPos;
+
+                                std::cout << " mergeLeftRightHits: leftIt->matchLen" << leftIt->matchLen << std::endl;
+
                                 jointHits.emplace_back(leftTxp,
                                         startRead1,
                                         leftIt->fwd,
                                         leftIt->readLen,
+                                        leftIt->matchLen,
+                                        leftIt->queryPos,
                                         fragLen, true);
                                 // Fill in the mate info
                                 auto& qaln = jointHits.back();
                                 qaln.mateLen = rightIt->readLen;
                                 qaln.matePos = startRead2;
                                 qaln.mateIsFwd = rightIt->fwd;
-                                jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
+                                qaln.mateMatchLen = rightIt->matchLen;
+                                qaln.mateQueryPos = rightIt->queryPos;
+                              jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
 
                                 ++numHits;
                                 if (numHits > maxNumHits) { tooManyHits = true; break; }
@@ -672,22 +708,27 @@ namespace rapmap {
                         if (leftTxp < rightTxp) {
                             ++leftIt;
                         } else {
-                            if (!(rightTxp < leftTxp)) {
+                            if (rightTxp == leftTxp) {
                                 int32_t startRead1 = leftIt->pos;
                                 int32_t startRead2 = rightIt->pos;
                                 int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
                                 int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
                                 uint32_t fragLen = fragEndPos - fragStartPos;
+
                                 jointHits.emplace_back(leftTxp,
                                         startRead1,
                                         leftIt->fwd,
                                         leftIt->readLen,
+                                        leftIt->matchLen,
+                                        leftIt->queryPos,
                                         fragLen, true);
                                 // Fill in the mate info
                                 auto& qaln = jointHits.back();
                                 qaln.mateLen = rightIt->readLen;
                                 qaln.matePos = startRead2;
                                 qaln.mateIsFwd = rightIt->fwd;
+                                qaln.mateMatchLen = rightIt->matchLen;
+                                qaln.mateQueryPos = rightIt->queryPos;
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
 
                                 ++numHits;

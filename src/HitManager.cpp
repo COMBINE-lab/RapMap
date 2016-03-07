@@ -55,7 +55,7 @@ namespace rapmap {
                                 bool hitRC = minPosIt->queryRC;
                                 int32_t hitPos = minPosIt->pos - minPosIt->queryPos;
                                 bool isFwd = !hitRC;
-                                hits.emplace_back(tid, hitPos, isFwd, readLen);
+                                hits.emplace_back(tid, hitPos, isFwd, readLen, minPosIt->len, minPosIt->queryPos);
                                 hits.back().mateStatus = mateStatus;
                         }
                 }
@@ -94,7 +94,7 @@ namespace rapmap {
                                 bool hitRC = minPosIt->queryRC;
                                 int32_t hitPos = minPosIt->pos - minPosIt->queryPos;
                                 bool isFwd = !hitRC;
-                                hits.emplace_back(tid, hitPos, isFwd, readLen);
+                                hits.emplace_back(tid, hitPos, isFwd, readLen, minPosIt->len, minPosIt->queryPos);
                                 hits.back().mateStatus = mateStatus;
                         }
                 }
@@ -274,7 +274,7 @@ namespace rapmap {
                 if ( searchInd < arraySize - 1 ) {
                     //auto offset = std::distance(txpIt, searchIt);
                     pos = static_cast<uint32_t>(SA[i]) - txpStarts[rightTxp];
-                    outStructs[searchInd].tqvec.emplace_back(pos, h.queryPos, h.queryRC);
+                    outStructs[searchInd].tqvec.emplace_back(pos, h.len, h.queryPos, h.queryRC);
                 }
                 /*
                 auto searchIdx = outTxps.search(rightTxp);
@@ -368,7 +368,7 @@ namespace rapmap {
                 if (txpListIt->second.numActive == intervalCounter) {
                   auto globalPos = SA[i];
                   auto localPos = globalPos - txpStarts[txpID];
-                  txpListIt->second.tqvec.emplace_back(localPos, h.queryPos, h.queryRC);
+                  txpListIt->second.tqvec.emplace_back(localPos, h.len, h.queryPos, h.queryRC);
                 }
               }
             }
@@ -533,9 +533,9 @@ namespace rapmap {
                     auto posIt = posMap.find(tid);
                     if (posIt == posMap.end()) {
                         posMap[tid] = outStructs.size();
-                        outStructs.emplace_back(tid, txpPos, minHit->queryPos, minHit->queryRC);
+                        outStructs.emplace_back(tid, txpPos, minHit->len, minHit->queryPos, minHit->queryRC);
                     } else {
-                        outStructs[posIt->second].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
+                        outStructs[posIt->second].tqvec.emplace_back(txpPos, minHit->len, minHit->queryPos, minHit->queryRC);
                     }
                 }
                 std::sort(outStructs.begin(), outStructs.end(),
@@ -618,7 +618,7 @@ namespace rapmap {
                     //auto tid = txpIDs[globalPos];
 		    auto tid = rmi.transcriptAtPosition(globalPos);
                     auto txpPos = globalPos - txpStarts[tid];
-                    outHits[tid].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
+                    outHits[tid].tqvec.emplace_back(txpPos, minHit->len, minHit->queryPos, minHit->queryRC);
                 }
             }
             // =========
