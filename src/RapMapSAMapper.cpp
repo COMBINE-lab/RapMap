@@ -384,7 +384,7 @@ bool mapReads(RapMapIndexT& rmi,
 	      TCLAP::SwitchArg& noout,
 	      TCLAP::SwitchArg& strict,
 	      TCLAP::SwitchArg& fuzzy) {
-  
+
 	std::cerr << "\n\n\n\n";
 
 	bool pairedEnd = (read1.isSet() or read2.isSet());
@@ -486,7 +486,7 @@ bool mapReads(RapMapIndexT& rmi,
 	}
 	return true;
 }
-	      
+
 
 int rapMapSAMap(int argc, char* argv[]) {
   std::cerr << "RapMap Mapper (SA-based)\n";
@@ -581,7 +581,7 @@ int rapMapSAMap(int argc, char* argv[]) {
       //BigSAIdxPtr->load(indexPrefix, h.kmerLen());
       if (h.perfectHash()) {
 	RapMapSAIndex<int64_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int64_t>>>> rmi;
-	rmi.load(indexPrefix, h.kmerLen());
+	rmi.load(indexPrefix);
 	success = mapReads(rmi, consoleLog, index, read1, read2,
 			   unmatedReads, numThreads, maxNumHits,
 			   outname, noout, strict, fuzzy);
@@ -589,7 +589,7 @@ int rapMapSAMap(int argc, char* argv[]) {
 	RapMapSAIndex<int64_t,
 		      google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int64_t>,
 					     rapmap::utils::KmerKeyHasher>> rmi;
-	rmi.load(indexPrefix, h.kmerLen());
+	rmi.load(indexPrefix);
 	success = mapReads(rmi, consoleLog, index, read1, read2,
 			   unmatedReads, numThreads, maxNumHits,
 			   outname, noout, strict, fuzzy);
@@ -601,7 +601,7 @@ int rapMapSAMap(int argc, char* argv[]) {
       //SAIdxPtr->load(indexPrefix, h.kmerLen());
       if (h.perfectHash()) {
 	RapMapSAIndex<int32_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int32_t>>>> rmi;
-	rmi.load(indexPrefix, h.kmerLen());
+	rmi.load(indexPrefix);
 	success = mapReads(rmi, consoleLog, index, read1, read2,
 			   unmatedReads, numThreads, maxNumHits,
 			   outname, noout, strict, fuzzy);
@@ -609,7 +609,7 @@ int rapMapSAMap(int argc, char* argv[]) {
 	RapMapSAIndex<int32_t,
 		      google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int32_t>,
 					     rapmap::utils::KmerKeyHasher>> rmi;
-	rmi.load(indexPrefix, h.kmerLen());
+	rmi.load(indexPrefix);
 	success = mapReads(rmi, consoleLog, index, read1, read2,
 			   unmatedReads, numThreads, maxNumHits,
 			   outname, noout, strict, fuzzy);

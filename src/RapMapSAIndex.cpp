@@ -1,14 +1,22 @@
 #include "MPHMap.hpp"
 #include "RapMapSAIndex.hpp"
+#include "IndexHeader.hpp"
+#include <cereal/types/unordered_map.hpp>
+#include <cereal/types/vector.hpp>
+#include <cereal/types/string.hpp>
+#include <cereal/archives/binary.hpp>
+#include <cereal/archives/json.hpp>
+
+
 #include <future>
 #include <thread>
 
-// These are **free** functions that are used for loading the 
+// These are **free** functions that are used for loading the
 // appropriate type of hash.
 template <typename IndexT>
 bool loadHashFromIndex(const std::string& indexDir,
-                       google::dense_hash_map<uint64_t, 
-                       rapmap::utils::SAInterval<IndexT>, 
+                       google::dense_hash_map<uint64_t,
+                       rapmap::utils::SAInterval<IndexT>,
                        rapmap::utils::KmerKeyHasher>& khash) {
       khash.set_empty_key(std::numeric_limits<uint64_t>::max());
       std::ifstream hashStream(indexDir + "hash.bin");
@@ -36,10 +44,19 @@ IndexT RapMapSAIndex<IndexT, HashT>::transcriptAtPosition(IndexT p) {
 }
 
 template <typename IndexT, typename HashT>
-bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir, uint32_t idxK) {
+bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
 
     auto logger = spdlog::get("stderrLog");
     size_t n{0};
+
+    IndexHeader h;
+    std::ifstream indexStream(indDir + "header.json");
+    {
+      cereal::JSONInputArchive ar(indexStream);
+      ar(h);
+    }
+    indexStream.close();
+    uint32_t idxK = h.kmerLen();
 
     // This part takes the longest, so do it in it's own asynchronous task
     std::future<bool> loadingHash = std::async(std::launch::async, [this, logger, indDir]() -> bool {

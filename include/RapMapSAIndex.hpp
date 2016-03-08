@@ -51,7 +51,7 @@ class RapMapSAIndex {
   	// return the corresponding transcript
   	IndexT transcriptAtPosition(IndexT p);
 
-    bool load(const std::string& indDir, uint32_t idxK);
+    bool load(const std::string& indDir);
 
     std::vector<IndexT> SA;
     //rsdic::RSDic rankDictSafe;
