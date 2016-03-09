@@ -159,7 +159,7 @@ message("==================================================================")
 include(ExternalProject)
 ExternalProject_Add(libdivsufsort
     DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-    URL ${CMAKE_CURRENT_SOURCE_DIR}/external/libdivsufsort.zip
+    URL ${CMAKE_CURRENT_SOURCE_DIR}/external/libdivsufsort.tar.gz
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libdivsufsort-master
     INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
     UPDATE_COMMAND sh -c "mkdir -p <SOURCE_DIR>/build"
