@@ -381,7 +381,7 @@ int rapMapSAMap(int argc, char* argv[]) {
             versionString);
     cmd.getProgramName() = "rapmap";
 
-    TCLAP::ValueArg<std::string> index("i", "index", "The location where the index should be written", true, "", "path");
+    TCLAP::ValueArg<std::string> index("i", "index", "The location of the quasiindex", true, "", "path");
     TCLAP::ValueArg<std::string> read1("1", "leftMates", "The location of the left paired-end reads", false, "", "path");
     TCLAP::ValueArg<std::string> read2("2", "rightMates", "The location of the right paired-end reads", false, "", "path");
     TCLAP::ValueArg<std::string> unmatedReads("r", "unmatedReads", "The location of single-end reads", false, "", "path");
