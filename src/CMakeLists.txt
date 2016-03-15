@@ -12,7 +12,7 @@ set (RAPMAP_MAIN_SRCS
     HitManager.cpp
     #sherwood_map.cpp
     rank9b.cpp
-    intersection.cpp
+    #intersection.cpp
     #bitmap.cpp
     stringpiece.cc
     sais.c
