@@ -230,9 +230,6 @@ ExternalProject_Add(libjellyfish
     BUILD_COMMAND ${MAKE} CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
     BUILD_IN_SOURCE 1
     INSTALL_COMMAND make install
-    		    #&&
-                    #cp config.h <INSTALL_DIR>/include/jellyfish-2.2.5/jellyfish/ &&
-                    #cp config.h <INSTALL_DIR>/include/
 )
 endif()
 
