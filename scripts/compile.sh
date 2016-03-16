@@ -3,6 +3,7 @@ set -e
 
 branch=$1
 version=$2
+cxxflags=$3
 
 echo "Building rapmap [branch = ${branch}]. Tagging version as ${version}"
 
@@ -26,7 +27,7 @@ mv RapMap-${branch} RapMap
 cd RapMap
 mkdir build
 cd build
-cmake -DFETCH_BOOST=TRUE ..
+cmake -DFETCH_BOOST=TRUE -DCMAKE_CXX_FLAGS=${cxxflags} ..
 make
 make install
 make test
