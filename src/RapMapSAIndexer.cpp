@@ -716,7 +716,7 @@ void indexTranscriptsSA(ParserT* parser,
         }
     }
 
-    std::string indexVersion = "q1";
+    std::string indexVersion = "q2";
     IndexHeader header(IndexType::QUASI, indexVersion, true, k, largeIndex, usePerfectHash);
     // Finally (since everything presumably succeeded) write the header
     std::ofstream headerStream(outputDir + "header.json");

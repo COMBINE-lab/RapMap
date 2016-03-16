@@ -1,6 +1,7 @@
 #ifndef __INDEX_HEADER_HPP__
 #define __INDEX_HEADER_HPP__
 
+#include "spdlog/spdlog.h"
 #include <cereal/types/string.hpp>
 
 // The different types of indices supported
@@ -31,14 +32,23 @@ class IndexHeader {
             }
 
         template <typename Archive>
-            void load(Archive& ar) {
+        void load(Archive& ar) {
+            try {
                 ar( cereal::make_nvp("IndexType", type_) );
                 ar( cereal::make_nvp("IndexVersion", versionString_) );
                 ar( cereal::make_nvp("UsesKmers", usesKmers_) );
                 ar( cereal::make_nvp("KmerLen", kmerLen_) );
                 ar( cereal::make_nvp("BigSA", bigSA_) );
                 ar( cereal::make_nvp("PerfectHash", perfectHash_) );
+            } catch (const cereal::Exception& e) {
+                auto cerrLog = spdlog::get("stderrLog");
+                cerrLog->error("Encountered exception [{}] when loading index.", e.what());
+                cerrLog->error("The index was likely build with an older (and incompatible) "
+                               "version of RapMap.  Please re-build the index with a compatible version.");
+                cerrLog->flush(); 
+                std::exit(1);
             }
+        }
 
         IndexType indexType() const { return type_; }
         std::string version() const { return versionString_; }
