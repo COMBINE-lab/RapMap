@@ -58,7 +58,6 @@ namespace rapmap {
             int32_t end = seq.length()-1, start = 0;
             //readWork[end] = '\0';
             //qualWork[end] = '\0';
-            -- end;
             while (LIKELY(start < end)) {
                 readWork[start] = (char)rc_table[(int8_t)seq[end]];
                 readWork[end] = (char)rc_table[(int8_t)seq[start]];
@@ -237,10 +236,9 @@ namespace rapmap {
                     if (qa.isPaired) {
                         rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
-                            flags1 |= 0x900; flags2 |= 0x900;
-                        } else {
-                            flags2 |= 0x900;
+                            flags1 |= 0x100; flags2 |= 0x100;
                         }
+			
                         rapmap::utils::adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
 
                         // Reverse complement the read and reverse
@@ -297,17 +295,20 @@ namespace rapmap {
                     } else {
                         rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
-                            flags1 |= 0x900; flags2 |= 0x900;
-                        } else {
+                            flags1 |= 0x100; flags2 |= 0x100;
+                        }
+			/*
+			else {
                             // If this is the first alignment for this read
-                            // If the left end is mapped, set 0x900 on the right end
+                            // If the left end is mapped, set 0x100 on the right end
                             if (qa.mateStatus == MateStatus::PAIRED_END_LEFT) {
-                                flags2 |= 0x900;
+                                flags2 |= 0x100;
                             } else {
-                            // Otherwise, set 0x900 on the left end
-                                flags1 |= 0x900;
+                            // Otherwise, set 0x100 on the left end
+                                flags1 |= 0x100;
                             }
                         }
+			*/
 
                         std::string* readSeq{nullptr};
                         std::string* unalignedSeq{nullptr};

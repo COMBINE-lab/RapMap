@@ -1,11 +1,45 @@
 #!/bin/bash
 set -e
 
-branch=$1
-version=$2
-cxxflags=$3
+# from http://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
+no_native_arch=false
+cxxflags=""
+
+while [[ $# > 1 ]]
+do
+    key="$1"
+
+    case $key in
+        -b|--branch)
+            branch="$2"
+            shift # past argument
+            ;;
+        -v|--version)
+            version="$2"
+            shift # past argument
+            ;;
+        -f|--cxxflags)
+            cxxflags="$2"
+            shift # past argument
+            ;;
+        --no-native)
+            no_native_arch=true
+            ;;
+        *)
+            # unknown option
+            ;;
+    esac
+    shift # past argument or value
+done
 
 echo "Building rapmap [branch = ${branch}]. Tagging version as ${version}"
+if [ "$no_native_arch" = true ] ; then 
+    echo "Disabling -march=native"
+fi
+
+if [[ -z $cxxflags ]] ; then
+    echo "Passed CXXFLAGS ${cxxflags}"
+fi
 
 # Activate Holy Build Box environment.
 source /hbb_exe/activate
@@ -27,7 +61,14 @@ mv RapMap-${branch} RapMap
 cd RapMap
 mkdir build
 cd build
-cmake -DFETCH_BOOST=TRUE -DCMAKE_CXX_FLAGS=${cxxflags} ..
+
+
+if [ "$no_native_arch" = true ] ; then 
+    cmake -DFETCH_BOOST=TRUE -DCMAKE_CXX_FLAGS=${cxxflags} -DNO_NATIVE_ARCH ..
+else
+    cmake -DFETCH_BOOST=TRUE -DCMAKE_CXX_FLAGS=${cxxflags} ..
+fi
+
 make
 make install
 make test
