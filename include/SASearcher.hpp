@@ -43,9 +43,11 @@ class SASearcher {
         enum class SearchDirection : uint8_t {
             UP = 0, DOWN
         };
+    
+        template <typename IndexT>
         struct BoundSearchResult {
-            int maxLen;
-            int bound;
+            IndexT maxLen;
+            IndexT bound;
             SearchDirection dir;
         };
 
@@ -102,7 +104,7 @@ class SASearcher {
                 return std::make_tuple(lbIn, ubIn, i);
             }
 
-            BoundSearchResult res1, res2;
+            BoundSearchResult<OffsetT> res1, res2;
 
             char smallest = '#';
             char largest = '}';

@@ -614,10 +614,10 @@ namespace rapmap {
             //outHits.reserve(minHit->span());
             // =========
             { // Add the info from minHit to outHits
-                for (int i = minHit->begin; i < minHit->end; ++i) {
+                for (OffsetT i = minHit->begin; i < minHit->end; ++i) {
                     auto globalPos = SA[i];
                     //auto tid = txpIDs[globalPos];
-		    auto tid = rmi.transcriptAtPosition(globalPos);
+                    auto tid = rmi.transcriptAtPosition(globalPos);
                     auto txpPos = globalPos - txpStarts[tid];
                     outHits[tid].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
                 }
