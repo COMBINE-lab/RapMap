@@ -595,6 +595,7 @@ namespace rapmap {
                     }
                 }
             } else {
+                constexpr const int32_t signedZero{0};
                 auto leftIt = leftHits.begin();
                 auto leftEnd = leftHits.end();
                 auto leftLen = std::distance(leftIt, leftEnd);
@@ -612,20 +613,22 @@ namespace rapmap {
                             ++leftIt;
                         } else {
                             if (!(rightTxp < leftTxp)) {
-                                int32_t startRead1 = leftIt->pos;
-                                int32_t startRead2 = rightIt->pos;
-                                int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
-                                int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
+                                int32_t startRead1 = std::max(leftIt->pos, signedZero);
+                                int32_t startRead2 = std::max(rightIt->pos, signedZero);
+                                bool read1First{(startRead1 < startRead2)};
+                                int32_t fragStartPos = read1First ? startRead1 : startRead2;
+                                int32_t fragEndPos = read1First ? 
+                                    (startRead2 + rightIt->readLen) : (startRead1 + leftIt->readLen);
                                 uint32_t fragLen = fragEndPos - fragStartPos;
                                 jointHits.emplace_back(leftTxp,
-                                        startRead1,
+                                        leftIt->pos,
                                         leftIt->fwd,
                                         leftIt->readLen,
                                         fragLen, true);
                                 // Fill in the mate info
                                 auto& qaln = jointHits.back();
                                 qaln.mateLen = rightIt->readLen;
-                                qaln.matePos = startRead2;
+                                qaln.matePos = rightIt->pos;
                                 qaln.mateIsFwd = rightIt->fwd;
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
 
@@ -656,6 +659,7 @@ namespace rapmap {
                 bool& tooManyHits,
                 HitCounters& hctr) {
             if (leftHits.size() > 0) {
+                constexpr const int32_t signedZero{0};
                 auto leftIt = leftHits.begin();
                 auto leftEnd = leftHits.end();
                 auto leftLen = std::distance(leftIt, leftEnd);
@@ -673,10 +677,12 @@ namespace rapmap {
                             ++leftIt;
                         } else {
                             if (!(rightTxp < leftTxp)) {
-                                int32_t startRead1 = leftIt->pos;
-                                int32_t startRead2 = rightIt->pos;
-                                int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
-                                int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
+                                int32_t startRead1 = std::max(leftIt->pos, signedZero);
+                                int32_t startRead2 = std::max(rightIt->pos, signedZero);
+                                bool read1First{(startRead1 < startRead2)};
+                                int32_t fragStartPos = read1First ? startRead1 : startRead2;
+                                int32_t fragEndPos = read1First ? 
+                                    (startRead2 + rightIt->readLen) : (startRead1 + leftIt->readLen);
                                 uint32_t fragLen = fragEndPos - fragStartPos;
                                 jointHits.emplace_back(leftTxp,
                                         startRead1,

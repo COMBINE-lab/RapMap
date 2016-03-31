@@ -237,7 +237,8 @@ namespace rapmap {
                         if (alnCtr != 0) {
                             flags1 |= 0x100; flags2 |= 0x100;
                         }
-			
+
+                        auto txpLen = txpLens[qa.tid];
                         rapmap::utils::adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
 
                         // Reverse complement the read and reverse
@@ -265,6 +266,14 @@ namespace rapmap {
                             readSeq2 = &(read2Temp);
                             qstr2 = &(qual2Temp);
                         }
+
+                        // If the fragment overhangs the right end of the transcript
+                        // adjust fragLen (overhanging the left end is already handled).
+                        int32_t read1Pos = qa.pos;
+                        int32_t read2Pos = qa.matePos;
+                        int32_t minPos = std::min(read1Pos, read2Pos);
+                        if (minPos + qa.fragLen > txpLen) { qa.fragLen = txpLen - minPos; }
+
 
                         sstream << readName.c_str() << '\t' // QNAME
                                 << flags1 << '\t' // FLAGS
