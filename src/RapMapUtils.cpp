@@ -271,8 +271,12 @@ namespace rapmap {
                         // adjust fragLen (overhanging the left end is already handled).
                         int32_t read1Pos = qa.pos;
                         int32_t read2Pos = qa.matePos;
-                        int32_t minPos = std::min(read1Pos, read2Pos);
+                        const bool read1First{read1Pos < read2Pos};
+                        const int32_t minPos = read1First ? read1Pos : read2Pos;
                         if (minPos + qa.fragLen > txpLen) { qa.fragLen = txpLen - minPos; }
+                        
+                        // get the fragment length as a signed int
+                        const int32_t fragLen = static_cast<int32_t>(qa.fragLen);
 
 
                         sstream << readName.c_str() << '\t' // QNAME
@@ -283,7 +287,7 @@ namespace rapmap {
                                 << cigarStr1.c_str() << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.matePos + 1 << '\t' // PNEXT
-                                << qa.fragLen << '\t' // TLEN
+                                << ((read1First) ? fragLen : -fragLen) << '\t' // TLEN
                                 << *readSeq1 << '\t' // SEQ
                                 << *qstr1 << '\t' // QUAL
                                 << numHitFlag << '\n';
@@ -296,7 +300,7 @@ namespace rapmap {
                                 << cigarStr2.c_str() << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.pos + 1 << '\t' // PNEXT
-                                << qa.fragLen << '\t' // TLEN
+                                << ((read1First) ? -fragLen : fragLen) << '\t' // TLEN
                                 << *readSeq2 << '\t' // SEQ
                                 << *qstr2 << '\t' // QUAL
                                 << numHitFlag << '\n';
