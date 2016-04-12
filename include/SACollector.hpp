@@ -437,7 +437,7 @@ class SACollector {
                 for (auto& kms : kmerScores) {
                     // If the forward k-mer is untested, then test it
                     if (kms.fwdScore == UNTESTED) {
-                        auto merIt = khash.find(mer.get_bits(0, 2*k));
+                        auto merIt = khash.find(kms.kmer.get_bits(0, 2*k));
                         kms.fwdScore = (merIt != khash.end()) ? PRESENT : ABSENT;
                     }
                     // accumulate the score
