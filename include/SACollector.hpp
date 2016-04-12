@@ -445,7 +445,7 @@ class SACollector {
                 int32_t fwdScore{0};
                 int32_t rcScore{0};
                 // For every kmer score structure
-		std::cerr << "[\n";
+		//std::cerr << "[\n";
                 for (auto kmsIt = kmerScores.begin(); kmsIt != e; ++kmsIt) {//: kmerScores) {
    		    auto& kms = *kmsIt;
                     // If the forward k-mer is untested, then test it
@@ -465,9 +465,9 @@ class SACollector {
                     // accumulate the score
                     rcScore += kms.rcScore;
 		    //kms.print();
-		    std::cerr << "\n";
+		    //std::cerr << "\n";
                 }
-		std::cerr << "]\n";
+		//std::cerr << "]\n";
                 // If the forward score is strictly greater
                 // then get rid of the rc hits.
                 if (fwdScore > rcScore) {
