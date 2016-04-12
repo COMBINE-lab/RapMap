@@ -62,10 +62,16 @@ class SACollector {
         // Record if k-mers are hits in the
         // fwd direction, rc direction or both
         struct KmerDirScore {
-            KmerDirScore(rapmap::utils::my_mer kmerIn, HitStatus fwdScoreIn, HitStatus rcScoreIn) :
-                kmer(kmerIn), fwdScore(fwdScoreIn), rcScore(rcScoreIn) {}
-            KmerDirScore() : fwdScore(UNTESTED), rcScore(UNTESTED) {}
+	  KmerDirScore(rapmap::utils::my_mer kmerIn, int32_t kposIn, HitStatus fwdScoreIn, HitStatus rcScoreIn) :
+	    kmer(kmerIn), kpos(kposIn), fwdScore(fwdScoreIn), rcScore(rcScoreIn) {}
+	  KmerDirScore() : kpos(0), fwdScore(UNTESTED), rcScore(UNTESTED) {}
+	  bool operator==(const KmerDirScore& other) { return kpos == other.kpos; }
+	  bool operator<(const KmerDirScore& other) { return kpos < other.kpos; }
+          void print() { 
+	    std::cerr << "{ " << kmer.to_str() << ", " <<  kpos << ", " << ((fwdScore) ? "PRESENT" : "ABSENT") << ", " << ((rcScore) ? "PRESENT" : "ABSENT") << "}\t";
+	  }
             rapmap::utils::my_mer kmer;
+	    int32_t kpos;
             HitStatus fwdScore;
             HitStatus rcScore;
         };
@@ -137,20 +143,20 @@ class SACollector {
                     if (strictCheck) {
                         ++fwdHit;
                         // If we also match this k-mer in the rc direction
-                        if (rcMerIt != khash.end()) {
-                            ++rcHit;
-                            kmerScores.emplace_back(mer, PRESENT, PRESENT);
-                        } else { // Otherwise it doesn't match in the rc direction
-                            kmerScores.emplace_back(mer, PRESENT, ABSENT);
-                        }
+			if (rcMerIt != khash.end()) {
+			  ++rcHit;
+			  kmerScores.emplace_back(mer, pos, PRESENT, PRESENT);
+			} else { // Otherwise it doesn't match in the rc direction
+			  kmerScores.emplace_back(mer, pos, PRESENT, ABSENT);
+			}
 
-                        // If we didn't end the match b/c we exhausted the query
+			// If we didn't end the match b/c we exhausted the query
                         // test the mismatching k-mer in the other strand
                         // TODO: check for 'N'?
                         if (rb + matchedLen < readEndIt){
                             auto kmerPos = std::distance(readStartIt, rb + matchedLen - skipOverlap);
                             mer = rapmap::utils::my_mer(read.c_str() + kmerPos);
-                            kmerScores.emplace_back(mer , ABSENT, UNTESTED);
+                            kmerScores.emplace_back(mer, kmerPos, ABSENT, UNTESTED);
                         }
                     } else { // no strict check
                         ++fwdHit;
@@ -169,7 +175,7 @@ class SACollector {
                     if (!fwdHit) {
                         ++rcHit;
                         if (strictCheck) {
-                            kmerScores.emplace_back(rcMer, ABSENT, PRESENT);
+			  kmerScores.emplace_back(mer, pos, ABSENT, PRESENT);
                         }
                     }
                 }
@@ -248,7 +254,7 @@ class SACollector {
                     if (merIt != khash.end()) {
                         if (strictCheck) {
                             ++fwdHit;
-                            kmerScores.emplace_back(mer, PRESENT, UNTESTED);
+                            kmerScores.emplace_back(mer, pos, PRESENT, UNTESTED);
                             auto rcMer = mer.get_reverse_complement();
                             auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
                             if (rcMerIt != khash.end()) {
@@ -277,7 +283,7 @@ class SACollector {
                                 auto kmerPos = std::distance(readStartIt, rb + matchedLen - skipOverlap);
                                 mer = rapmap::utils::my_mer(read.c_str() + kmerPos);
 				// TODO: 04/11/16
-                                kmerScores.emplace_back(mer , UNTESTED, UNTESTED);
+                                kmerScores.emplace_back(mer, kmerPos, UNTESTED, UNTESTED);
                             }
 
                         }
@@ -360,7 +366,7 @@ class SACollector {
                 if (rcMerIt != khash.end()) {
                     if (strictCheck) {
                         ++rcHit;
-                        kmerScores.emplace_back(mer, UNTESTED, PRESENT);
+                        kmerScores.emplace_back(mer, pos, UNTESTED, PRESENT);
                         auto merIt = khash.find(mer.get_bits(0, 2*k));
                         if (merIt != khash.end()) {
                             ++fwdHit;
@@ -390,7 +396,7 @@ class SACollector {
                             auto kmerPos = std::distance(revRB + matchedLen, revReadEndIt);
                             mer = rapmap::utils::my_mer(read.c_str() + kmerPos);
                             // TODO: 04/11/16
-                            kmerScores.emplace_back(mer , UNTESTED, UNTESTED);
+                            kmerScores.emplace_back(mer, kmerPos, UNTESTED, UNTESTED);
                         }
                     }
 
@@ -432,12 +438,16 @@ class SACollector {
             } else if (rcHit > 0 and fwdHit == 0) {
                 fwdSAInts.clear();
             } else {
+	      std::sort( kmerScores.begin(), kmerScores.end() );
+	      auto e = std::unique(kmerScores.begin(), kmerScores.end());
                 // Compute the score for the k-mers we need to
                 // test in both the forward and rc directions.
                 int32_t fwdScore{0};
                 int32_t rcScore{0};
                 // For every kmer score structure
-                for (auto& kms : kmerScores) {
+		std::cerr << "[\n";
+                for (auto kmsIt = kmerScores.begin(); kmsIt != e; ++kmsIt) {//: kmerScores) {
+   		    auto& kms = *kmsIt;
                     // If the forward k-mer is untested, then test it
                     if (kms.fwdScore == UNTESTED) {
                         auto merIt = khash.find(kms.kmer.get_bits(0, 2*k));
@@ -454,7 +464,10 @@ class SACollector {
                     }
                     // accumulate the score
                     rcScore += kms.rcScore;
+		    //kms.print();
+		    std::cerr << "\n";
                 }
+		std::cerr << "]\n";
                 // If the forward score is strictly greater
                 // then get rid of the rc hits.
                 if (fwdScore > rcScore) {
