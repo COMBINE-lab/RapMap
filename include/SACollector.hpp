@@ -387,7 +387,7 @@ class SACollector {
                         if (strictCheck and revRB + matchedLen < revReadEndIt){
                             auto kmerPos = std::distance(revRB + matchedLen, revReadEndIt);
                             mer = rapmap::utils::my_mer(read.c_str() + kmerPos);
-                            kmerScores.emplace_back(mer , UNTESTED, ABSENT);
+                            kmerScores.emplace_back(mer , UNTESTED, UNTESTED);
                         }
                     }
 
