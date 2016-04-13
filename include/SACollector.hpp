@@ -65,8 +65,8 @@ class SACollector {
 	  KmerDirScore(rapmap::utils::my_mer kmerIn, int32_t kposIn, HitStatus fwdScoreIn, HitStatus rcScoreIn) :
 	    kmer(kmerIn), kpos(kposIn), fwdScore(fwdScoreIn), rcScore(rcScoreIn) {}
 	  KmerDirScore() : kpos(0), fwdScore(UNTESTED), rcScore(UNTESTED) {}
-	  bool operator==(const KmerDirScore& other) { return kpos == other.kpos; }
-	  bool operator<(const KmerDirScore& other) { return kpos < other.kpos; }
+	  bool operator==(const KmerDirScore& other) const { return kpos == other.kpos; }
+	  bool operator<(const KmerDirScore& other) const { return kpos < other.kpos; }
           void print() { 
 	    std::cerr << "{ " << kmer.to_str() << ", " <<  kpos << ", " << ((fwdScore) ? "PRESENT" : "ABSENT") << ", " << ((rcScore) ? "PRESENT" : "ABSENT") << "}\t";
 	  }
