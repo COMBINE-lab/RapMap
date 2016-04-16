@@ -94,20 +94,20 @@ using FixedWriter = rapmap::utils::FixedWriter;
 
 template <typename RapMapIndexT, typename CollectorT, typename MutexT>
 void processReadsSingleSA(single_parser * parser,
-        RapMapIndexT& rmi,
-    	CollectorT& hitCollector,
-        MutexT* iomutex,
-    	std::shared_ptr<spdlog::logger> outQueue,
-        HitCounters& hctr,
-        uint32_t maxNumHits,
-        bool noOutput,
-        bool strictCheck) {
+                          RapMapIndexT& rmi,
+                          CollectorT& hitCollector,
+                          MutexT* iomutex,
+                          std::shared_ptr<spdlog::logger> outQueue,
+                          HitCounters& hctr,
+                          uint32_t maxNumHits,
+                          bool noOutput,
+                          bool strictCheck,
+                          bool consistentHits) {
 
     using OffsetT = typename RapMapIndexT::IndexType;
     auto& txpNames = rmi.txpNames;
     auto& txpLens = rmi.txpLens;
     uint32_t n{0};
-    constexpr char bases[] = {'A', 'C', 'G', 'T'};
 
     auto logger = spdlog::get("stderrLog");
 
@@ -131,7 +131,7 @@ void processReadsSingleSA(single_parser * parser,
             readLen = j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
-            hitCollector(j->data[i].seq, hits, saSearcher, MateStatus::SINGLE_END, strictCheck);
+            hitCollector(j->data[i].seq, hits, saSearcher, MateStatus::SINGLE_END, strictCheck, consistentHits);
             auto numHits = hits.size();
             hctr.totHits += numHits;
 
@@ -196,22 +196,22 @@ void processReadsSingleSA(single_parser * parser,
  */
 template <typename RapMapIndexT, typename CollectorT, typename MutexT>
 void processReadsPairSA(paired_parser* parser,
-        RapMapIndexT& rmi,
-    	CollectorT& hitCollector,
-        MutexT* iomutex,
-	    std::shared_ptr<spdlog::logger> outQueue,
-        HitCounters& hctr,
-        uint32_t maxNumHits,
-        bool noOutput,
-        bool strictCheck,
-        bool nonStrictMerge) {
+                        RapMapIndexT& rmi,
+                        CollectorT& hitCollector,
+                        MutexT* iomutex,
+                        std::shared_ptr<spdlog::logger> outQueue,
+                        HitCounters& hctr,
+                        uint32_t maxNumHits,
+                        bool noOutput,
+                        bool strictCheck,
+                        bool nonStrictMerge,
+                        bool consistentHits) {
 
     using OffsetT = typename RapMapIndexT::IndexType;
 
     auto& txpNames = rmi.txpNames;
     auto& txpLens = rmi.txpLens;
     uint32_t n{0};
-    constexpr char bases[] = {'A', 'C', 'G', 'T'};
 
     auto logger = spdlog::get("stderrLog");
 
@@ -243,13 +243,16 @@ void processReadsPairSA(paired_parser* parser,
             rightHits.clear();
 
             bool lh = hitCollector(j->data[i].first.seq,
-                        leftHits, saSearcher,
-                        MateStatus::PAIRED_END_LEFT,
-                        strictCheck);
+                                   leftHits, saSearcher,
+                                   MateStatus::PAIRED_END_LEFT,
+                                   strictCheck,
+                                   consistentHits);
+
             bool rh = hitCollector(j->data[i].second.seq,
-                        rightHits, saSearcher,
-                        MateStatus::PAIRED_END_RIGHT,
-                        strictCheck);
+                                   rightHits, saSearcher,
+                                   MateStatus::PAIRED_END_RIGHT,
+                                   strictCheck,
+                                   consistentHits);
 
             if (nonStrictMerge) {
                 rapmap::utils::mergeLeftRightHitsFuzzy(
@@ -310,31 +313,33 @@ void processReadsPairSA(paired_parser* parser,
 
 template <typename RapMapIndexT, typename MutexT>
 bool spawnProcessReadsThreads(
-        uint32_t nthread,
-        paired_parser* parser,
-        RapMapIndexT& rmi,
-        MutexT& iomutex,
-	      std::shared_ptr<spdlog::logger> outQueue,
-        HitCounters& hctr,
-        uint32_t maxNumHits,
-        bool noOutput,
-        bool strictCheck,
-        bool fuzzy) {
+                              uint32_t nthread,
+                              paired_parser* parser,
+                              RapMapIndexT& rmi,
+                              MutexT& iomutex,
+                              std::shared_ptr<spdlog::logger> outQueue,
+                              HitCounters& hctr,
+                              uint32_t maxNumHits,
+                              bool noOutput,
+                              bool strictCheck,
+                              bool fuzzy,
+                              bool consistentHits) {
 
             std::vector<std::thread> threads;
             SACollector<RapMapIndexT> saCollector(&rmi);
             for (size_t i = 0; i < nthread; ++i) {
                 threads.emplace_back(processReadsPairSA<RapMapIndexT, SACollector<RapMapIndexT>, MutexT>,
-                        parser,
-                        std::ref(rmi),
-                        std::ref(saCollector),
-                        &iomutex,
-            			      outQueue,
-                        std::ref(hctr),
-                        maxNumHits,
-                        noOutput,
-                        strictCheck,
-                        fuzzy);
+                                     parser,
+                                     std::ref(rmi),
+                                     std::ref(saCollector),
+                                     &iomutex,
+                                     outQueue,
+                                     std::ref(hctr),
+                                     maxNumHits,
+                                     noOutput,
+                                     strictCheck,
+                                     fuzzy,
+                                     consistentHits);
             }
 
             for (auto& t : threads) { t.join(); }
@@ -343,29 +348,31 @@ bool spawnProcessReadsThreads(
 
 template <typename RapMapIndexT, typename MutexT>
 bool spawnProcessReadsThreads(
-        uint32_t nthread,
-        single_parser* parser,
-        RapMapIndexT& rmi,
-        MutexT& iomutex,
-	      std::shared_ptr<spdlog::logger> outQueue,
-        HitCounters& hctr,
-        uint32_t maxNumHits,
-        bool noOutput,
-        bool strictCheck) {
+                              uint32_t nthread,
+                              single_parser* parser,
+                              RapMapIndexT& rmi,
+                              MutexT& iomutex,
+                              std::shared_ptr<spdlog::logger> outQueue,
+                              HitCounters& hctr,
+                              uint32_t maxNumHits,
+                              bool noOutput,
+                              bool strictCheck,
+                              bool consistentHits) {
 
             std::vector<std::thread> threads;
             SACollector<RapMapIndexT> saCollector(&rmi);
             for (size_t i = 0; i < nthread; ++i) {
                 threads.emplace_back(processReadsSingleSA<RapMapIndexT, SACollector<RapMapIndexT>, MutexT>,
-                        parser,
-                        std::ref(rmi),
-                        std::ref(saCollector),
-                        &iomutex,
-            			      outQueue,
-                        std::ref(hctr),
-                        maxNumHits,
-                        noOutput,
-                        strictCheck);
+                                     parser,
+                                     std::ref(rmi),
+                                     std::ref(saCollector),
+                                     &iomutex,
+                                     outQueue,
+                                     std::ref(hctr),
+                                     maxNumHits,
+                                     noOutput,
+                                     strictCheck, 
+                                     consistentHits);
             }
             for (auto& t : threads) { t.join(); }
             return true;
@@ -383,7 +390,8 @@ bool mapReads(RapMapIndexT& rmi,
 	      TCLAP::ValueArg<std::string>& outname,
 	      TCLAP::SwitchArg& noout,
 	      TCLAP::SwitchArg& strict,
-	      TCLAP::SwitchArg& fuzzy) {
+          TCLAP::SwitchArg& fuzzy, 
+          TCLAP::SwitchArg& consistent) {
 
 	std::cerr << "\n\n\n\n";
 
@@ -421,6 +429,7 @@ bool mapReads(RapMapIndexT& rmi,
 
     bool strictCheck = strict.getValue();
     bool fuzzyIntersection = fuzzy.getValue();
+    bool consistentHits = consistent.getValue();
 	SpinLockT iomutex;
 	{
 	    ScopedTimer timer;
@@ -449,7 +458,8 @@ bool mapReads(RapMapIndexT& rmi,
                         pairFileList, pairFileList+numFiles));
 
             spawnProcessReadsThreads(nthread, pairParserPtr.get(), rmi, iomutex,
-				     outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, fuzzyIntersection);
+                                     outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, 
+                                     fuzzyIntersection, consistentHits);
             delete [] pairFileList;
         } else {
             std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(unmatedReads.getValue(), ',');
@@ -464,7 +474,8 @@ bool mapReads(RapMapIndexT& rmi,
 
             /** Create the threads depending on the collector type **/
             spawnProcessReadsThreads(nthread, singleParserPtr.get(), rmi, iomutex,
-                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck);
+                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue(), 
+                                     strictCheck, consistentHits);
         }
 	std::cerr << "\n\n";
 
@@ -508,6 +519,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::SwitchArg noout("n", "noOutput", "Don't write out any alignments (for speed testing purposes)", false);
   TCLAP::SwitchArg strict("s", "strictCheck", "Perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
   TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
+  TCLAP::SwitchArg consistent("c", "consistentHits", "Ensure that the hits collected are consistent (co-linear)", false);
   cmd.add(index);
   cmd.add(noout);
 
@@ -519,6 +531,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(maxNumHits);
   cmd.add(strict);
   cmd.add(fuzzy);
+  cmd.add(consistent);
 
   auto consoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
   auto consoleLog = spdlog::create("stderrLog", {consoleSink});
@@ -576,44 +589,43 @@ int rapMapSAMap(int argc, char* argv[]) {
 
     bool success{false};
     if (h.bigSA()) {
-      std::cerr << "Loading 64-bit suffix array index: \n";
+        //std::cerr << "Loading 64-bit suffix array index: \n";
       //BigSAIdxPtr.reset(new RapMapSAIndex<int64_t>);
       //BigSAIdxPtr->load(indexPrefix, h.kmerLen());
       if (h.perfectHash()) {
-	RapMapSAIndex<int64_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int64_t>>>> rmi;
-	rmi.load(indexPrefix);
-	success = mapReads(rmi, consoleLog, index, read1, read2,
-			   unmatedReads, numThreads, maxNumHits,
-			   outname, noout, strict, fuzzy);
+          RapMapSAIndex<int64_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int64_t>>>> rmi;
+          rmi.load(indexPrefix);
+          success = mapReads(rmi, consoleLog, index, read1, read2,
+                             unmatedReads, numThreads, maxNumHits,
+                             outname, noout, strict, fuzzy, consistent);
       } else {
-	RapMapSAIndex<int64_t,
-		      google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int64_t>,
-					     rapmap::utils::KmerKeyHasher>> rmi;
-	rmi.load(indexPrefix);
-	success = mapReads(rmi, consoleLog, index, read1, read2,
-			   unmatedReads, numThreads, maxNumHits,
-			   outname, noout, strict, fuzzy);
+          RapMapSAIndex<int64_t,
+                        google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int64_t>,
+                                               rapmap::utils::KmerKeyHasher>> rmi;
+          rmi.load(indexPrefix);
+          success = mapReads(rmi, consoleLog, index, read1, read2,
+                             unmatedReads, numThreads, maxNumHits,
+                             outname, noout, strict, fuzzy, consistent);
       }
-
     } else {
-      std::cerr << "Loading 32-bit suffix array index: \n";
+        //std::cerr << "Loading 32-bit suffix array index: \n";
       //SAIdxPtr.reset(new RapMapSAIndex<int32_t>);
       //SAIdxPtr->load(indexPrefix, h.kmerLen());
-      if (h.perfectHash()) {
-	RapMapSAIndex<int32_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int32_t>>>> rmi;
-	rmi.load(indexPrefix);
-	success = mapReads(rmi, consoleLog, index, read1, read2,
-			   unmatedReads, numThreads, maxNumHits,
-			   outname, noout, strict, fuzzy);
-      } else {
-	RapMapSAIndex<int32_t,
-		      google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int32_t>,
-					     rapmap::utils::KmerKeyHasher>> rmi;
-	rmi.load(indexPrefix);
-	success = mapReads(rmi, consoleLog, index, read1, read2,
-			   unmatedReads, numThreads, maxNumHits,
-			   outname, noout, strict, fuzzy);
-      }
+        if (h.perfectHash()) {
+            RapMapSAIndex<int32_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int32_t>>>> rmi;
+            rmi.load(indexPrefix);
+            success = mapReads(rmi, consoleLog, index, read1, read2,
+                               unmatedReads, numThreads, maxNumHits,
+                               outname, noout, strict, fuzzy, consistent);
+        } else {
+            RapMapSAIndex<int32_t,
+                          google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int32_t>,
+                                                 rapmap::utils::KmerKeyHasher>> rmi;
+            rmi.load(indexPrefix);
+            success = mapReads(rmi, consoleLog, index, read1, read2,
+                               unmatedReads, numThreads, maxNumHits,
+                               outname, noout, strict, fuzzy, consistent);
+        }
     }
 
     return success ? 0 : 1;

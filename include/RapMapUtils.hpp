@@ -369,9 +369,49 @@ namespace rapmap {
 		tqvec.emplace_back(txpPosIn, queryPosIn, queryRCIn);
 	    }
 
+        /**
+         * This enforces a more stringent consistency check on
+         * the hits for this transcript.  The hits must be co-linear
+         * with respect to the query and target.
+         * 
+         * input: numToCheck --- the number of hits to check in sorted order
+         *                       hits after the last of these need not be consistent.
+         * return: numToCheck if the first numToCheck hits are consistent; 
+         *         -1 otherwise
+         **/
+        int32_t checkConsistent(int32_t numToCheck) {
+            auto numHits = tqvec.size();
+
+            // special case for only 1 or two hits (common)
+            if (numHits == 1) {
+                return numToCheck;
+            } else if (numHits == 2) {
+                auto& h1 = (tqvec[0].queryPos < tqvec[1].queryPos) ? tqvec[0] : tqvec[1];
+                auto& h2 = (tqvec[0].queryPos < tqvec[1].queryPos) ? tqvec[1] : tqvec[2];
+                return (h2.pos > h1.pos) ? (numToCheck) : -1;
+            } else {
+                // first, sort by query position
+                std::sort(tqvec.begin(), tqvec.end(), 
+                          [](const SATxpQueryPos& q1, const SATxpQueryPos& q2) -> bool {
+                              return q1.queryPos < q2.queryPos;
+                          });
+
+                int32_t lastRefPos{std::numeric_limits<int32_t>::min()};
+                for (size_t i = 0; i < numToCheck; ++i) {
+                    int32_t refPos = static_cast<int32_t>(tqvec[i].pos);
+                    if (refPos > lastRefPos) {
+                        lastRefPos = refPos;
+                    } else {
+                        return i;
+                    }
+                }
+                return numToCheck;
+            }
+        }
+
 	    uint32_t tid;
 	    std::vector<SATxpQueryPos> tqvec;
-            bool active;
+        bool active;
 	    uint32_t numActive;
     };
 

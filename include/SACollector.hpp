@@ -16,10 +16,11 @@ class SACollector {
 
     SACollector(RapMapIndexT* rmi) : rmi_(rmi) {}
     bool operator()(std::string& read,
-            std::vector<rapmap::utils::QuasiAlignment>& hits,
-            SASearcher<RapMapIndexT>& saSearcher,
-            rapmap::utils::MateStatus mateStatus,
-            bool strictCheck=false) {
+                    std::vector<rapmap::utils::QuasiAlignment>& hits,
+                    SASearcher<RapMapIndexT>& saSearcher,
+                    rapmap::utils::MateStatus mateStatus,
+                    bool strictCheck=false,
+                    bool consistentHits=false) {
 
         using QuasiAlignment = rapmap::utils::QuasiAlignment;
         using MateStatus = rapmap::utils::MateStatus;
@@ -483,10 +484,10 @@ class SACollector {
         auto fwdHitsStart = hits.size();
         // If we had > 1 forward hit
         if (fwdSAInts.size() > 1) {
-                auto processedHits = rapmap::hit_manager::intersectSAHits(fwdSAInts, *rmi_);
-                rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, mateStatus);
+            auto processedHits = rapmap::hit_manager::intersectSAHits(fwdSAInts, *rmi_, consistentHits);
+            rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, mateStatus);
         } else if (fwdSAInts.size() == 1) { // only 1 hit!
-                auto& saIntervalHit = fwdSAInts.front();
+            auto& saIntervalHit = fwdSAInts.front();
                 auto initialSize = hits.size();
                 for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
                         auto globalPos = SA[i];
@@ -520,7 +521,7 @@ class SACollector {
         auto rcHitsStart = fwdHitsEnd;
         // If we had > 1 rc hit
         if (rcSAInts.size() > 1) {
-            auto processedHits = rapmap::hit_manager::intersectSAHits(rcSAInts, *rmi_);
+            auto processedHits = rapmap::hit_manager::intersectSAHits(rcSAInts, *rmi_, consistentHits);
             rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, mateStatus);
         } else if (rcSAInts.size() == 1) { // only 1 hit!
             auto& saIntervalHit = rcSAInts.front();
