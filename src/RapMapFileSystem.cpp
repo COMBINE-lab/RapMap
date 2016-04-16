@@ -6,7 +6,7 @@ namespace rapmap {
     namespace fs {
 
         // Taken from http://stackoverflow.com/questions/12774207/fastest-way-to-check-if-a-file-exist-using-standard-c-c11-c
-        int FileExists(const char *path) {
+        bool FileExists(const char *path) {
             struct stat fileStat;
             if ( stat(path, &fileStat) ) {
                 return false;

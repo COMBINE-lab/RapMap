@@ -126,7 +126,7 @@ bool RapMapIndex::load(std::string& indexPrefix) {
 
     std::ifstream revJumpStream(revJumpFile, std::ios::binary);
     {
-        logger->info("loading forward jumps");
+        logger->info("loading reverse jumps");
         ScopedTimer timer;
         cereal::BinaryInputArchive revJumpArchive(revJumpStream);
         revJumpArchive(revJumpTable);

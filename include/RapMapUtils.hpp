@@ -106,9 +106,37 @@ namespace rapmap {
                 : fmt::Writer(buffer_), buffer_(array, size) {}
     };
 
+    /**
+     * Stores both the key (k-mer)
+     * and the interval to which it corresponds.
+     * This is useful if the hash itself doesn't validate
+     * the key (e.g. a minimum perfect hash).
+     **/
+    template <typename IndexT>
+    struct SAIntervalWithKey {
+        uint64_t kmer;
+      //  SAInterval<IndexT> second;
+        IndexT begin;
+        IndexT end;
+        template <typename Archive>
+            void load(Archive& ar) { ar(kmer, begin, end); }
+
+        template <typename Archive>
+            void save(Archive& ar) const { ar(kmer, begin, end); }
+    };
 
     template <typename IndexT>
     struct SAInterval {
+      /*
+        SAInterval(IndexT beginIn, IndexT endIn) : begin(beginIn), end(endIn) {}
+	SAInterval(std::initializer_list<IndexT> il) {
+	  auto it = il.begin();
+	  begin = *(it);
+	  ++it;
+	  end = *(il.begin());
+	}
+	*/
+
         IndexT begin;
         IndexT end;
         template <typename Archive>
@@ -341,9 +369,49 @@ namespace rapmap {
 		tqvec.emplace_back(txpPosIn, queryPosIn, queryRCIn);
 	    }
 
+        /**
+         * This enforces a more stringent consistency check on
+         * the hits for this transcript.  The hits must be co-linear
+         * with respect to the query and target.
+         * 
+         * input: numToCheck --- the number of hits to check in sorted order
+         *                       hits after the last of these need not be consistent.
+         * return: numToCheck if the first numToCheck hits are consistent; 
+         *         -1 otherwise
+         **/
+        int32_t checkConsistent(int32_t numToCheck) {
+            auto numHits = tqvec.size();
+
+            // special case for only 1 or two hits (common)
+            if (numHits == 1) {
+                return numToCheck;
+            } else if (numHits == 2) {
+                auto& h1 = (tqvec[0].queryPos < tqvec[1].queryPos) ? tqvec[0] : tqvec[1];
+                auto& h2 = (tqvec[0].queryPos < tqvec[1].queryPos) ? tqvec[1] : tqvec[2];
+                return (h2.pos > h1.pos) ? (numToCheck) : -1;
+            } else {
+                // first, sort by query position
+                std::sort(tqvec.begin(), tqvec.end(), 
+                          [](const SATxpQueryPos& q1, const SATxpQueryPos& q2) -> bool {
+                              return q1.queryPos < q2.queryPos;
+                          });
+
+                int32_t lastRefPos{std::numeric_limits<int32_t>::min()};
+                for (size_t i = 0; i < numToCheck; ++i) {
+                    int32_t refPos = static_cast<int32_t>(tqvec[i].pos);
+                    if (refPos > lastRefPos) {
+                        lastRefPos = refPos;
+                    } else {
+                        return i;
+                    }
+                }
+                return numToCheck;
+            }
+        }
+
 	    uint32_t tid;
 	    std::vector<SATxpQueryPos> tqvec;
-            bool active;
+        bool active;
 	    uint32_t numActive;
     };
 
@@ -594,7 +662,8 @@ namespace rapmap {
                         hctr.seHits += leftHits.size();
                     }
                 }
-            } else if (leftHits.size() > 0) {
+            } else {
+                constexpr const int32_t signedZero{0};
                 auto leftIt = leftHits.begin();
                 auto leftEnd = leftHits.end();
                 auto leftLen = std::distance(leftIt, leftEnd);
@@ -612,20 +681,22 @@ namespace rapmap {
                             ++leftIt;
                         } else {
                             if (!(rightTxp < leftTxp)) {
-                                int32_t startRead1 = leftIt->pos;
-                                int32_t startRead2 = rightIt->pos;
-                                int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
-                                int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
+                                int32_t startRead1 = std::max(leftIt->pos, signedZero);
+                                int32_t startRead2 = std::max(rightIt->pos, signedZero);
+                                bool read1First{(startRead1 < startRead2)};
+                                int32_t fragStartPos = read1First ? startRead1 : startRead2;
+                                int32_t fragEndPos = read1First ? 
+                                    (startRead2 + rightIt->readLen) : (startRead1 + leftIt->readLen);
                                 uint32_t fragLen = fragEndPos - fragStartPos;
                                 jointHits.emplace_back(leftTxp,
-                                        startRead1,
+                                        leftIt->pos,
                                         leftIt->fwd,
                                         leftIt->readLen,
                                         fragLen, true);
                                 // Fill in the mate info
                                 auto& qaln = jointHits.back();
                                 qaln.mateLen = rightIt->readLen;
-                                qaln.matePos = startRead2;
+                                qaln.matePos = rightIt->pos;
                                 qaln.mateIsFwd = rightIt->fwd;
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
 
@@ -656,6 +727,7 @@ namespace rapmap {
                 bool& tooManyHits,
                 HitCounters& hctr) {
             if (leftHits.size() > 0) {
+                constexpr const int32_t signedZero{0};
                 auto leftIt = leftHits.begin();
                 auto leftEnd = leftHits.end();
                 auto leftLen = std::distance(leftIt, leftEnd);
@@ -673,10 +745,12 @@ namespace rapmap {
                             ++leftIt;
                         } else {
                             if (!(rightTxp < leftTxp)) {
-                                int32_t startRead1 = leftIt->pos;
-                                int32_t startRead2 = rightIt->pos;
-                                int32_t fragStartPos = std::min(leftIt->pos, rightIt->pos);
-                                int32_t fragEndPos = std::max(leftIt->pos, rightIt->pos) + readLen;
+                                int32_t startRead1 = std::max(leftIt->pos, signedZero);
+                                int32_t startRead2 = std::max(rightIt->pos, signedZero);
+                                bool read1First{(startRead1 < startRead2)};
+                                int32_t fragStartPos = read1First ? startRead1 : startRead2;
+                                int32_t fragEndPos = read1First ? 
+                                    (startRead2 + rightIt->readLen) : (startRead1 + leftIt->readLen);
                                 uint32_t fragLen = fragEndPos - fragStartPos;
                                 jointHits.emplace_back(leftTxp,
                                         startRead1,
