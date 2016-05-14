@@ -31,6 +31,7 @@
 #include "xxhash.h"
 
 #include "spdlog/spdlog.h"
+#include "spdlog/sinks/ostream_sink.h"
 #include "spdlog/details/format.h"
 
 // Jellyfish 2 include
