@@ -25,7 +25,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 #    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DEMPHF_USE_POPCOUNT")
 #endif(SSE4_2_FOUND)
 
-set (WARNING_IGNORE_FLAGS "-Wno-deprecated-register -Wno-c++11-narrowing")
+set (WARNING_IGNORE_FLAGS "-Wno-deprecated-register -Wno-c++11-narrowing -Wno-unknown-pragmas")
 set (BOOST_CXX_FLAGS "-Wno-deprecated-register -std=c++11")
 ## Prefer static to dynamic libraries
 SET(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})

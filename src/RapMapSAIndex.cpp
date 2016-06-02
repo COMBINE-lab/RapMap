@@ -1,4 +1,4 @@
-#include "MPHMap.hpp"
+#include "BooMap.hpp"
 #include "RapMapSAIndex.hpp"
 #include "IndexHeader.hpp"
 #include <cereal/types/unordered_map.hpp>
@@ -28,8 +28,9 @@ bool loadHashFromIndex(const std::string& indexDir,
 
 template <typename IndexT>
 bool loadHashFromIndex(const std::string& indexDir,
-		       MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<IndexT>>> & h) {
-    h.load(indexDir);
+		       BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> & h) {
+    std::string hashBase = indexDir + "hash_info";
+    h.load(hashBase);
     return true;
 }
 
@@ -172,5 +173,5 @@ template class RapMapSAIndex<int32_t,  google::dense_hash_map<uint64_t,
 template class RapMapSAIndex<int64_t,  google::dense_hash_map<uint64_t,
                       rapmap::utils::SAInterval<int64_t>,
                       rapmap::utils::KmerKeyHasher>>;
-template class RapMapSAIndex<int32_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int32_t>>>>;
-template class RapMapSAIndex<int64_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int64_t>>>>;
+template class RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
+template class RapMapSAIndex<int64_t, BooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;

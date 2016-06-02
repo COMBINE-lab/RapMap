@@ -1,13 +1,14 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/types/unordered_map.hpp>
 #include <cereal/archives/binary.hpp>
+
 #include "RapMapUtils.hpp"
 #include "RapMapSAIndex.hpp"
 #include "RapMapIndex.hpp"
 #include "PairAlignmentFormatter.hpp"
 #include "SingleAlignmentFormatter.hpp"
 #include "jellyfish/whole_sequence_parser.hpp"
-#include "MPHMap.hpp"
+#include "BooMap.hpp"
 
 namespace rapmap {
     namespace utils {
@@ -474,8 +475,8 @@ using SAIndex32BitDense = RapMapSAIndex<int32_t,google::dense_hash_map<uint64_t,
 								       rapmap::utils::KmerKeyHasher>>;
 using SAIndex64BitDense = RapMapSAIndex<int64_t,google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int64_t>,
 								       rapmap::utils::KmerKeyHasher>>;
-using SAIndex32BitPerfect = RapMapSAIndex<int32_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int32_t>>>>;
-using SAIndex64BitPerfect = RapMapSAIndex<int64_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int64_t>>>>;
+using SAIndex32BitPerfect = RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
+using SAIndex64BitPerfect = RapMapSAIndex<int64_t, BooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
 
 // Explicit instantiations
 // pair parser, 32-bit, dense hash

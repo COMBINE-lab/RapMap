@@ -47,7 +47,7 @@
 }
 */
 #include "stringpiece.h"
-#include "MPHMap.hpp"
+#include "BooMap.hpp"
 #include "PairSequenceParser.hpp"
 #include "PairAlignmentFormatter.hpp"
 #include "SingleAlignmentFormatter.hpp"
@@ -594,7 +594,7 @@ int rapMapSAMap(int argc, char* argv[]) {
       //BigSAIdxPtr.reset(new RapMapSAIndex<int64_t>);
       //BigSAIdxPtr->load(indexPrefix, h.kmerLen());
       if (h.perfectHash()) {
-          RapMapSAIndex<int64_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int64_t>>>> rmi;
+          RapMapSAIndex<int64_t, BooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>> rmi;
           rmi.load(indexPrefix);
           success = mapReads(rmi, consoleLog, index, read1, read2,
                              unmatedReads, numThreads, maxNumHits,
@@ -613,7 +613,7 @@ int rapMapSAMap(int argc, char* argv[]) {
       //SAIdxPtr.reset(new RapMapSAIndex<int32_t>);
       //SAIdxPtr->load(indexPrefix, h.kmerLen());
         if (h.perfectHash()) {
-            RapMapSAIndex<int32_t, MPHMap<uint64_t, std::pair<uint64_t, rapmap::utils::SAInterval<int32_t>>>> rmi;
+            RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>> rmi;
             rmi.load(indexPrefix);
             success = mapReads(rmi, consoleLog, index, read1, read2,
                                unmatedReads, numThreads, maxNumHits,

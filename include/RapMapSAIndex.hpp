@@ -8,19 +8,12 @@
 
 #include "spdlog/spdlog.h"
 #include "spdlog/details/format.h"
-#include "RSDic.hpp"
+
 #include "google/dense_hash_map"
 #include "bit_array.h"
 //#include "bitmap.h"
 //#include "shared.h"
 #include "rank9b.h"
-
-#include "emphf/common.hpp"
-#include "emphf/mphf.hpp"
-#include "emphf/base_hash.hpp"
-#include "emphf/perfutils.hpp"
-#include "emphf/mmap_memory_model.hpp"
-#include "emphf/hypergraph_sorter_scan.hpp"
 
 #include <cstdio>
 #include <vector>
@@ -54,7 +47,6 @@ class RapMapSAIndex {
     bool load(const std::string& indDir);
 
     std::vector<IndexT> SA;
-    //rsdic::RSDic rankDictSafe;
 
     BitArrayPointer bitArray{nullptr};
     std::unique_ptr<rank9b> rankDict{nullptr};
@@ -66,20 +58,6 @@ class RapMapSAIndex {
     std::vector<IndexT> positionIDs;
     std::vector<rapmap::utils::SAIntervalWithKey<IndexT>> kintervals;
     HashT khash;
-  //using mphf_t = emphf::mphf<emphf::jenkins64_hasher>;
-  //mphf_t khash;
-
-    /*
-    google::dense_hash_map<uint64_t,
-                        rapmap::utils::SAInterval<IndexT>,
-                        rapmap::utils::KmerKeyHasher> khash;
-                        */
-                       // ::NopointerSerializer(), &hashStream);
-        /*
-    std::unordered_map<uint64_t,
-                       rapmap::utils::SAInterval,
-                       rapmap::utils::KmerKeyHasher> khash;
-                       */
 };
 
 #endif //__RAPMAP_SA_INDEX_HPP__
