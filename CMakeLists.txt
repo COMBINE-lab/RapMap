@@ -192,7 +192,7 @@ if (NOT CEREAL_ROOT)
 	set(CEREAL_ROOT ${GAT_SOURCE_DIR}/external/install)
 endif()
 
-find_package (Cereal)
+find_package (Cereal 1.1.2)
 if (NOT CEREAL_FOUND)
 
 	message("Build system will fetch and build the Cereal serialization library")
