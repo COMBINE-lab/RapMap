@@ -104,7 +104,7 @@ class SASearcher {
                 return std::make_tuple(lbIn, ubIn, static_cast<OffsetT>(i));
             }
 
-            BoundSearchResult<int64_t> res1, res2;
+            BoundSearchResult<OffsetT> res1, res2;
 
             char smallest = '#';
             char largest = '}';
