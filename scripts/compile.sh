@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+
 # from http://stackoverflow.com/questions/192249/how-do-i-parse-command-line-arguments-in-bash
 no_native_arch=false
 cxxflags=""
@@ -60,6 +61,7 @@ mv RapMap-${branch} RapMap
 cd RapMap
 mkdir build
 cd build
+
 
 if [ "$no_native_arch" = true ] ; then 
     cmake -DFETCH_BOOST=TRUE -DCMAKE_CXX_FLAGS=${cxxflags} -DNO_NATIVE_ARCH ..

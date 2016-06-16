@@ -1,12 +1,14 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/types/unordered_map.hpp>
 #include <cereal/archives/binary.hpp>
+
 #include "RapMapUtils.hpp"
 #include "RapMapSAIndex.hpp"
 #include "RapMapIndex.hpp"
 #include "PairAlignmentFormatter.hpp"
 #include "SingleAlignmentFormatter.hpp"
 #include "jellyfish/whole_sequence_parser.hpp"
+#include "BooMap.hpp"
 
 namespace rapmap {
     namespace utils {
@@ -469,42 +471,83 @@ namespace rapmap {
     }
 }
 
-// Explicit instantiations
-template uint32_t rapmap::utils::writeAlignmentsToStream<std::pair<header_sequence_qual, header_sequence_qual>, RapMapSAIndex<int32_t>*>(
-                std::pair<header_sequence_qual, header_sequence_qual>& r,
-                PairAlignmentFormatter<RapMapSAIndex<int32_t>*>& formatter,
-                rapmap::utils::HitCounters& hctr,
-                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
-                fmt::MemoryWriter& sstream
-                );
+using SAIndex32BitDense = RapMapSAIndex<int32_t,google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int32_t>,
+								       rapmap::utils::KmerKeyHasher>>;
+using SAIndex64BitDense = RapMapSAIndex<int64_t,google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int64_t>,
+								       rapmap::utils::KmerKeyHasher>>;
+using SAIndex32BitPerfect = RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
+using SAIndex64BitPerfect = RapMapSAIndex<int64_t, BooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
 
-template uint32_t rapmap::utils::writeAlignmentsToStream<std::pair<header_sequence_qual, header_sequence_qual>, RapMapSAIndex<int64_t>*>(
+// Explicit instantiations
+// pair parser, 32-bit, dense hash
+template uint32_t rapmap::utils::writeAlignmentsToStream<std::pair<header_sequence_qual, header_sequence_qual>, SAIndex32BitDense*>(
                 std::pair<header_sequence_qual, header_sequence_qual>& r,
-                PairAlignmentFormatter<RapMapSAIndex<int64_t>*>& formatter,
+                PairAlignmentFormatter<SAIndex32BitDense*>& formatter,
                 rapmap::utils::HitCounters& hctr,
                 std::vector<rapmap::utils::QuasiAlignment>& jointHits,
-                fmt::MemoryWriter& sstream
-                );
+                fmt::MemoryWriter& sstream);
+
+// pair parser, 64-bit, dense hash
+template uint32_t rapmap::utils::writeAlignmentsToStream<std::pair<header_sequence_qual, header_sequence_qual>, SAIndex64BitDense*>(
+                std::pair<header_sequence_qual, header_sequence_qual>& r,
+                PairAlignmentFormatter<SAIndex64BitDense*>& formatter,
+                rapmap::utils::HitCounters& hctr,
+                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
+                fmt::MemoryWriter& sstream);
+
+// pair parser, 32-bit, perfect hash
+template uint32_t rapmap::utils::writeAlignmentsToStream<std::pair<header_sequence_qual, header_sequence_qual>, SAIndex32BitPerfect*>(
+                std::pair<header_sequence_qual, header_sequence_qual>& r,
+                PairAlignmentFormatter<SAIndex32BitPerfect*>& formatter,
+                rapmap::utils::HitCounters& hctr,
+                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
+                fmt::MemoryWriter& sstream);
+
+// pair parser, 64-bit, perfect hash
+template uint32_t rapmap::utils::writeAlignmentsToStream<std::pair<header_sequence_qual, header_sequence_qual>, SAIndex64BitPerfect*>(
+                std::pair<header_sequence_qual, header_sequence_qual>& r,
+                PairAlignmentFormatter<SAIndex64BitPerfect*>& formatter,
+                rapmap::utils::HitCounters& hctr,
+                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
+                fmt::MemoryWriter& sstream);
+
+
+// single parser, 32-bit, dense hash
+template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_sequence_qual, SAIndex32BitDense*>(
+		jellyfish::header_sequence_qual& r,
+                SingleAlignmentFormatter<SAIndex32BitDense*>& formatter,
+                rapmap::utils::HitCounters& hctr,
+                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
+                fmt::MemoryWriter& sstream);
+
+// single parser, 64-bit, dense hash
+template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_sequence_qual, SAIndex64BitDense*>(
+		jellyfish::header_sequence_qual& r,
+                SingleAlignmentFormatter<SAIndex64BitDense*>& formatter,
+                rapmap::utils::HitCounters& hctr,
+                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
+                fmt::MemoryWriter& sstream);
+
+// single parser, 32-bit, perfect hash
+template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_sequence_qual, SAIndex32BitPerfect*>(
+ 		jellyfish::header_sequence_qual& r,
+                SingleAlignmentFormatter<SAIndex32BitPerfect*>& formatter,
+                rapmap::utils::HitCounters& hctr,
+                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
+                fmt::MemoryWriter& sstream);
+
+// single parser, 64-bit, perfect hash
+template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_sequence_qual, SAIndex64BitPerfect*>(
+		jellyfish::header_sequence_qual& r,
+                SingleAlignmentFormatter<SAIndex64BitPerfect*>& formatter,
+                rapmap::utils::HitCounters& hctr,
+                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
+                fmt::MemoryWriter& sstream);
+
 
 template uint32_t rapmap::utils::writeAlignmentsToStream<std::pair<header_sequence_qual, header_sequence_qual>, RapMapIndex*>(
                 std::pair<header_sequence_qual, header_sequence_qual>& r,
                 PairAlignmentFormatter<RapMapIndex*>& formatter,
-                rapmap::utils::HitCounters& hctr,
-                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
-                fmt::MemoryWriter& sstream
-                );
-
-  template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_sequence_qual, RapMapSAIndex<int32_t>*>(
-                jellyfish::header_sequence_qual& r,
-                SingleAlignmentFormatter<RapMapSAIndex<int32_t>*>& formatter,
-                rapmap::utils::HitCounters& hctr,
-                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
-                fmt::MemoryWriter& sstream
-                );
-
-template uint32_t rapmap::utils::writeAlignmentsToStream<jellyfish::header_sequence_qual, RapMapSAIndex<int64_t>*>(
-                jellyfish::header_sequence_qual& r,
-                SingleAlignmentFormatter<RapMapSAIndex<int64_t>*>& formatter,
                 rapmap::utils::HitCounters& hctr,
                 std::vector<rapmap::utils::QuasiAlignment>& jointHits,
                 fmt::MemoryWriter& sstream

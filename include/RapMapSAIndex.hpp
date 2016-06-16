@@ -8,13 +8,12 @@
 
 #include "spdlog/spdlog.h"
 #include "spdlog/details/format.h"
-#include "RSDic.hpp"
+
 #include "google/dense_hash_map"
 #include "bit_array.h"
 //#include "bitmap.h"
 //#include "shared.h"
 #include "rank9b.h"
-
 
 #include <cstdio>
 #include <vector>
@@ -23,10 +22,11 @@
 #include <fstream>
 #include "RapMapUtils.hpp"
 
-template <typename IndexT>
+template <typename IndexT, typename HashT>
 class RapMapSAIndex {
     public:
     using IndexType = IndexT;
+    using HashType = HashT;
 
       struct BitArrayDeleter {
         void operator()(BIT_ARRAY* b) {
@@ -47,7 +47,6 @@ class RapMapSAIndex {
     bool load(const std::string& indDir);
 
     std::vector<IndexT> SA;
-    //rsdic::RSDic rankDictSafe;
 
     BitArrayPointer bitArray{nullptr};
     std::unique_ptr<rank9b> rankDict{nullptr};
@@ -57,15 +56,8 @@ class RapMapSAIndex {
     std::vector<IndexT> txpOffsets;
     std::vector<IndexT> txpLens;
     std::vector<IndexT> positionIDs;
-    google::dense_hash_map<uint64_t,
-                        rapmap::utils::SAInterval<IndexT>,
-                        rapmap::utils::KmerKeyHasher> khash;
-                       // ::NopointerSerializer(), &hashStream);
-        /*
-    std::unordered_map<uint64_t,
-                       rapmap::utils::SAInterval,
-                       rapmap::utils::KmerKeyHasher> khash;
-                       */
+    std::vector<rapmap::utils::SAIntervalWithKey<IndexT>> kintervals;
+    HashT khash;
 };
 
 #endif //__RAPMAP_SA_INDEX_HPP__

@@ -4,10 +4,10 @@ enable_testing()
 
 project (RapMap)
 
-set(CPACK_PACKAGE_VERSION "0.1.1")
-set(CPACK_PACKAGE_VERSION_MAJOR "0")
-set(CPACK_PACKAGE_VERSION_MINOR "1")
-set(CPACK_PACKAGE_VERSION_PATCH "1")
+set(CPACK_PACKAGE_VERSION "0.2.0")
+SET(CPACK_PACKAGE_VERSION_MAJOR "0")
+set(CPACK_PACKAGE_VERSION_MINOR "2")
+set(CPACK_PACKAGE_VERSION_PATCH "0")
 set(CPACK_GENERATOR "TGZ")
 set(CPACK_SOURCE_GENERATOR "TGZ")
 set(CPACK_PACKAGE_VENDOR "Stony Brook University")
@@ -18,14 +18,26 @@ set(CPACK_SOURCE_PACKAGE_FILE_NAME
   "${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}-Source")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
+#include(FindSSE)
+#FindSSE ()
+#if(SSE4_2_FOUND)
+#    message("Enabling popcount")
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DEMPHF_USE_POPCOUNT")
+#endif(SSE4_2_FOUND)
 
-set (WARNING_IGNORE_FLAGS "-Wno-deprecated-register -Wno-c++11-narrowing")
+set (WARNING_IGNORE_FLAGS "-Wno-deprecated-register -Wno-c++11-narrowing -Wno-unknown-pragmas")
 set (BOOST_CXX_FLAGS "-Wno-deprecated-register -std=c++11")
 ## Prefer static to dynamic libraries
 SET(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
 
 ## Set the standard required compile flags
-set (CMAKE_CXX_FLAGS "-march=native -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM -Wall -std=c++11 -Wreturn-type -Werror=return-type")
+if (NO_NATIVE_ARCH)
+  message (STATUS "DISABLING NATIVE ARCH.")
+else()
+  set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+endif()
+
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM -Wall -std=c++11 -Wreturn-type -Werror=return-type")
 
 ##
 # OSX is strange (some might say, stupid in this regard).  Deal with it's quirkines here.
@@ -153,7 +165,7 @@ message("==================================================================")
 include(ExternalProject)
 ExternalProject_Add(libdivsufsort
     DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-    URL ${CMAKE_CURRENT_SOURCE_DIR}/external/libdivsufsort.zip
+    URL ${CMAKE_CURRENT_SOURCE_DIR}/external/libdivsufsort.tar.gz
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/libdivsufsort-master
     INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
     UPDATE_COMMAND sh -c "mkdir -p <SOURCE_DIR>/build"
@@ -180,7 +192,7 @@ if (NOT CEREAL_ROOT)
 	set(CEREAL_ROOT ${GAT_SOURCE_DIR}/external/install)
 endif()
 
-find_package (Cereal)
+find_package (Cereal 1.1.2)
 if (NOT CEREAL_FOUND)
 
 	message("Build system will fetch and build the Cereal serialization library")
@@ -203,27 +215,28 @@ if (NOT CEREAL_FOUND)
 
 endif()
 
+
 if (NOT JELLYFISH_ROOT)
-    set(JELLYFISH_ROOT ${GAT_SOURCE_DIR}/external/install)
+	set(JELLYFISH_ROOT ${GAT_SOURCE_DIR}/external/install)
 endif()
 
 find_package(Jellyfish 2.2.5)
 
 if (NOT JELLYFISH_FOUND)
-    message("Build system will fetch and build Jellyfish")
-    message("==================================================================")
-    ExternalProject_Add(libjellyfish
-        DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-        DOWNLOAD_COMMAND curl -k -L https://github.com/gmarcais/Jellyfish/releases/download/v2.2.5/jellyfish-2.2.5.tar.gz -o jellyfish-2.2.5.tgz &&
-        rm -fr jellyfish-2.2.5 &&
-        tar -xzvf jellyfish-2.2.5.tgz
-        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/jellyfish-2.2.5
-        INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
-        CONFIGURE_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/external/jellyfish-2.2.5/configure --prefix=<INSTALL_DIR> CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
-        BUILD_COMMAND ${MAKE} CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
-        BUILD_IN_SOURCE 1
-        INSTALL_COMMAND make install
-        )
+message("Build system will fetch and build Jellyfish")
+message("==================================================================")
+ExternalProject_Add(libjellyfish
+    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
+    DOWNLOAD_COMMAND curl -k -L https://github.com/gmarcais/Jellyfish/releases/download/v2.2.5/jellyfish-2.2.5.tar.gz -o jellyfish-2.2.5.tgz &&
+    	rm -fr jellyfish-2.2.5 &&
+     	tar -xzvf jellyfish-2.2.5.tgz
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/jellyfish-2.2.5
+    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
+    CONFIGURE_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/external/jellyfish-2.2.5/configure --prefix=<INSTALL_DIR> CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
+    BUILD_COMMAND ${MAKE} CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
+    BUILD_IN_SOURCE 1
+    INSTALL_COMMAND make install
+)
 endif()
 
 set (FAST_MALLOC_LIB "")

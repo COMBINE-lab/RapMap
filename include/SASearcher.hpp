@@ -77,7 +77,7 @@ class SASearcher {
             std::vector<OffsetT>& SA = *sa_;
             std::string& seq = *seq_;
 
-            OffsetT m = std::distance(qb, qe);
+            int64_t m = std::distance(qb, qe);
             size_t n = seq.length();
 
             auto sb = seq.begin();
@@ -101,7 +101,7 @@ class SASearcher {
                     }
                     ++i;
                 }
-                return std::make_tuple(lbIn, ubIn, i);
+                return std::make_tuple(lbIn, ubIn, static_cast<OffsetT>(i));
             }
 
             BoundSearchResult<OffsetT> res1, res2;
@@ -110,18 +110,19 @@ class SASearcher {
             char largest = '}';
             char sentinel = smallest;
 
-            OffsetT l = lbIn, r = ubIn;
-            OffsetT lcpLP = startAt, lcpRP = startAt;
-            OffsetT c{0};
-            OffsetT i{0};
+            // FIX: these have to be large enough to hold the *sum* of the boundaries!
+            int64_t l = lbIn, r = ubIn;
+            int64_t lcpLP = startAt, lcpRP = startAt;
+            int64_t c{0};
+            int64_t i{0};
 
-            OffsetT maxI{startAt};
-            OffsetT prevI = startAt;
-            OffsetT prevILow = startAt;
-            OffsetT prevIHigh = startAt;
-            OffsetT validBoundLow = ubIn;
-            OffsetT validBoundHigh = lbIn;
-            OffsetT validBound = 0;
+            int64_t maxI{startAt};
+            int64_t prevI = startAt;
+            int64_t prevILow = startAt;
+            int64_t prevIHigh = startAt;
+            int64_t validBoundLow = ubIn;
+            int64_t validBoundHigh = lbIn;
+            int64_t validBound = 0;
             bool plt{true};
             // Reduce the search interval until we hit a border
             // i.e. until c == r - 1 or c == l + 1
@@ -283,7 +284,7 @@ class SASearcher {
 
             // Must occur at least once!
             if (res1.bound == res2.bound) { res2.bound += 1; }
-            return std::make_tuple(res1.bound, res2.bound, res1.maxLen);
+            return std::make_tuple(static_cast<OffsetT>(res1.bound), static_cast<OffsetT>(res2.bound), static_cast<OffsetT>(res1.maxLen));
         }
 
 
@@ -394,7 +395,6 @@ class SASearcher {
         }
 
 
-        ''
         // http://www.cs.jhu.edu/~langmea/resources/lecture_notes/suffix_arrays.pdf
         // templated on the iterator type so we can use a forward or revers iterator
         template <typename IteratorT>

@@ -10,10 +10,7 @@ set (RAPMAP_MAIN_SRCS
     RapMapIndex.cpp
     HitManager.cpp
     rank9b.cpp
-    intersection.cpp
-    #bitmap.cpp
     stringpiece.cc
-    sais.c
     xxhash.c
     bit_array.c
 )
@@ -24,28 +21,26 @@ set (RAPMAP_ALIGN_SRCS
 set (RAPMAP_LIB_SRCS
 )
 
-set (RSDICT_LIB_SRCS
-    EnumCoder.cpp
-    RSDic.cpp
-    RSDicBuilder.cpp
-)
+#set (RSDICT_LIB_SRCS
+#    EnumCoder.cpp
+#    RSDic.cpp
+#    RSDicBuilder.cpp
+#)
 
 include_directories(
 ${GAT_SOURCE_DIR}/include
-#${GAT_SOURCE_DIR}/include/eigen3
 ${GAT_SOURCE_DIR}/external
 ${GAT_SOURCE_DIR}/external/cereal/include
 ${GAT_SOURCE_DIR}/external/install/include
 ${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.5
 ${ZLIB_INCLUDE_DIR}
 ${CEREAL_INCLUDE_DIRS}
-#${Boost_INCLUDE_DIRS}
 )
 
 if (JELLYFISH_FOUND)
     include_directories(${JELLYFISH_INCLUDE_DIR})
 else()
-    include_directories(${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.3)
+    include_directories(${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.5)
 endif()
 
 link_directories(
@@ -72,7 +67,7 @@ endif()
 set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 
 # Build the rsdic library
-add_library(rsdic STATIC ${RSDICT_LIB_SRCS} )
+# add_library(rsdic STATIC ${RSDICT_LIB_SRCS} )
 
 # Build the rapmap executable
 add_executable(rapmap ${RAPMAP_MAIN_SRCS})
@@ -85,7 +80,6 @@ set (SUFFARRAY64_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort64.a)
 
 # Link the executable
 target_link_libraries(rapmap
-    rsdic
     ${PTHREAD_LIB}
     #${Boost_LIBRARIES}
     ${ZLIB_LIBRARY}
