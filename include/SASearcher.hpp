@@ -87,15 +87,15 @@ class SASearcher {
             if (ubIn - lbIn == 2) {
                 lbIn += 1;
                 auto i = startAt;
-                while (i < m and SA.at(lbIn) + i < n) {
+                while (i < m and SA[lbIn] + i < n) {
                     char queryChar = ::toupper(*(qb + i));
                     // If we're reverse complementing
                     if (complementBases) {
                         queryChar = rapmap::utils::my_mer::complement(queryChar);
                     }
-                    if ( queryChar < *(sb + SA.at(lbIn) + i) ) {
+                    if ( queryChar < *(sb + SA[lbIn] + i) ) {
                         break;
-                    } else if ( queryChar > *(sb + SA.at(lbIn) + i)) {
+                    } else if ( queryChar > *(sb + SA[lbIn] + i)) {
                         break;
                     }
                     ++i;
