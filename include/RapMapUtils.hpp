@@ -303,7 +303,7 @@ namespace rapmap {
 
         inline uint32_t fragLengthPedantic(uint32_t txpLen) const { 
             if (mateStatus != rapmap::utils::MateStatus::PAIRED_END_PAIRED
-                or fwd != mateIsFwd) {
+                or fwd == mateIsFwd) {
                 return 0;
             }
             int32_t p1 = fwd ? pos : matePos;
