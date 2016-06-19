@@ -299,9 +299,9 @@ namespace rapmap {
 #ifdef RAPMAP_SALMON_SUPPORT
         inline uint32_t transcriptID() const { return tid; }
         inline double score() { return 1.0; }
-        inline uint32_t fragLength() { return fragLen; }
+        inline uint32_t fragLength() const { return fragLen; }
 
-        inline uint32_t fragLengthPedantic(uint32_t txpLen) { 
+        inline uint32_t fragLengthPedantic(uint32_t txpLen) const { 
             if (mateStatus != rapmap::utils::MateStatus::PAIRED_END_PAIRED
                 or fwd != mateIsFwd) {
                 return 0;
