@@ -64,7 +64,7 @@ cd build
 
 
 if [ "$no_native_arch" = true ] ; then 
-    cmake -DFETCH_BOOST=TRUE -DCMAKE_CXX_FLAGS=${cxxflags} -DNO_NATIVE_ARCH ..
+    cmake -DFETCH_BOOST=TRUE -DCMAKE_CXX_FLAGS=${cxxflags} -DNO_NATIVE_ARCH=TRUE ..
 else
     cmake -DFETCH_BOOST=TRUE -DCMAKE_CXX_FLAGS=${cxxflags} ..
 fi
