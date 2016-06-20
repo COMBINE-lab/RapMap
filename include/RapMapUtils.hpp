@@ -299,7 +299,23 @@ namespace rapmap {
 #ifdef RAPMAP_SALMON_SUPPORT
         inline uint32_t transcriptID() const { return tid; }
         inline double score() { return 1.0; }
-        inline uint32_t fragLength() { return fragLen; }
+        inline uint32_t fragLength() const { return fragLen; }
+
+        inline uint32_t fragLengthPedantic(uint32_t txpLen) const { 
+            if (mateStatus != rapmap::utils::MateStatus::PAIRED_END_PAIRED
+                or fwd == mateIsFwd) {
+                return 0;
+            }
+            int32_t p1 = fwd ? pos : matePos;
+            p1 = (p1 < 0) ? 0 : p1;
+            p1 = (p1 > txpLen) ? txpLen : p1;
+            int32_t p2 = fwd ? matePos + mateLen : pos + readLen;
+            p2 = (p2 < 0) ? 0 : p2;
+            p2 = (p2 > txpLen) ? txpLen : p2;
+
+            return (p1 > p2) ? p1 - p2 : p2 - p1;
+        }
+
         inline int32_t hitPos() { return std::min(pos, matePos); }
         double logProb{HUGE_VAL};
         double logBias{HUGE_VAL};
