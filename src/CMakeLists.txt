@@ -121,12 +121,15 @@ set(INSTALL_INCLUDE_DIR include )
 # install(FILES ${Boost_LIBRARIES}
 # 	           DESTINATION ${INSTALL_LIB_DIR})
 
-install(TARGETS rapmap
+install(TARGETS rapmap 
                 RUNTIME DESTINATION bin
                 LIBRARY DESTINATION lib
                 ARCHIVE DESTINATION lib
         )
 
+install(FILES ${GAT_SOURCE_DIR}/scripts/RunRapMap.sh 
+              PERMISSIONS WORLD_EXECUTE WORLD_READ OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+              DESTINATION bin)
     #set(POST_INSTALL_SCRIPT ${GAT_SOURCE_DIR}/cmake/PostInstall.cmake)
 
     #install(
