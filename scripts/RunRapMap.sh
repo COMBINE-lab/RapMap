@@ -10,16 +10,20 @@ then
     #Run normally in this branch
     $DIR/rapmap ${@}
 else
-    new_cmd=`echo $cmd | sed 's/--bamOut\s\+\(\S\+\)\s*//'`
-    # The following interleaved to split conversion is courtesy of
-    # https://gist.github.com/nathanhaigh/3521724
-    execmd=""
-    if [ -z "$bam_compress_threads" ]
-    then
-        execmd="${new_cmd} -o | samtools view -Sb - > ${bam_out}"
+    # from: http://stackoverflow.com/questions/592620/check-if-a-program-exists-from-a-bash-script
+    if command -v samtools >/dev/null; then 
+        new_cmd=`echo $cmd | sed 's/--bamOut\s\+\(\S\+\)\s*//'`
+        execmd=""
+        if [ -z "$bam_compress_threads" ]
+        then
+            execmd="${new_cmd} -o | samtools view -Sb - > ${bam_out}"
+        else
+            execmd="${new_cmd} -o | samtools view -Sb -@ ${bam_compress_threads} > ${bam_out}"
+        fi
+        echo "Running command [$DIR/rapmap ${execmd}]"
+        $DIR/rapmap ${execmd}
     else
-        execmd="${new_cmd} -o | samtools view -Sb -@ ${bam_compress_threads} > ${bam_out}"
+        echo >&2 "samtools is required to convert to BAM, but it's not installed.  Aborting."; 
+        exit 1; 
     fi
-    echo "Running command [$DIR/rapmap ${execmd}]"
-    $DIR/rapmap ${execmd}
 fi
