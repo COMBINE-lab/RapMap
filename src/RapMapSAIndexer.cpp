@@ -482,7 +482,7 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
         readLen = readStr.size();
         // If the transcript was completely removed during clipping, don't
         // include it in the index.
-        if (readStr.size() >= k) {
+        if (readStr.size() > 0) {
           // If we're suspicious the user has fed in a *genome* rather
           // than a transcriptome, say so here.
           if (readStr.size() >= tooLong) {
@@ -490,6 +490,10 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
                       "Are you certain that "
                       "we are indexing a transcriptome and not a genome?",
                       j->data[i].header, tooLong);
+          } else if (readStr.size() < k) {
+            log->warn("Entry with header [{}], had length less than "
+                      "the k-mer length of {} (perhaps after poly-A clipping)",
+                      j->data[i].header, k);
           }
 
           uint32_t txpIndex = n++;
@@ -507,9 +511,9 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
           currIndex += readLen + 1;
           onePos.push_back(currIndex - 1);
         } else {
-            log->warn("Discarding entry with header [{}], since it was shorter than "
-                      "the k-mer length of {} (perhaps after poly-A clipping)", 
-                      j->data[i].header, k);
+            log->warn("Discarding entry with header [{}], since it had length 0 "
+                      "(perhaps after poly-A clipping)",
+                      j->data[i].header);
         }
       }
       if (n % 10000 == 0) {
