@@ -32,7 +32,8 @@
 
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/ostream_sink.h"
-#include "spdlog/details/format.h"
+#include "spdlog/fmt/ostr.h"
+#include "spdlog/fmt/fmt.h"
 
 // Jellyfish 2 include
 #include "jellyfish/mer_dna.hpp"
@@ -176,7 +177,7 @@ void processReadsSingleSA(single_parser * parser,
             // Get rid of last newline
             if (!outStr.empty()) {
                 outStr.pop_back();
-                outQueue->info() << std::move(outStr);
+                outQueue->info(std::move(outStr));
             }
             sstream.clear();
             /*
@@ -297,7 +298,7 @@ void processReadsPairSA(paired_parser* parser,
             // Get rid of last newline
             if (!outStr.empty()) {
                 outStr.pop_back();
-                outQueue->info() << std::move(outStr);
+                outQueue->info(std::move(outStr));
             }
             sstream.clear();
 	        /*
@@ -372,7 +373,7 @@ bool spawnProcessReadsThreads(
                                      std::ref(hctr),
                                      maxNumHits,
                                      noOutput,
-                                     strictCheck, 
+                                     strictCheck,
                                      consistentHits);
             }
             for (auto& t : threads) { t.join(); }
@@ -391,7 +392,7 @@ bool mapReads(RapMapIndexT& rmi,
 	      TCLAP::ValueArg<std::string>& outname,
 	      TCLAP::SwitchArg& noout,
 	      TCLAP::SwitchArg& strict,
-          TCLAP::SwitchArg& fuzzy, 
+          TCLAP::SwitchArg& fuzzy,
           TCLAP::SwitchArg& consistent) {
 
 	std::cerr << "\n\n\n\n";
@@ -459,7 +460,7 @@ bool mapReads(RapMapIndexT& rmi,
                         pairFileList, pairFileList+numFiles));
 
             spawnProcessReadsThreads(nthread, pairParserPtr.get(), rmi, iomutex,
-                                     outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck, 
+                                     outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck,
                                      fuzzyIntersection, consistentHits);
             delete [] pairFileList;
         } else {
@@ -475,7 +476,7 @@ bool mapReads(RapMapIndexT& rmi,
 
             /** Create the threads depending on the collector type **/
             spawnProcessReadsThreads(nthread, singleParserPtr.get(), rmi, iomutex,
-                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue(), 
+                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue(),
                                      strictCheck, consistentHits);
         }
 	std::cerr << "\n\n";

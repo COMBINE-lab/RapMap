@@ -7,7 +7,9 @@
 #include <cereal/archives/binary.hpp>
 
 #include "spdlog/spdlog.h"
-#include "spdlog/details/format.h"
+#include "spdlog/fmt/ostr.h"
+#include "spdlog/fmt/fmt.h"
+
 
 #include "google/dense_hash_map"
 #include "bit_array.h"

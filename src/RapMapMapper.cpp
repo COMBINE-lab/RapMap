@@ -25,7 +25,9 @@
 #include "xxhash.h"
 
 #include "spdlog/spdlog.h"
-#include "spdlog/details/format.h"
+#include "spdlog/sinks/ostream_sink.h"
+#include "spdlog/fmt/ostr.h"
+#include "spdlog/fmt/fmt.h"
 
 // Jellyfish 2 include
 #include "jellyfish/mer_dna.hpp"
@@ -776,7 +778,7 @@ void processReadsSingle(single_parser* parser,
         // Get rid of last newline
         if (!outStr.empty()) {
             outStr.pop_back();
-            outQueue->info() << std::move(outStr);
+            outQueue->info(std::move(outStr));
         }
 	    sstream.clear();
 	}
@@ -889,7 +891,7 @@ void processReadsPair(paired_parser* parser,
         // Get rid of last newline
         if (!outStr.empty()){
             outStr.pop_back();
-            outQueue->info() << std::move(outStr);
+            outQueue->info(std::move(outStr));
         }
 	    sstream.clear();
 	}

@@ -5,16 +5,19 @@
 
 #pragma once
 
-#include <string>
+#include <spdlog/formatter.h>
+#include <spdlog/details/log_msg.h>
+#include <spdlog/details/os.h>
+#include <spdlog/fmt/fmt.h>
+
 #include <chrono>
+#include <ctime>
 #include <memory>
-#include <vector>
+#include <mutex>
+#include <string>
 #include <thread>
-
-
-#include "../formatter.h"
-#include "./log_msg.h"
-#include "./os.h"
+#include <utility>
+#include <vector>
 
 namespace spdlog
 {
@@ -36,7 +39,7 @@ class name_formatter :public flag_formatter
 {
     void format(details::log_msg& msg, const std::tm&) override
     {
-        msg.formatted << msg.logger_name;
+        msg.formatted << *msg.logger_name;
     }
 };
 }
@@ -317,8 +320,10 @@ public:
 
         int h = total_minutes / 60;
         int m = total_minutes % 60;
-        char sign = h >= 0 ? '+' : '-';
-        msg.formatted << sign;
+        if (h >= 0) //minus sign will be printed anyway if negative
+        {
+            msg.formatted << '+';
+        }
         pad_n_join(msg.formatted, h, m, ':');
     }
 private:
@@ -430,7 +435,7 @@ class full_formatter :public flag_formatter
 #endif
 
 #ifndef SPDLOG_NO_NAME
-        msg.formatted << '[' << msg.logger_name << "] ";
+        msg.formatted << '[' << *msg.logger_name << "] ";
 #endif
 
         msg.formatted << '[' << level::to_str(msg.level) << "] ";
@@ -481,7 +486,7 @@ inline void spdlog::pattern_formatter::handle_flag(char flag)
 {
     switch (flag)
     {
-        // logger name
+    // logger name
     case 'n':
         _formatters.push_back(std::unique_ptr<details::flag_formatter>(new details::name_formatter()));
         break;
@@ -608,13 +613,17 @@ inline void spdlog::pattern_formatter::format(details::log_msg& msg)
 {
     try
     {
+#ifndef SPDLOG_NO_DATETIME
         auto tm_time = details::os::localtime(log_clock::to_time_t(msg.time));
+#else
+        std::tm tm_time;
+#endif
         for (auto &f : _formatters)
         {
             f->format(msg, tm_time);
         }
         //write eol
-        msg.formatted << details::os::eol();
+        msg.formatted.write(details::os::eol, details::os::eol_size);
     }
     catch(const fmt::FormatError& e)
     {

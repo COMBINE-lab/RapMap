@@ -8,7 +8,8 @@
 #include <cereal/archives/binary.hpp>
 #include "jellyfish/mer_dna.hpp"
 #include "spdlog/spdlog.h"
-#include "spdlog/details/format.h"
+#include "spdlog/fmt/ostr.h"
+#include "spdlog/fmt/fmt.h"
 #include "PairSequenceParser.hpp"
 
 #ifdef RAPMAP_SALMON_SUPPORT
@@ -63,7 +64,7 @@ namespace rapmap {
             std::string headerStr(hd.str());
             // Don't include the last '\n', since the logger will do it for us.
             headerStr.pop_back();
-            out->info() << headerStr;
+            out->info(headerStr);
         }
 
     template <typename IndexT>
@@ -301,7 +302,7 @@ namespace rapmap {
         inline double score() { return 1.0; }
         inline uint32_t fragLength() const { return fragLen; }
 
-        inline uint32_t fragLengthPedantic(uint32_t txpLen) const { 
+        inline uint32_t fragLengthPedantic(uint32_t txpLen) const {
             if (mateStatus != rapmap::utils::MateStatus::PAIRED_END_PAIRED
                 or fwd == mateIsFwd) {
                 return 0;
@@ -389,10 +390,10 @@ namespace rapmap {
          * This enforces a more stringent consistency check on
          * the hits for this transcript.  The hits must be co-linear
          * with respect to the query and target.
-         * 
+         *
          * input: numToCheck --- the number of hits to check in sorted order
          *                       hits after the last of these need not be consistent.
-         * return: numToCheck if the first numToCheck hits are consistent; 
+         * return: numToCheck if the first numToCheck hits are consistent;
          *         -1 otherwise
          **/
         int32_t checkConsistent(int32_t numToCheck) {
@@ -407,7 +408,7 @@ namespace rapmap {
                 return (h2.pos > h1.pos) ? (numToCheck) : -1;
             } else {
                 // first, sort by query position
-                std::sort(tqvec.begin(), tqvec.end(), 
+                std::sort(tqvec.begin(), tqvec.end(),
                           [](const SATxpQueryPos& q1, const SATxpQueryPos& q2) -> bool {
                               return q1.queryPos < q2.queryPos;
                           });
@@ -701,7 +702,7 @@ namespace rapmap {
                                 int32_t startRead2 = std::max(rightIt->pos, signedZero);
                                 bool read1First{(startRead1 < startRead2)};
                                 int32_t fragStartPos = read1First ? startRead1 : startRead2;
-                                int32_t fragEndPos = read1First ? 
+                                int32_t fragEndPos = read1First ?
                                     (startRead2 + rightIt->readLen) : (startRead1 + leftIt->readLen);
                                 uint32_t fragLen = fragEndPos - fragStartPos;
                                 jointHits.emplace_back(leftTxp,
@@ -765,7 +766,7 @@ namespace rapmap {
                                 int32_t startRead2 = std::max(rightIt->pos, signedZero);
                                 bool read1First{(startRead1 < startRead2)};
                                 int32_t fragStartPos = read1First ? startRead1 : startRead2;
-                                int32_t fragEndPos = read1First ? 
+                                int32_t fragEndPos = read1First ?
                                     (startRead2 + rightIt->readLen) : (startRead1 + leftIt->readLen);
                                 uint32_t fragLen = fragEndPos - fragStartPos;
                                 jointHits.emplace_back(leftTxp,
