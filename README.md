@@ -94,6 +94,7 @@ Since RapMap uses Jellyfish, it must be released under the GPL.  However, this i
 
 Use this bibtex entry to cite RapMap
 
+```
 @article{Srivastava15062016,
 author = {Srivastava, Avi and Sarkar, Hirak and Gupta, Nitish and Patro, Rob}, 
 title = {RapMap: a rapid, sensitive and accurate tool for mapping RNA-seq reads to transcriptomes},
@@ -106,6 +107,7 @@ URL = {http://bioinformatics.oxfordjournals.org/content/32/12/i192.abstract},
 eprint = {http://bioinformatics.oxfordjournals.org/content/32/12/i192.full.pdf+html}, 
 journal = {Bioinformatics} 
 }
+```
 
 Other formats can be found here:
 http://bioinformatics.oxfordjournals.org/citmgr?gca=bioinfo%3B32%2F12%2Fi192
