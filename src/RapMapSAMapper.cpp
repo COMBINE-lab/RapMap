@@ -36,10 +36,8 @@
 #include "spdlog/fmt/fmt.h"
 
 // Jellyfish 2 include
+#include "FastxParser.hpp"
 #include "jellyfish/mer_dna.hpp"
-#include "jellyfish/stream_manager.hpp"
-#include "jellyfish/whole_sequence_parser.hpp"
-#include "jellyfish/hash_counter.hpp"
 
 #include "tclap/CmdLine.h"
 
@@ -64,9 +62,8 @@
 
 //#define __TRACK_CORRECT__
 
-using paired_parser = pair_sequence_parser<char**>;
-using stream_manager = jellyfish::stream_manager<std::vector<std::string>::const_iterator>;
-using single_parser = jellyfish::whole_sequence_parser<stream_manager>;
+using paired_parser = fastx_parser::FastxParser<fastx_parser::ReadPair>;
+using single_parser = fastx_parser::FastxParser<fastx_parser::ReadSeq>;
 using TranscriptID = uint32_t;
 using TranscriptIDVector = std::vector<TranscriptID>;
 using KmerIDMap = std::vector<TranscriptIDVector>;
@@ -126,14 +123,20 @@ void processReadsSingleSA(single_parser * parser,
     SASearcher<RapMapIndexT> saSearcher(&rmi);
 
     uint32_t orphanStatus{0};
-    while(true) {
-        typename single_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
-        if(j.is_empty()) break;                 // If we got nothing, then quit.
-        for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
-            readLen = j->data[i].seq.length();
+    // Get the read group by which this thread will
+    // communicate with the parser (*once per-thread*)
+    auto rg = parser->getReadGroup();
+
+    while (parser->refill(rg)) {
+      //while(true) {
+      //  typename single_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
+      //  if(j.is_empty()) break;                 // If we got nothing, then quit.
+      //  for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
+      for (auto& read : rg) {
+	    readLen = read.seq.length();//j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
-            hitCollector(j->data[i].seq, hits, saSearcher, MateStatus::SINGLE_END, strictCheck, consistentHits);
+            hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, strictCheck, consistentHits);
             auto numHits = hits.size();
             hctr.totHits += numHits;
 
@@ -144,7 +147,7 @@ void processReadsSingleSA(single_parser * parser,
                                 return a.tid < b.tid;
                             });
                 */
-                rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,
+                rapmap::utils::writeAlignmentsToStream(read, formatter,
                                                        hctr, hits, sstream);
             }
 
@@ -233,24 +236,31 @@ void processReadsPairSA(paired_parser* parser,
     SASearcher<RapMapIndexT> saSearcher(&rmi);
 
     uint32_t orphanStatus{0};
-    while(true) {
-        typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
-        if(j.is_empty()) break;                 // If we got nothing, quit
-        for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
-		    tooManyHits = false;
-            readLen = j->data[i].first.seq.length();
+
+    // Get the read group by which this thread will
+    // communicate with the parser (*once per-thread*)
+    auto rg = parser->getReadGroup();
+
+    while (parser->refill(rg)) {
+      //while(true) {
+      //typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
+      //if(j.is_empty()) break;                 // If we got nothing, quit
+      //  for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
+      for (auto& rpair : rg) {
+	tooManyHits = false;
+	    readLen = rpair.first.seq.length();
             ++hctr.numReads;
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
 
-            bool lh = hitCollector(j->data[i].first.seq,
+            bool lh = hitCollector(rpair.first.seq,
                                    leftHits, saSearcher,
                                    MateStatus::PAIRED_END_LEFT,
                                    strictCheck,
                                    consistentHits);
 
-            bool rh = hitCollector(j->data[i].second.seq,
+            bool rh = hitCollector(rpair.second.seq,
                                    rightHits, saSearcher,
                                    MateStatus::PAIRED_END_RIGHT,
                                    strictCheck,
@@ -268,9 +278,11 @@ void processReadsPairSA(paired_parser* parser,
                         readLen, maxNumHits, tooManyHits, hctr);
             }
 
+            hctr.totHits += jointHits.size();
+
             // If we have reads to output, and we're writing output.
             if (jointHits.size() > 0 and !noOutput and jointHits.size() <= maxNumHits) {
-                rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,
+                rapmap::utils::writeAlignmentsToStream(rpair, formatter,
                                                        hctr, jointHits, sstream);
             }
 
@@ -447,33 +459,19 @@ bool mapReads(RapMapIndexT& rmi,
                 std::exit(1);
             }
 
-            size_t numFiles = read1Vec.size() + read2Vec.size();
-            char** pairFileList = new char*[numFiles];
-            for (size_t i = 0; i < read1Vec.size(); ++i) {
-                pairFileList[2*i] = const_cast<char*>(read1Vec[i].c_str());
-                pairFileList[2*i+1] = const_cast<char*>(read2Vec[i].c_str());
-            }
-            size_t maxReadGroup{1000}; // Number of reads in each "job"
-            size_t concurrentFile{2}; // Number of files to read simultaneously
-            pairParserPtr.reset(new paired_parser(4 * nthread, maxReadGroup,
-                        concurrentFile,
-                        pairFileList, pairFileList+numFiles));
-
+	    uint32_t nprod = (read1Vec.size() > 1) ? 2 : 1; 
+	    pairParserPtr.reset(new paired_parser(read1Vec, read2Vec, nthread, nprod));
+	    pairParserPtr->start();
             spawnProcessReadsThreads(nthread, pairParserPtr.get(), rmi, iomutex,
                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck,
                                      fuzzyIntersection, consistentHits);
-            delete [] pairFileList;
         } else {
             std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(unmatedReads.getValue(), ',');
-            size_t maxReadGroup{1000}; // Number of reads in each "job"
-            size_t concurrentFile{1};
-            stream_manager streams( unmatedReadVec.begin(), unmatedReadVec.end(),
-                    concurrentFile);
-            singleParserPtr.reset(new single_parser(4 * nthread,
-                        maxReadGroup,
-                        concurrentFile,
-                        streams));
 
+
+	    uint32_t nprod = (unmatedReadVec.size() > 1) ? 2 : 1; 
+	    singleParserPtr.reset(new single_parser(unmatedReadVec, nthread, nprod));
+	    singleParserPtr->start();
             /** Create the threads depending on the collector type **/
             spawnProcessReadsThreads(nthread, singleParserPtr.get(), rmi, iomutex,
                                       outLog, hctrs, maxNumHits.getValue(), noout.getValue(),

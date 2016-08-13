@@ -17,10 +17,9 @@
 #include "xxhash.h"
 #include "btree/btree_map.h"
 
+#include "FastxParser.hpp"
 // Jellyfish 2 include
 #include "jellyfish/mer_dna.hpp"
-#include "jellyfish/stream_manager.hpp"
-#include "jellyfish/whole_sequence_parser.hpp"
 
 #include "RapMapUtils.hpp"
 #include "RapMapFileSystem.hpp"
@@ -37,8 +36,7 @@
 
 #include <chrono>
 
-using stream_manager = jellyfish::stream_manager<std::vector<std::string>::const_iterator>;
-using single_parser = jellyfish::whole_sequence_parser<stream_manager>;
+using single_parser = fastx_parser::FastxParser<fastx_parser::ReadSeq>;
 using TranscriptID = uint32_t;
 using TranscriptIDVector = std::vector<TranscriptID>;
 using KmerIDMap = std::vector<TranscriptIDVector>;
@@ -200,12 +198,13 @@ void processTranscripts(ParserT* parser,
 
     {
         ScopedTimer timer;
-        while(true) {
-            typename ParserT::job j(*parser);
-            if(j.is_empty()) break;
+	// Get the read group by which this thread will
+	// communicate with the parser (*once per-thread*)
+	auto rg = parser->getReadGroup();
 
-            for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
-                std::string& readStr = j->data[i].seq;
+	while (parser->refill(rg)) {
+	  for (auto& read : rg) { // for each sequence
+	    std::string& readStr = read.seq; 
 
 		// Do Kallisto-esque clipping of polyA tails
 		if (readStr.size() > polyAClipLength and
@@ -224,7 +223,7 @@ void processTranscripts(ParserT* parser,
                 uint32_t readLen  = readStr.size();
                 uint32_t txpIndex = n++;
                 transcriptLengths.push_back(readLen);
-                auto& recHeader = j->data[i].header;
+                auto& recHeader = read.name;
                 transcriptNames.emplace_back(recHeader.substr(0, recHeader.find_first_of(" \t")));
 
                 rapmap::utils::my_mer mer;
@@ -267,7 +266,7 @@ void processTranscripts(ParserT* parser,
                         numKmers++;
                     }
                 }
-                transcriptSeqs.push_back(j->data[i].seq);
+                transcriptSeqs.push_back(read.seq);
                 if (n % 10000 == 0) {
                     std::cerr << "\r\rcounted k-mers for " << n << " transcripts";
                 }
@@ -750,13 +749,17 @@ int rapMapIndex(int argc, char* argv[]) {
         rapmap::fs::MakeDir(indexDir.c_str());
     }
 
-    size_t maxReadGroup{1000}; // Number of reads in each "job"
-    size_t concurrentFile{2}; // Number of files to read simultaneously
-    size_t numThreads{2};
-    stream_manager streams(transcriptFiles.begin(), transcriptFiles.end(), concurrentFile);
+    size_t numThreads{1};
+
     std::unique_ptr<single_parser> transcriptParserPtr{nullptr};
-    transcriptParserPtr.reset(new single_parser(4 * numThreads, maxReadGroup,
-                              concurrentFile, streams));
+    //transcriptParserPtr.reset(
+    //    new single_parser(4 * numThreads, maxReadGroup, concurrentFile, streams));
+
+    size_t numProd = 1;
+    transcriptParserPtr.reset(
+			      new single_parser(transcriptFiles, numThreads, numProd));
+
+    transcriptParserPtr->start();
     std::mutex iomutex;
     processTranscripts(transcriptParserPtr.get(), indexDir, iomutex);
     return 0;

@@ -29,11 +29,9 @@
 #include "spdlog/fmt/ostr.h"
 #include "spdlog/fmt/fmt.h"
 
+#include "FastxParser.hpp"
 // Jellyfish 2 include
 #include "jellyfish/mer_dna.hpp"
-#include "jellyfish/stream_manager.hpp"
-#include "jellyfish/whole_sequence_parser.hpp"
-#include "jellyfish/hash_counter.hpp"
 
 #include "tclap/CmdLine.h"
 
@@ -59,10 +57,8 @@
 
 // STEP 1: declare the type of file handler and the read() function
 // KSEQ_INIT(int, read)
-
-using paired_parser = pair_sequence_parser<char**>;
-using stream_manager = jellyfish::stream_manager<std::vector<std::string>::const_iterator>;
-using single_parser = jellyfish::whole_sequence_parser<stream_manager>;
+using paired_parser = fastx_parser::FastxParser<fastx_parser::ReadPair>;
+using single_parser = fastx_parser::FastxParser<fastx_parser::ReadSeq>;
 using TranscriptID = uint32_t;
 using TranscriptIDVector = std::vector<TranscriptID>;
 using KmerIDMap = std::vector<TranscriptIDVector>;
@@ -728,15 +724,20 @@ void processReadsSingle(single_parser* parser,
     SingleAlignmentFormatter<RapMapIndex*> formatter(&rmi);
 
     size_t readLen{0};
+    // Get the read group by which this thread will
+    // communicate with the parser (*once per-thread*)
+    auto rg = parser->getReadGroup();
 
-    while(true) {
-        typename single_parser::job j(*parser); // Get a job from the parser: a bunch of read (at most max_read_group)
-        if(j.is_empty()) break;           // If got nothing, quit
-        for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
-            readLen = j->data[i].seq.length();
+    while (parser->refill(rg)) {
+      //while(true) {
+      //  typename single_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
+      //  if(j.is_empty()) break;                 // If we got nothing, then quit.
+      //  for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
+      for (auto& read : rg) {
+            readLen = read.seq.length();
             ++hctr.numReads;
             hits.clear();
-            hitCollector(j->data[i].seq, hits, MateStatus::SINGLE_END);
+            hitCollector(read.seq, hits, MateStatus::SINGLE_END);
             /*
                std::set_intersection(leftHits.begin(), leftHits.end(),
                rightHits.begin(), rightHits.end(),
@@ -746,7 +747,7 @@ void processReadsSingle(single_parser* parser,
             hctr.totHits += numHits;
 
              if (hits.size() > 0 and !noOutput and hits.size() <= maxNumHits) {
-                rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,
+                rapmap::utils::writeAlignmentsToStream(read, formatter,
                         hctr, hits, sstream);
             }
 
@@ -832,19 +833,21 @@ void processReadsPair(paired_parser* parser,
     // 0x3 means "orphaned" alignments for left and right
     // (currently not treated as orphan).
     uint32_t orphanStatus{0};
-    while(true) {
-        typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of read (at most max_read_group)
-        if(j.is_empty()) break;           // If got nothing, quit
-        for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
+
+    // Get the read group by which this thread will
+    // communicate with the parser (*once per-thread*)
+    auto rg = parser->getReadGroup();
+    while (parser->refill(rg)) {
+      for (auto& rpair : rg) {
 	    tooManyHits = false;
-            readLen = j->data[i].first.seq.length();
+            readLen = rpair.first.seq.length();
             ++hctr.numReads;
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
-    	    hitCollector(j->data[i].first.seq,
+    	    hitCollector(rpair.first.seq,
                         leftHits, MateStatus::PAIRED_END_LEFT);
-            hitCollector(j->data[i].second.seq,
+            hitCollector(rpair.second.seq,
                         rightHits, MateStatus::PAIRED_END_RIGHT);
 
             rapmap::utils::mergeLeftRightHits(
@@ -853,7 +856,7 @@ void processReadsPair(paired_parser* parser,
 
 
             if (jointHits.size() > 0 and !noOutput and jointHits.size() <= maxNumHits) {
-                rapmap::utils::writeAlignmentsToStream(j->data[i], formatter,
+                rapmap::utils::writeAlignmentsToStream(rpair, formatter,
                                                        hctr, jointHits, sstream);
             }
 
@@ -1046,17 +1049,9 @@ int rapMapMap(int argc, char* argv[]) {
 		    std::exit(1);
 		}
 
-		size_t numFiles = read1Vec.size() + read2Vec.size();
-		char** pairFileList = new char*[numFiles];
-		for (size_t i = 0; i < read1Vec.size(); ++i) {
-		    pairFileList[2*i] = const_cast<char*>(read1Vec[i].c_str());
-		    pairFileList[2*i+1] = const_cast<char*>(read2Vec[i].c_str());
-		}
-		size_t maxReadGroup{1000}; // Number of reads in each "job"
-		size_t concurrentFile{2}; // Number of files to read simultaneously
-		pairParserPtr.reset(new paired_parser(4 * nthread, maxReadGroup,
-			    concurrentFile,
-			    pairFileList, pairFileList+numFiles));
+		uint32_t nprod = (read1Vec.size() > 1) ? 2 : 1; 
+		pairParserPtr.reset(new paired_parser(read1Vec, read2Vec, nthread, nprod));
+		pairParserPtr->start();
 
 		/** Create the threads depending on the collector type **/
 		if (endCollectorSwitch.getValue()) {
@@ -1088,18 +1083,13 @@ int rapMapMap(int argc, char* argv[]) {
 		}
 
 		for (auto& t : threads) { t.join(); }
-		delete [] pairFileList;
 	    } else {
 		std::vector<std::thread> threads;
 		std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(unmatedReads.getValue(), ',');
-		size_t maxReadGroup{1000}; // Number of reads in each "job"
-		size_t concurrentFile{1};
-		stream_manager streams( unmatedReadVec.begin(), unmatedReadVec.end(),
-			concurrentFile);
-		singleParserPtr.reset(new single_parser(4 * nthread,
-			    maxReadGroup,
-			    concurrentFile,
-			    streams));
+
+		uint32_t nprod = (unmatedReadVec.size() > 1) ? 2 : 1; 
+		singleParserPtr.reset(new single_parser(unmatedReadVec, nthread, nprod));
+		singleParserPtr->start();
 
 		/** Create the threads depending on the collector type **/
 		if (endCollectorSwitch.getValue()) {

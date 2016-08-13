@@ -9,6 +9,7 @@ set (RAPMAP_MAIN_SRCS
     RapMapSAIndex.cpp
     RapMapIndex.cpp
     HitManager.cpp
+    FastxParser.cpp
     rank9b.cpp
     stringpiece.cc
     xxhash.c

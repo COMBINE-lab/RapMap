@@ -50,7 +50,7 @@ namespace rapmap {
     template <typename IndexT>
         void writeSAMHeader(IndexT& rmi, std::shared_ptr<spdlog::logger> out) {
             fmt::MemoryWriter hd;
-            hd.write("@HD\tVN:0.1\tSO:unknown\n");
+	    hd.write("@HD\tVN:1.0\tSO:unknown\n");
 
             auto& txpNames = rmi.txpNames;
             auto& txpLens = rmi.txpLens;
@@ -59,8 +59,8 @@ namespace rapmap {
             for (size_t i = 0; i < numRef; ++i) {
                 hd.write("@SQ\tSN:{}\tLN:{:d}\n", txpNames[i], txpLens[i]);
             }
-            // Eventuall output a @PG line
-            //hd.format("@PG\t");
+            // Eventually output a @PG line
+            hd.write("@PG\tID:rapmap\tPN:rapmap\tVN:0.3.1\n");
             std::string headerStr(hd.str());
             // Don't include the last '\n', since the logger will do it for us.
             headerStr.pop_back();
@@ -70,7 +70,7 @@ namespace rapmap {
     template <typename IndexT>
         void writeSAMHeader(IndexT& rmi, std::ostream& outStream) {
             fmt::MemoryWriter hd;
-            hd.write("@HD\tVN:0.1\tSO:unknown\n");
+	    hd.write("@HD\tVN:1.0\tSO:unknown\n");
 
             auto& txpNames = rmi.txpNames;
             auto& txpLens = rmi.txpLens;
@@ -79,8 +79,8 @@ namespace rapmap {
             for (size_t i = 0; i < numRef; ++i) {
                 hd.write("@SQ\tSN:{}\tLN:{:d}\n", txpNames[i], txpLens[i]);
             }
-            // Eventuall output a @PG line
-            //hd.format("@PG\t");
+            // Eventually output a @PG line
+            hd.write("@PG\tID:rapmap\tPN:rapmap\tVN:0.3.1\n");
             outStream << hd.str();
         }
 
