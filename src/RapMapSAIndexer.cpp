@@ -389,7 +389,9 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
 template <typename ParserT> //, typename CoverageCalculator>
 void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
                         bool noClipPolyA, bool usePerfectHash,
-                        uint32_t numHashThreads, std::mutex& iomutex,
+                        uint32_t numHashThreads, 
+                        std::string& sepStr,
+                        std::mutex& iomutex,
                         std::shared_ptr<spdlog::logger> log) {
   // Seed with a real random value, if available
   std::random_device rd;
@@ -499,7 +501,7 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
           // The name of the current transcript
           auto& recHeader = read.name;
           transcriptNames.emplace_back(
-              recHeader.substr(0, recHeader.find_first_of(" \t")));
+                                       recHeader.substr(0, recHeader.find_first_of(sepStr)));//" \t")));
 
           // The position at which this transcript starts
           transcriptStarts.push_back(currIndex);
@@ -660,6 +662,10 @@ int rapMapSAIndex(int argc, char* argv[]) {
       "path");
   TCLAP::ValueArg<uint32_t> kval("k", "klen", "The length of k-mer to index",
                                  false, 31, "positive integer less than 32");
+
+  TCLAP::ValueArg<std::string> customSeps("s", "headerSep", "Instead of a space or tab, break the header at the first "
+                                          "occurrence of this string, and name the transcript as the token before "
+                                          "the first separator", false, " \t", "string");
   TCLAP::SwitchArg noClip(
       "n", "noClip",
       "Don't clip poly-A tails from the ends of target sequences", false);
@@ -676,12 +682,15 @@ int rapMapSAIndex(int argc, char* argv[]) {
   cmd.add(kval);
   cmd.add(noClip);
   cmd.add(perfectHash);
+  cmd.add(customSeps);
   cmd.add(numHashThreads);
   cmd.parse(argc, argv);
 
   // stupid parsing for now
   std::string transcriptFile(transcripts.getValue());
   std::vector<std::string> transcriptFiles({transcriptFile});
+
+  std::string sepStr = customSeps.getValue();
 
   uint32_t k = kval.getValue();
   if (k % 2 == 0) {
@@ -727,6 +736,6 @@ int rapMapSAIndex(int argc, char* argv[]) {
   uint32_t numPerfectHashThreads = numHashThreads.getValue();
   std::mutex iomutex;
   indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA,
-                     usePerfectHash, numPerfectHashThreads, iomutex, jointLog);
+                     usePerfectHash, numPerfectHashThreads, sepStr, iomutex, jointLog);
   return 0;
 }
