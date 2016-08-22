@@ -120,7 +120,6 @@ public:
     async_log_helper(formatter_ptr formatter,
                      const std::vector<sink_ptr>& sinks,
                      size_t queue_size,
-                     const log_err_handler err_handler,
                      const async_overflow_policy overflow_policy = async_overflow_policy::block_retry,
                      const std::function<void()>& worker_warmup_cb = nullptr,
                      const std::chrono::milliseconds& flush_interval_ms = std::chrono::milliseconds::zero(),
@@ -143,12 +142,13 @@ private:
     // queue of messages to log
     q_type _q;
 
-    log_err_handler _err_handler;
-
     bool _flush_requested;
 
     bool _terminate_requested;
 
+
+    // last exception thrown from the worker thread
+    std::shared_ptr<spdlog_ex> _last_workerthread_ex;
 
     // overflow policy
     const async_overflow_policy _overflow_policy;
@@ -166,6 +166,9 @@ private:
     std::thread _worker_thread;
 
     void push_msg(async_msg&& new_msg);
+
+    // throw last worker thread exception or if worker thread is not active
+    void throw_if_bad_worker();
 
     // worker thread main loop
     void worker_loop();
@@ -190,7 +193,6 @@ inline spdlog::details::async_log_helper::async_log_helper(
     formatter_ptr formatter,
     const std::vector<sink_ptr>& sinks,
     size_t queue_size,
-    log_err_handler err_handler,
     const async_overflow_policy overflow_policy,
     const std::function<void()>& worker_warmup_cb,
     const std::chrono::milliseconds& flush_interval_ms,
@@ -198,7 +200,6 @@ inline spdlog::details::async_log_helper::async_log_helper(
     _formatter(formatter),
     _sinks(sinks),
     _q(queue_size),
-    _err_handler(err_handler),
     _flush_requested(false),
     _terminate_requested(false),
     _overflow_policy(overflow_policy),
@@ -232,6 +233,7 @@ inline void spdlog::details::async_log_helper::log(const details::log_msg& msg)
 
 inline void spdlog::details::async_log_helper::push_msg(details::async_log_helper::async_msg&& new_msg)
 {
+    throw_if_bad_worker();
     if (!_q.enqueue(std::move(new_msg)) && _overflow_policy != async_overflow_policy::discard_log_msg)
     {
         auto last_op_time = details::os::now();
@@ -261,13 +263,13 @@ inline void spdlog::details::async_log_helper::worker_loop()
         while(process_next_msg(last_pop, last_flush));
         if (_worker_teardown_cb) _worker_teardown_cb();
     }
-    catch (const std::exception &ex)
+    catch (const std::exception& ex)
     {
-        _err_handler(ex.what());
+        _last_workerthread_ex = std::make_shared<spdlog_ex>(std::string("async_logger worker thread exception: ") + ex.what());
     }
     catch (...)
     {
-        _err_handler("Unknown exception");
+        _last_workerthread_ex = std::make_shared<spdlog_ex>("async_logger worker thread exception");
     }
 }
 
@@ -360,6 +362,15 @@ inline void spdlog::details::async_log_helper::sleep_or_yield(const spdlog::log_
     return sleep_for(milliseconds(200));
 }
 
+// throw if the worker thread threw an exception or not active
+inline void spdlog::details::async_log_helper::throw_if_bad_worker()
+{
+    if (_last_workerthread_ex)
+    {
+        auto ex = std::move(_last_workerthread_ex);
+        throw *ex;
+    }
+}
 
 
 

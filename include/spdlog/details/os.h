@@ -10,10 +10,7 @@
 #include <ctime>
 #include <functional>
 #include <string>
-#include <stdio.h>
 #include <string.h>
-#include <sys/stat.h>
-
 
 #ifdef _WIN32
 
@@ -30,11 +27,10 @@
 #include <share.h>
 #endif
 
-#include <sys/types.h>
-
 #elif __linux__
 
 #include <sys/syscall.h> //Use gettid() syscall under linux to get thread id
+#include <sys/stat.h>
 #include <unistd.h>
 #include <chrono>
 
@@ -180,51 +176,20 @@ inline bool file_exists(const filename_t& filename)
     auto attribs = GetFileAttributesA(filename.c_str());
 #endif
     return (attribs != INVALID_FILE_ATTRIBUTES && !(attribs & FILE_ATTRIBUTE_DIRECTORY));
-#else //common linux/unix all have the stat system call
+#elif __linux__
     struct stat buffer;
     return (stat (filename.c_str(), &buffer) == 0);
+#else
+    auto *file = fopen(filename.c_str(), "r");
+    if (file != nullptr)
+    {
+        fclose(file);
+        return true;
+    }
+    return false;
+
 #endif
 }
-
-
-
-
-//Return file size according to open FILE* object
-inline size_t filesize(FILE *f)
-{
-    if (f == nullptr)
-        throw spdlog_ex("Failed getting file size. fd is null");
-#ifdef _WIN32
-    int fd = _fileno(f);
-#if _WIN64 //64 bits        
-    struct _stat64 st;
-    if (_fstat64(fd, &st) == 0)
-        return st.st_size;
-
-#else //windows 32 bits     
-    struct _stat st;
-    if (_fstat(fd, &st) == 0)
-        return st.st_size;
-#endif
-
-#else // unix
-    int fd = fileno(f);
-    //64 bits(but not in osx, where fstat64 is deprecated)
-#if !defined(__FreeBSD__) && !defined(__APPLE__) && (defined(__x86_64__) || defined(__ppc64__))
-    struct stat64 st;
-    if (fstat64(fd, &st) == 0)
-        return st.st_size;
-#else // unix 32 bits or osx    
-    struct stat st;
-    if (fstat(fd, &st) == 0)
-        return st.st_size;
-#endif
-#endif
-    throw spdlog_ex("Failed getting file size from fd", errno);
-}
-
-
-
 
 //Return utc offset in minutes or throw spdlog_ex on failure
 inline int utc_minutes_offset(const std::tm& tm = details::os::localtime())
@@ -239,7 +204,7 @@ inline int utc_minutes_offset(const std::tm& tm = details::os::localtime())
     auto rv = GetDynamicTimeZoneInformation(&tzinfo);
 #endif
     if (rv == TIME_ZONE_ID_INVALID)
-        throw spdlog::spdlog_ex("Failed getting timezone info. ", errno);
+        throw spdlog::spdlog_ex("Failed getting timezone info. Last error: " + std::to_string(GetLastError()));
 
     int offset = -tzinfo.Bias;
     if (tm.tm_isdst)
@@ -299,7 +264,7 @@ inline std::string errno_str(int err_num)
     else
         return "Unkown error";
 
-#elif defined(__FreeBSD__) || defined(__APPLE__) || ((_POSIX_C_SOURCE >= 200112L) && ! _GNU_SOURCE) // posix version
+#elif defined(__APPLE__) || ((_POSIX_C_SOURCE >= 200112L) && ! _GNU_SOURCE) // posix version        
     if (strerror_r(err_num, buf, buf_size) == 0)
         return std::string(buf);
     else
