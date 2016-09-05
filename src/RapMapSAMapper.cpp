@@ -600,7 +600,7 @@ int rapMapSAMap(int argc, char* argv[]) {
                              outname, noout, strict, fuzzy, consistent);
       } else {
           RapMapSAIndex<int64_t,
-                        google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int64_t>,
+                        RegHashT<uint64_t, rapmap::utils::SAInterval<int64_t>,
                                                rapmap::utils::KmerKeyHasher>> rmi;
           rmi.load(indexPrefix);
           success = mapReads(rmi, consoleLog, index, read1, read2,
@@ -619,7 +619,7 @@ int rapMapSAMap(int argc, char* argv[]) {
                                outname, noout, strict, fuzzy, consistent);
         } else {
             RapMapSAIndex<int32_t,
-                          google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int32_t>,
+                          RegHashT<uint64_t, rapmap::utils::SAInterval<int32_t>,
                                                  rapmap::utils::KmerKeyHasher>> rmi;
             rmi.load(indexPrefix);
             success = mapReads(rmi, consoleLog, index, read1, read2,

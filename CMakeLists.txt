@@ -38,7 +38,7 @@ else()
   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 endif()
 
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM -Wall -std=c++11 -Wno-unknown-pragmas -Wreturn-type -Werror=return-type")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mpopcnt -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM -Wall -std=c++11 -Wno-unknown-pragmas -Wreturn-type -Werror=return-type")
 
 ##
 # OSX is strange (some might say, stupid in this regard).  Deal with it's quirkines here.

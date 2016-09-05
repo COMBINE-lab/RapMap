@@ -15,10 +15,10 @@
 // appropriate type of hash.
 template <typename IndexT>
 bool loadHashFromIndex(const std::string& indexDir,
-                       google::dense_hash_map<uint64_t,
+                       RegHashT<uint64_t,
                        rapmap::utils::SAInterval<IndexT>,
                        rapmap::utils::KmerKeyHasher>& khash) {
-      khash.set_empty_key(std::numeric_limits<uint64_t>::max());
+      //khash.set_empty_key(std::numeric_limits<uint64_t>::max());
       std::ifstream hashStream(indexDir + "hash.bin");
       khash.unserialize(typename google::dense_hash_map<uint64_t,
                       rapmap::utils::SAInterval<IndexT>,
@@ -167,10 +167,10 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
     return true;
 }
 
-template class RapMapSAIndex<int32_t,  google::dense_hash_map<uint64_t,
+template class RapMapSAIndex<int32_t,  RegHashT<uint64_t,
                       rapmap::utils::SAInterval<int32_t>,
                       rapmap::utils::KmerKeyHasher>>;
-template class RapMapSAIndex<int64_t,  google::dense_hash_map<uint64_t,
+template class RapMapSAIndex<int64_t,  RegHashT<uint64_t,
                       rapmap::utils::SAInterval<int64_t>,
                       rapmap::utils::KmerKeyHasher>>;
 template class RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;

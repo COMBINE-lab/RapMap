@@ -47,6 +47,7 @@
 #include "rank9b.h"
 
 #include "sparsehash/dense_hash_map"
+//#include "sparsepp.h"
 
 #include "IndexHeader.hpp"
 
@@ -232,10 +233,12 @@ template <typename IndexT>
 bool buildHash(const std::string& outputDir, std::string& concatText,
                size_t tlen, uint32_t k, std::vector<IndexT>& SA) {
   // Now, build the k-mer lookup table
-  google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<IndexT>,
+    spp::sparse_hash_map<uint64_t, rapmap::utils::SAInterval<IndexT>,
                          rapmap::utils::KmerKeyHasher>
+        //google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<IndexT>,
+        //                 rapmap::utils::KmerKeyHasher>
       khash;
-  khash.set_empty_key(std::numeric_limits<uint64_t>::max());
+    //khash.set_empty_key(std::numeric_limits<uint64_t>::max());
 
   // The start and stop of the current interval
   IndexT start = 0, stop = 0;

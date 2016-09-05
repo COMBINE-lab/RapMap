@@ -5,6 +5,7 @@
 #include <cmath>
 #include <memory>
 #include "xxhash.h"
+#include "sparsepp.h"
 #include <cereal/archives/binary.hpp>
 #include "jellyfish/mer_dna.hpp"
 #include "spdlog/spdlog.h"
@@ -32,6 +33,9 @@ class SingleAlignmentFormatter;
 
 // Forward-declare because the C++ compiler is dumb
 class RapMapIndex;
+
+template<typename KeyT, typename ValT, typename HasherT>
+using RegHashT = spp::sparse_hash_map<KeyT, ValT, HasherT>;
 
 namespace rapmap {
     namespace utils {
