@@ -38,7 +38,7 @@ else()
   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 endif()
 
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mpopcnt -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM -Wall -std=c++11 -Wno-unknown-pragmas -Wreturn-type -Werror=return-type")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM -Wall -std=c++11 -Wno-unknown-pragmas -Wreturn-type -Werror=return-type")
 
 ##
 # OSX is strange (some might say, stupid in this regard).  Deal with it's quirkines here.
@@ -174,20 +174,6 @@ ExternalProject_Add(libdivsufsort
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR> -DBUILD_DIVSUFSORT64=TRUE -DUSE_OPENMP=TRUE -DBUILD_SHARED_LIBS=FALSE
 )
 set(SUFFARRAY_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/external/install/include)
-
-message("Build system will fetch and build SparseHash")
-message("==================================================================")
-ExternalProject_Add(libsparsehash
-    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-    DOWNLOAD_COMMAND curl -k -L https://github.com/COMBINE-lab/sparsehash/archive/sparsehash-2.0.2.tar.gz -o sparsehash-2.0.2.tar.gz &&
-        tar -xzf sparsehash-2.0.2.tar.gz
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/sparsehash-sparsehash-2.0.2
-    BUILD_IN_SOURCE TRUE
-    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
-    CONFIGURE_COMMAND sh -c "CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} ./configure --prefix=<INSTALL_DIR>"
-    INSTALL_COMMAND make install
-)
-
 
 if (NOT CEREAL_ROOT)
 	set(CEREAL_ROOT ${GAT_SOURCE_DIR}/external/install)

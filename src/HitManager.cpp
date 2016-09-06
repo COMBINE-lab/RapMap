@@ -578,6 +578,7 @@ namespace rapmap {
         SAHitMap intersectSAHits(
                 std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi,
+                size_t readLen,
                 bool strictFilter 
                 ) {
             using OffsetT = typename RapMapIndexT::IndexType;
@@ -640,7 +641,7 @@ namespace rapmap {
             for (auto it = outHits.begin(); it != outHits.end(); ++it) {
                 bool enoughHits = (it->second.numActive >= requiredNumHits);
                 it->second.active = (strictFilter) ? 
-                    (enoughHits and it->second.checkConsistent(requiredNumHits)) :
+                    (enoughHits and it->second.checkConsistent(readLen, requiredNumHits)) :
                     (enoughHits);
             }
             return outHits;
@@ -671,11 +672,11 @@ namespace rapmap {
 
         template
         SAHitMap intersectSAHits<SAIndex32BitDense>(std::vector<SAIntervalHit<int32_t>>& inHits,
-                                                    SAIndex32BitDense& rmi, bool strictFilter);
+                                                    SAIndex32BitDense& rmi, size_t readLen, bool strictFilter);
 
         template
         SAHitMap intersectSAHits<SAIndex64BitDense>(std::vector<SAIntervalHit<int64_t>>& inHits,
-          SAIndex64BitDense& rmi, bool strictFilter);
+                                                    SAIndex64BitDense& rmi, size_t readLen, bool strictFilter);
 
         template
         void intersectSAIntervalWithOutput<SAIndex32BitPerfect>(SAIntervalHit<int32_t>& h,
@@ -691,10 +692,10 @@ namespace rapmap {
 
         template
         SAHitMap intersectSAHits<SAIndex32BitPerfect>(std::vector<SAIntervalHit<int32_t>>& inHits,
-                                                      SAIndex32BitPerfect& rmi, bool strictFilter);
+                                                      SAIndex32BitPerfect& rmi, size_t readLen, bool strictFilter);
 
         template
         SAHitMap intersectSAHits<SAIndex64BitPerfect>(std::vector<SAIntervalHit<int64_t>>& inHits,
-                                                      SAIndex64BitPerfect& rmi, bool strictFilter);
+                                                      SAIndex64BitPerfect& rmi, size_t readLen, bool strictFilter);
     }
 }

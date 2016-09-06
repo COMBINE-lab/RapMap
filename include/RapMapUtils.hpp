@@ -6,6 +6,7 @@
 #include <memory>
 #include "xxhash.h"
 #include "sparsepp.h"
+#include "SparseHashSerializer.hpp"
 #include <cereal/archives/binary.hpp>
 #include "jellyfish/mer_dna.hpp"
 #include "spdlog/spdlog.h"
@@ -35,6 +36,7 @@ class SingleAlignmentFormatter;
 class RapMapIndex;
 
 template<typename KeyT, typename ValT, typename HasherT>
+//using RegHashT = google::dense_hash_map<KeyT, ValT, HasherT>;
 using RegHashT = spp::sparse_hash_map<KeyT, ValT, HasherT>;
 
 namespace rapmap {
@@ -121,13 +123,17 @@ namespace rapmap {
     struct SAIntervalWithKey {
         uint64_t kmer;
       //  SAInterval<IndexT> second;
-        IndexT begin;
-        IndexT end;
-        template <typename Archive>
-            void load(Archive& ar) { ar(kmer, begin, end); }
+        IndexT begin_;
+        IndexT end_;
+
+        inline IndexT begin() { return begin_; }
+        inline IndexT end() { return end_; }
 
         template <typename Archive>
-            void save(Archive& ar) const { ar(kmer, begin, end); }
+            void load(Archive& ar) { ar(kmer, begin_, end_); }
+
+        template <typename Archive>
+            void save(Archive& ar) const { ar(kmer, begin_, end_); }
     };
 
     template <typename IndexT>
@@ -142,13 +148,19 @@ namespace rapmap {
 	}
 	*/
 
-        IndexT begin;
-        IndexT end;
-        template <typename Archive>
-            void load(Archive& ar) { ar(begin, end); }
+        IndexT begin_;
+        IndexT end_;
+        
+        inline IndexT begin() { return begin_; }
+        inline IndexT end() { return end_; }
 
         template <typename Archive>
-            void save(Archive& ar) const { ar(begin, end); }
+        void load(Archive& ar) { ar(begin_, end_); }
+        //void load(Archive& ar) { ar(begin_, len_); }
+
+        template <typename Archive>
+        void save(Archive& ar) const { ar(begin_, end_); }
+        //void save(Archive& ar) const { ar(begin_, len_); }
     };
 
 
@@ -400,7 +412,7 @@ namespace rapmap {
          * return: numToCheck if the first numToCheck hits are consistent;
          *         -1 otherwise
          **/
-        int32_t checkConsistent(int32_t numToCheck) {
+        int32_t checkConsistent(size_t readLen, int32_t numToCheck) {
             auto numHits = tqvec.size();
 
             // special case for only 1 or two hits (common)
@@ -408,8 +420,14 @@ namespace rapmap {
                 return numToCheck;
             } else if (numHits == 2) {
                 auto& h1 = (tqvec[0].queryPos < tqvec[1].queryPos) ? tqvec[0] : tqvec[1];
-                auto& h2 = (tqvec[0].queryPos < tqvec[1].queryPos) ? tqvec[1] : tqvec[2];
-                return (h2.pos > h1.pos) ? (numToCheck) : -1;
+                auto& h2 = (tqvec[0].queryPos < tqvec[1].queryPos) ? tqvec[1] : tqvec[0];
+                if (h2.pos > h1.pos) {
+                    int32_t distortion = (h2.pos - h1.pos) - (h2.queryPos - h1.queryPos);
+                    return (distortion > -10 and distortion < 10) ? numToCheck : -1;
+                } else {
+                    return -1;
+                }
+                //return (h2.pos > h1.pos) ? (numToCheck) : -1;
             } else {
                 // first, sort by query position
                 std::sort(tqvec.begin(), tqvec.end(),
@@ -418,10 +436,21 @@ namespace rapmap {
                           });
 
                 int32_t lastRefPos{std::numeric_limits<int32_t>::min()};
+                int32_t lastQueryPos{std::numeric_limits<int32_t>::min()};
+                bool firstHit{true};
+                //int32_t maxDistortion{0};
                 for (size_t i = 0; i < numToCheck; ++i) {
                     int32_t refPos = static_cast<int32_t>(tqvec[i].pos);
+                    int32_t queryPos = static_cast<int32_t>(tqvec[i].queryPos);
                     if (refPos > lastRefPos) {
+                        int32_t distortion = 
+                            firstHit ? 0 : ((refPos - lastRefPos) - (queryPos - lastQueryPos));
+                        firstHit = false;
+                        if (distortion < -10 or distortion > 10) {
+                            return i;
+                        }
                         lastRefPos = refPos;
+                        lastQueryPos = queryPos;
                     } else {
                         return i;
                     }

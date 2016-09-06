@@ -18,11 +18,15 @@ bool loadHashFromIndex(const std::string& indexDir,
                        RegHashT<uint64_t,
                        rapmap::utils::SAInterval<IndexT>,
                        rapmap::utils::KmerKeyHasher>& khash) {
-      //khash.set_empty_key(std::numeric_limits<uint64_t>::max());
+  //khash.set_empty_key(std::numeric_limits<uint64_t>::max());
       std::ifstream hashStream(indexDir + "hash.bin");
+      khash.unserialize(typename spp_utils::pod_hash_serializer<uint64_t, rapmap::utils::SAInterval<IndexT>>(),
+			&hashStream);
+      /*
       khash.unserialize(typename google::dense_hash_map<uint64_t,
                       rapmap::utils::SAInterval<IndexT>,
                       rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
+      */
       return true;
 }
 

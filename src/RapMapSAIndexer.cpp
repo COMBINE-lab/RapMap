@@ -46,9 +46,6 @@
 #include "jellyfish/thread_exec.hpp"
 #include "rank9b.h"
 
-#include "sparsehash/dense_hash_map"
-//#include "sparsepp.h"
-
 #include "IndexHeader.hpp"
 
 #include <chrono>
@@ -233,11 +230,10 @@ template <typename IndexT>
 bool buildHash(const std::string& outputDir, std::string& concatText,
                size_t tlen, uint32_t k, std::vector<IndexT>& SA) {
   // Now, build the k-mer lookup table
-    spp::sparse_hash_map<uint64_t, rapmap::utils::SAInterval<IndexT>,
-                         rapmap::utils::KmerKeyHasher>
-        //google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<IndexT>,
-        //                 rapmap::utils::KmerKeyHasher>
-      khash;
+    RegHashT<uint64_t, rapmap::utils::SAInterval<IndexT>,
+                         rapmap::utils::KmerKeyHasher> khash;
+    //RegHashT<uint64_t, IndexT, rapmap::utils::KmerKeyHasher> overflowhash;
+    //std::cerr << "sizeof(SAInterval<IndexT>) = " << sizeof(rapmap::utils::SAInterval<IndexT>) << '\n';
     //khash.set_empty_key(std::numeric_limits<uint64_t>::max());
 
   // The start and stop of the current interval
@@ -286,14 +282,24 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
             }
 
             khash[bits] = {start, stop};
+            /*
+            IndexT len = stop - start;
+            bool overflow = (len >= std::numeric_limits<uint8_t>::max());
+            uint8_t blen = overflow ? std::numeric_limits<uint8_t>::max() : 
+                static_cast<uint8_t>(len);
+            khash[bits] = {start, blen};
+            if (overflow) {
+                overflowhash[bits] = len;
+            }
+            */
           } else {
             std::cerr << "\nERROR (1): trying to add same suffix "
                       << currentKmer << " (len = " << currentKmer.length()
                       << ") multiple times!\n";
             auto prevInt = hashIt->second;
-            std::cerr << "existing interval is [" << prevInt.begin << ", "
-                      << prevInt.end << ")\n";
-            for (auto x = prevInt.begin; x < prevInt.end; ++x) {
+            std::cerr << "existing interval is [" << prevInt.begin() << ", "
+                      << prevInt.end() << ")\n";
+            for (auto x = prevInt.begin(); x < prevInt.end(); ++x) {
               auto suff = concatText.substr(SA[x], k);
               for (auto c : suff) {
                 std::cerr << "*" << c << "*";
@@ -336,13 +342,23 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
             }
           }
           khash[bits] = {start, stop};
+          /*
+          IndexT len = stop - start;
+          bool overflow = (len >= std::numeric_limits<uint8_t>::max());
+          uint8_t blen = overflow ? std::numeric_limits<uint8_t>::max() : 
+              static_cast<uint8_t>(len);
+          khash[bits] = {start, blen};
+          if (overflow) {
+              overflowhash[bits] = len;
+          }
+          */
         } else {
           std::cerr << "\nERROR (2): trying to add same suffix " << currentKmer
                     << "multiple times!\n";
           auto prevInt = hashIt->second;
-          std::cerr << "existing interval is [" << prevInt.begin << ", "
-                    << prevInt.end << ")\n";
-          for (auto x = prevInt.begin; x < prevInt.end; ++x) {
+          std::cerr << "existing interval is [" << prevInt.begin() << ", "
+                    << prevInt.end() << ")\n";
+          for (auto x = prevInt.begin(); x < prevInt.end(); ++x) {
             std::cerr << concatText.substr(SA[x], k) << "\n";
           }
           std::cerr << "new interval is [" << start << ", " << stop << ")\n";
@@ -366,6 +382,16 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
         currentKmer.find_first_of('$') != std::string::npos) {
       mer = rapmap::utils::my_mer(currentKmer);
       khash[mer.get_bits(0, 2 * k)] = {start, stop};
+      /*
+      IndexT len = stop - start;
+      bool overflow = (len >= std::numeric_limits<uint8_t>::max());
+      uint8_t blen = overflow ? std::numeric_limits<uint8_t>::max() : 
+          static_cast<uint8_t>(len);
+      khash[mer.get_bits(0, 2 * k)] = {start, blen};
+      if (overflow) {
+          overflowhash[mer.get_bits(0, 2 * k)] = len;
+      }
+      */
     }
   }
   std::cerr << "\nkhash had " << khash.size() << " keys\n";
@@ -374,12 +400,8 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
     ScopedTimer timer;
     std::cerr << "saving hash to disk . . . ";
     cereal::BinaryOutputArchive hashArchive(hashStream);
-    // hashArchive(k);
-    khash.serialize(typename google::dense_hash_map<
-                        uint64_t, rapmap::utils::SAInterval<IndexT>,
-                        rapmap::utils::KmerKeyHasher>::NopointerSerializer(),
+    khash.serialize(typename spp_utils::pod_hash_serializer<uint64_t, rapmap::utils::SAInterval<IndexT>>(),
                     &hashStream);
-    // hashArchive(khash);
     std::cerr << "done\n";
   }
   hashStream.close();

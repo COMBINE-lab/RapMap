@@ -96,6 +96,7 @@ namespace rapmap {
         SAHitMap intersectSAHits(
                                  std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                                  RapMapIndexT& rmi, 
+                                 size_t readLen,
                                  bool strictFilter=false);
 
         template <typename RapMapIndexT>

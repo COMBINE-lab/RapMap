@@ -95,7 +95,10 @@ class SACollector {
         // value of 0 means no overlap (the new search begins at the next
         // base) while a value of (k - 1) means that k-1 bases (one less than
         // the k-mer size) must overlap.
+
         OffsetT skipOverlap = k-1;
+        //OffsetT skipOverlap = 0;
+
         // Number of nucleotides to skip when encountering a homopolymer k-mer.
         OffsetT homoPolymerSkip = k/2;
 
@@ -125,8 +128,8 @@ class SACollector {
 
             // If we can find the k-mer in the hash, get its SA interval
             if (merIt != khash.end()) {
-                OffsetT lb = merIt->second.begin;
-                OffsetT ub = merIt->second.end;
+                OffsetT lb = merIt->second.begin();
+                OffsetT ub = merIt->second.end();
 
                 // lb must be 1 *less* then the current lb
                 auto lbRestart = std::max(static_cast<OffsetT>(0), lb-1);
@@ -168,8 +171,8 @@ class SACollector {
 
             // See if the reverse complement k-mer is in the hash
             if (rcMerIt != khash.end()) {
-                lbLeftRC = rcMerIt->second.begin;
-                ubLeftRC = rcMerIt->second.end;
+                lbLeftRC = rcMerIt->second.begin();
+                ubLeftRC = rcMerIt->second.end();
                 OffsetT diff = ubLeftRC - lbLeftRC;
                 if (ubLeftRC > lbLeftRC) {
                     // The original k-mer didn't match in the foward direction
@@ -264,8 +267,8 @@ class SACollector {
                             }
                         }
 
-                        lbRightFwd = merIt->second.begin;
-                        ubRightFwd = merIt->second.end;
+                        lbRightFwd = merIt->second.begin();
+                        ubRightFwd = merIt->second.end();
 
                         // lb must be 1 *less* then the current lb
                         lbRightFwd = std::max(static_cast<OffsetT>(0), lbRightFwd - 1);
@@ -376,8 +379,8 @@ class SACollector {
                     }
 
 
-                    lbRightRC = rcMerIt->second.begin;
-                    ubRightRC = rcMerIt->second.end;
+                    lbRightRC = rcMerIt->second.begin();
+                    ubRightRC = rcMerIt->second.end();
 
                     // lb must be 1 *less* then the current lb
                     // We can't move any further in the reverse complement direction
@@ -484,7 +487,7 @@ class SACollector {
         auto fwdHitsStart = hits.size();
         // If we had > 1 forward hit
         if (fwdSAInts.size() > 1) {
-            auto processedHits = rapmap::hit_manager::intersectSAHits(fwdSAInts, *rmi_, consistentHits);
+            auto processedHits = rapmap::hit_manager::intersectSAHits(fwdSAInts, *rmi_, readLen, consistentHits);
             rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, mateStatus);
         } else if (fwdSAInts.size() == 1) { // only 1 hit!
             auto& saIntervalHit = fwdSAInts.front();
@@ -521,7 +524,7 @@ class SACollector {
         auto rcHitsStart = fwdHitsEnd;
         // If we had > 1 rc hit
         if (rcSAInts.size() > 1) {
-            auto processedHits = rapmap::hit_manager::intersectSAHits(rcSAInts, *rmi_, consistentHits);
+            auto processedHits = rapmap::hit_manager::intersectSAHits(rcSAInts, *rmi_, readLen, consistentHits);
             rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, mateStatus);
         } else if (rcSAInts.size() == 1) { // only 1 hit!
             auto& saIntervalHit = rcSAInts.front();
