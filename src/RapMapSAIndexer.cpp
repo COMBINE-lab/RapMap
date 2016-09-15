@@ -420,7 +420,6 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
   {
     ScopedTimer timer;
     std::cerr << "saving hash to disk . . . ";
-    cereal::BinaryOutputArchive hashArchive(hashStream);
     khash.serialize(typename spp_utils::pod_hash_serializer<uint64_t, rapmap::utils::SAInterval<IndexT>>(),
                     &hashStream);
     std::cerr << "done\n";

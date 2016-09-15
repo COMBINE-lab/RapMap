@@ -53,27 +53,28 @@ ${GAT_SOURCE_DIR}/external/install/lib
 #${BLAS_LIBRARY_DIR}
 )
 
-#message("Boost_LIBRARIES = ${Boost_LIBRARIES}")
-
 # Set the RPATH
-if (APPLE)
-    ## This DOES NOT do what I / any one sane, expects.  Setting the
-    ## linker path on OSX is messed up.  Just tell the user to use
-    ## DYLD_FALLBACK_LIBRARY_PATH for now
-    set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-else()
+if (NOT APPLE)
     set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/../../lib:$ORIGIN/:$ORIGIN/../../external/install/lib")
+    set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+else()
+  # use, i.e. don't skip the full RPATH for the build tree
+  set(CMAKE_SKIP_BUILD_RPATH  FALSE)
+
+  # when building, don't use the install RPATH already
+  # (but later on when installing)
+  set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE) 
+
+  # the RPATH to be used when installing
+  set(CMAKE_INSTALL_RPATH "")
+
+  # don't add the automatically determined parts of the RPATH
+  # which point to directories outside the build tree to the install RPATH
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
 endif()
-
-set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-
-# Build the rsdic library
-# add_library(rsdic STATIC ${RSDICT_LIB_SRCS} )
 
 # Build the rapmap executable
 add_executable(rapmap ${RAPMAP_MAIN_SRCS})
-
-#set_target_properties(salmon_core salmon PROPERTIES LINK_SEARCH_END_STATIC TRUE)
 
 # our suffix array construction libraries
 set (SUFFARRAY_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort.a)
@@ -82,33 +83,18 @@ set (SUFFARRAY64_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort64.a)
 # Link the executable
 target_link_libraries(rapmap
     ${PTHREAD_LIB}
-    #${Boost_LIBRARIES}
     ${ZLIB_LIBRARY}
     ${SUFFARRAY_LIB}
     ${SUFFARRAY64_LIB}
     ${GAT_SOURCE_DIR}/external/install/lib/libjellyfish-2.0.a
     m
     ${LIBLZMA_LIBRARIES}
-    #${LIBSALMON_LINKER_FLAGS}
     ${NON_APPLECLANG_LIBS}
     ${FAST_MALLOC_LIB}
 )
 
-#add_dependencies(salmon libbwa)
-
-##
-#  This ensures that the salmon executable should work with or without `make install`
-##
-if (APPLE)
-	add_custom_command(TARGET rapmap
-		POST_BUILD
-		COMMAND install_name_tool -add_rpath ${GAT_SOURCE_DIR}/external/install/lib rapmap
-		COMMAND install_name_tool -add_rpath @executable_path/../lib rapmap
-		)
-endif()
 
 ##### ======================================
-
 IF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   SET(CMAKE_INSTALL_PREFIX
     "${GAT_SOURCE_DIR}" CACHE PATH "Default install prefix" FORCE
