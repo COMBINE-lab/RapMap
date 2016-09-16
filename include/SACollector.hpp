@@ -34,6 +34,10 @@ template <typename RapMapIndexT>
 class SACollector {
     public:
     using OffsetT = typename RapMapIndexT::IndexType;
+    void disableNIP() { disableNIP_ = true; }
+    void enableNIP() { disableNIP_ = false; }
+    void setCoverageRequirement(double req) { covReq_ = req; }
+    void coverageRequirement() { return covReq_; }
 
     SACollector(RapMapIndexT* rmi) : rmi_(rmi) {}
     bool operator()(std::string& read,
@@ -54,6 +58,7 @@ class SACollector {
         auto& text = rmi_->seq;
         uint32_t sampFactor{1};
         auto salen = SA.size();
+        auto hashEnd = khash.end();
 
         auto readLen = read.length();
         auto maxDist = 1.5 * readLen;
@@ -75,6 +80,8 @@ class SACollector {
         uint32_t fwdHit{0};
         uint32_t rcHit{0};
 
+        size_t fwdCov{0};
+        size_t rcCov{0};
         bool foundHit = false;
         bool isRev = false;
         rapmap::utils::my_mer mer;
@@ -117,8 +124,8 @@ class SACollector {
         // base) while a value of (k - 1) means that k-1 bases (one less than
         // the k-mer size) must overlap.
 
-        OffsetT skipOverlap = k-1;
-        //OffsetT skipOverlap = 0;
+        //OffsetT skipOverlap = k-1;
+        OffsetT skipOverlap = 0;
 
         // Number of nucleotides to skip when encountering a homopolymer k-mer.
         OffsetT homoPolymerSkip = k/2;
@@ -148,7 +155,7 @@ class SACollector {
             auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
 
             // If we can find the k-mer in the hash, get its SA interval
-            if (merIt != khash.end()) {
+            if (merIt != hashEnd) {
                 OffsetT lb = merIt->second.begin();
                 OffsetT ub = merIt->second.end();
 
@@ -165,10 +172,14 @@ class SACollector {
                 if (ubLeftFwd > lbLeftFwd and diff < maxInterval) {
                     auto queryStart = std::distance(read.begin(), rb);
                     fwdSAInts.emplace_back(lbLeftFwd, ubLeftFwd, matchedLen, queryStart, false);
+                    //iomutex_.lock();
+                    //std::cerr << "matchedLen = " << matchedLen << " (qp = " << queryStart << ")\n";
+                    //iomutex_.unlock();
+                    fwdCov += matchedLen;
                     if (strictCheck) {
                         ++fwdHit;
                         // If we also match this k-mer in the rc direction
-			if (rcMerIt != khash.end()) {
+			if (rcMerIt != hashEnd) {
 			  ++rcHit;
 			  kmerScores.emplace_back(mer, pos, PRESENT, PRESENT);
 			} else { // Otherwise it doesn't match in the rc direction
@@ -185,13 +196,13 @@ class SACollector {
                         }
                     } else { // no strict check
                         ++fwdHit;
-                        if (rcMerIt != khash.end()) { ++rcHit; }
+                        if (rcMerIt != hashEnd) { ++rcHit; }
                     }
                 }
             }
 
             // See if the reverse complement k-mer is in the hash
-            if (rcMerIt != khash.end()) {
+            if (rcMerIt != hashEnd) {
                 lbLeftRC = rcMerIt->second.begin();
                 ubLeftRC = rcMerIt->second.end();
                 OffsetT diff = ubLeftRC - lbLeftRC;
@@ -233,21 +244,23 @@ class SACollector {
             // is the position after the LCE (longest common extension) of
             // T[SA[lb]:] and T[SA[ub-1]:]
             auto remainingLength = std::distance(rb + matchLen, readEndIt);
-            auto lce = saSearcher.lce(lbLeftFwd, ubLeftFwd-1, matchLen, remainingLength);
+            auto lce = disableNIP_ ? matchLen : saSearcher.lce(lbLeftFwd, ubLeftFwd-1, matchLen, remainingLength);
             auto fwdSkip = std::max(static_cast<OffsetT>(matchLen) - skipOverlap,
                                     static_cast<OffsetT>(lce) - skipOverlap);
 
+            auto nipSkip = disableNIP_ ? 
+                static_cast<OffsetT>(readLen) : std::max(static_cast<OffsetT>(0), static_cast<OffsetT>(readLen)- static_cast<OffsetT>(k));
             size_t nextInformativePosition = std::min(
-                    std::max(static_cast<OffsetT>(0),
-                    static_cast<OffsetT>(readLen)- static_cast<OffsetT>(k)),
-                    static_cast<OffsetT>(std::distance(readStartIt, rb) + fwdSkip)
-                    );
+                                                      nipSkip , 
+                                                      static_cast<OffsetT>(std::distance(readStartIt, rb) + fwdSkip)
+                                                      );
 
             rb = read.begin() + nextInformativePosition;
             re = rb + k;
 
             size_t invalidPos{0};
-            while (re <= readEndIt) {
+            bool valid{true};
+            while (re <= readEndIt and valid) {
                 // The offset into the string
                 auto pos = std::distance(readStartIt, rb);
 
@@ -276,13 +289,13 @@ class SACollector {
                     if (mer.is_homopolymer()) { rb += homoPolymerSkip; re = rb + k; continue; }
                     auto merIt = khash.find(mer.get_bits(0, 2*k));
 
-                    if (merIt != khash.end()) {
+                    if (merIt != hashEnd) {
                         if (strictCheck) {
                             ++fwdHit;
                             kmerScores.emplace_back(mer, pos, PRESENT, UNTESTED);
                             auto rcMer = mer.get_reverse_complement();
                             auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
-                            if (rcMerIt != khash.end()) {
+                            if (rcMerIt != hashEnd) {
                                 ++rcHit;
                                 kmerScores.back().rcScore = PRESENT;
                             }
@@ -301,6 +314,10 @@ class SACollector {
                         if (ubRightFwd > lbRightFwd and diff < maxInterval) {
                             auto queryStart = std::distance(read.begin(), rb);
                             fwdSAInts.emplace_back(lbRightFwd, ubRightFwd, matchedLen, queryStart, false);
+                            //iomutex_.lock();
+                            //std::cerr << "matchedLen = " << matchedLen << " (qp = " << queryStart << ")\n";
+                            //iomutex_.unlock();
+                            fwdCov += matchedLen;
                             // If we didn't end the match b/c we exhausted the query
                             // test the mismatching k-mer in the other strand
                             // TODO: check for 'N'?
@@ -317,7 +334,7 @@ class SACollector {
                         auto mismatchIt = rb + matchedLen;
                         if (mismatchIt < readEndIt) {
                             auto remainingDistance = std::distance(mismatchIt, readEndIt);
-                            auto lce = saSearcher.lce(lbRightFwd, ubRightFwd-1, matchedLen, remainingDistance);
+                            auto lce = disableNIP_ ? matchedLen : saSearcher.lce(lbRightFwd, ubRightFwd-1, matchedLen, remainingDistance);
 
                             // Where we would jump if we just used the MMP
                             auto skipMatch = mismatchIt - skipOverlap;
@@ -328,12 +345,14 @@ class SACollector {
                             if (rb > (readEndIt - k)) {
                                 rb = readEndIt - k;
                                 lastSearch = true;
+                                if (disableNIP_) { valid = false; }
                             }
                             re = rb + k;
                         } else {
                             lastSearch = true;
                             rb = readEndIt - k;
                             re = rb + k;
+                            if (disableNIP_) { valid = false; }
                         }
 
                     } else {
@@ -354,7 +373,8 @@ class SACollector {
             auto revRE = revRB + k;
 
             auto invalidPosIt = revRB;
-            while (revRE <= revReadEndIt){
+            bool valid{true};
+            while (revRE <= revReadEndIt and valid){
 
                 revRE = revRB + k;
                 if (revRE > revReadEndIt) { break; }
@@ -388,12 +408,12 @@ class SACollector {
                 auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
 
                 // If we found the k-mer
-                if (rcMerIt != khash.end()) {
+                if (rcMerIt != hashEnd) {
                     if (strictCheck) {
                         ++rcHit;
                         kmerScores.emplace_back(mer, pos, UNTESTED, PRESENT);
                         auto merIt = khash.find(mer.get_bits(0, 2*k));
-                        if (merIt != khash.end()) {
+                        if (merIt != hashEnd) {
                             ++fwdHit;
                             kmerScores.back().fwdScore = PRESENT;
                         }
@@ -414,6 +434,7 @@ class SACollector {
                     if (ubRightRC > lbRightRC and diff < maxInterval) {
                         auto queryStart = std::distance(read.rbegin(), revRB);
                         rcSAInts.emplace_back(lbRightRC, ubRightRC, matchedLen, queryStart, true);
+                        rcCov += matchedLen;
                         // If we didn't end the match b/c we exhausted the query
                         // test the mismatching k-mer in the other strand
                         // TODO: check for 'N'?
@@ -429,7 +450,7 @@ class SACollector {
                     auto mismatchIt = revRB + matchedLen;
                     if (mismatchIt < revReadEndIt) {
                         auto remainingDistance = std::distance(mismatchIt, revReadEndIt);
-                        auto lce = saSearcher.lce(lbRightRC, ubRightRC-1, matchedLen, remainingDistance);
+                        auto lce = disableNIP_ ? matchedLen : saSearcher.lce(lbRightRC, ubRightRC-1, matchedLen, remainingDistance);
 
                         // Where we would jump if we just used the MMP
                         auto skipMatch = mismatchIt - skipOverlap;
@@ -440,12 +461,14 @@ class SACollector {
                         if (revRB > (revReadEndIt - k)) {
                             revRB = revReadEndIt - k;
                             lastSearch = true;
+                            if (disableNIP_) { valid = false; }
                         }
                         revRE = revRB + k;
                     } else {
                         lastSearch = true;
                         revRB = revReadEndIt - k;
                         revRE = revRB + k;
+                        if (disableNIP_) { valid = false; }
                     }
 
                 } else {
@@ -476,7 +499,7 @@ class SACollector {
                     // If the forward k-mer is untested, then test it
                     if (kms.fwdScore == UNTESTED) {
                         auto merIt = khash.find(kms.kmer.get_bits(0, 2*k));
-                        kms.fwdScore = (merIt != khash.end()) ? PRESENT : ABSENT;
+                        kms.fwdScore = (merIt != hashEnd) ? PRESENT : ABSENT;
                     }
                     // accumulate the score
                     fwdScore += kms.fwdScore;
@@ -485,7 +508,7 @@ class SACollector {
                     if (kms.rcScore == UNTESTED) {
                         rcMer = kms.kmer.get_reverse_complement();
                         auto rcMerIt = khash.find(rcMer.get_bits(0, 2*k));
-                        kms.rcScore = (rcMerIt != khash.end()) ? PRESENT : ABSENT;
+                        kms.rcScore = (rcMerIt != hashEnd) ? PRESENT : ABSENT;
                     }
                     // accumulate the score
                     rcScore += kms.rcScore;
@@ -503,6 +526,26 @@ class SACollector {
                     fwdSAInts.clear();
                 }
             }
+        }
+
+        if (covReq_ > 0.0) {
+            double fwdFrac{0.0};
+            double rcFrac{0.0};
+            if (fwdSAInts.size() > 0) {
+                fwdFrac  = fwdCov / static_cast<double>(readLen);
+                if (fwdFrac < covReq_) { fwdSAInts.clear(); }
+            }
+            if (rcSAInts.size() > 0) {
+                rcFrac = rcCov / static_cast<double>(readLen);
+                if (rcFrac < covReq_) { rcSAInts.clear(); }
+            }
+            /*
+            if (fwdFrac + rcFrac > 0.0) {
+                iomutex_.lock();
+                std::cerr << fwdFrac << ", " << rcFrac << "\n";
+                iomutex_.unlock();
+            }
+            */
         }
 
         auto fwdHitsStart = hits.size();
@@ -599,6 +642,9 @@ class SACollector {
 
     private:
         RapMapIndexT* rmi_;
+    bool disableNIP_{false};
+    double covReq_{0.0};
+    std::mutex iomutex_;
 };
 
 #endif // SA_COLLECTOR_HPP

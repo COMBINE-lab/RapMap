@@ -362,6 +362,9 @@ bool spawnProcessReadsThreads(
 
             std::vector<std::thread> threads;
             SACollector<RapMapIndexT> saCollector(&rmi);
+            //saCollector.disableNIP();
+            //saCollector.setCoverageRequirement(0.5);
+
             for (size_t i = 0; i < nthread; ++i) {
                 threads.emplace_back(processReadsPairSA<RapMapIndexT, SACollector<RapMapIndexT>, MutexT>,
                                      parser,

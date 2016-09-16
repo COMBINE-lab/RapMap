@@ -205,13 +205,16 @@ namespace rapmap {
     };
 
     class KmerKeyHasher {
+	spp::spp_hash<uint64_t> hasher;
         public:
-            size_t operator()(const uint64_t& m) const {
+            inline size_t operator()(const uint64_t& m) const { return hasher(m); }
+/*
                 //auto k = rapmap::utils::my_mer::k();
                 //auto v = m.get_bits(0, 2*k);
                 auto v = m;
                 return XXH64(static_cast<void*>(&v), 8, 0);
             }
+*/
     };
 
     struct KmerInterval {
