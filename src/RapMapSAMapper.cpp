@@ -112,10 +112,10 @@ using FixedWriter = rapmap::utils::FixedWriter;
 
 
 
-template <typename RapMapIndexT, typename CollectorT, typename MutexT>
+template <typename RapMapIndexT, typename MutexT>
 void processReadsSingleSA(single_parser * parser,
                           RapMapIndexT& rmi,
-                          CollectorT& hitCollector,
+                          //CollectorT& hitCollector,
                           MutexT* iomutex,
                           std::shared_ptr<spdlog::logger> outQueue,
                           HitCounters& hctr,
@@ -125,6 +125,8 @@ void processReadsSingleSA(single_parser * parser,
                           bool consistentHits) {
 
     using OffsetT = typename RapMapIndexT::IndexType;
+
+    SACollector<RapMapIndexT> hitCollector(&rmi);
     auto& txpNames = rmi.txpNames;
     auto& txpLens = rmi.txpLens;
     uint32_t n{0};
@@ -220,10 +222,10 @@ void processReadsSingleSA(single_parser * parser,
 /**
  *  Map reads from a collection of paired-end files.
  */
-template <typename RapMapIndexT, typename CollectorT, typename MutexT>
+template <typename RapMapIndexT, typename MutexT>
 void processReadsPairSA(paired_parser* parser,
                         RapMapIndexT& rmi,
-                        CollectorT& hitCollector,
+                        //CollectorT& hitCollector,
                         MutexT* iomutex,
                         std::shared_ptr<spdlog::logger> outQueue,
                         HitCounters& hctr,
@@ -235,6 +237,7 @@ void processReadsPairSA(paired_parser* parser,
 
     using OffsetT = typename RapMapIndexT::IndexType;
 
+    SACollector<RapMapIndexT> hitCollector(&rmi);
     auto& txpNames = rmi.txpNames;
     auto& txpLens = rmi.txpLens;
     uint32_t n{0};
@@ -366,10 +369,10 @@ bool spawnProcessReadsThreads(
             //saCollector.setCoverageRequirement(0.5);
 
             for (size_t i = 0; i < nthread; ++i) {
-                threads.emplace_back(processReadsPairSA<RapMapIndexT, SACollector<RapMapIndexT>, MutexT>,
+                threads.emplace_back(processReadsPairSA<RapMapIndexT, MutexT>,
                                      parser,
                                      std::ref(rmi),
-                                     std::ref(saCollector),
+                                     //std::ref(saCollector),
                                      &iomutex,
                                      outQueue,
                                      std::ref(hctr),
@@ -398,12 +401,11 @@ bool spawnProcessReadsThreads(
                               bool consistentHits) {
 
             std::vector<std::thread> threads;
-            SACollector<RapMapIndexT> saCollector(&rmi);
             for (size_t i = 0; i < nthread; ++i) {
-                threads.emplace_back(processReadsSingleSA<RapMapIndexT, SACollector<RapMapIndexT>, MutexT>,
+                threads.emplace_back(processReadsSingleSA<RapMapIndexT, MutexT>,
                                      parser,
                                      std::ref(rmi),
-                                     std::ref(saCollector),
+                                     //std::ref(saCollector),
                                      &iomutex,
                                      outQueue,
                                      std::ref(hctr),

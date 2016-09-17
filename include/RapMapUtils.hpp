@@ -689,6 +689,12 @@ namespace rapmap {
                 std::string& readWork,
                 std::string& qualWork);
 
+        void reverseRead(std::string& seq,
+                         std::string& readWork);
+
+
+        std::string reverseComplement(std::string& seq);
+
         template <typename ReadPairT, typename IndexT>
         uint32_t writeAlignmentsToStream(
                 ReadPairT& r,
