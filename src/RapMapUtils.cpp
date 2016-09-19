@@ -291,7 +291,7 @@ namespace rapmap {
                         rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
                             flags1 |= 0x100; flags2 |= 0x100;
-                        }
+                        } 
 
                         auto txpLen = txpLens[qa.tid];
                         rapmap::utils::adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
@@ -362,6 +362,7 @@ namespace rapmap {
                         if (alnCtr != 0) {
                             flags1 |= 0x100; flags2 |= 0x100;
                         }
+
 			/*
 			else {
                             // If this is the first alignment for this read
@@ -462,7 +463,7 @@ namespace rapmap {
                             << transcriptName << '\t' // RNAME (same as mate)
                             << qa.pos + 1 << '\t' // POS (same as mate)
                             << 0 << '\t' // MAPQ
-                            << unalignedSeq->length() << 'S' << '\t' // CIGAR
+                            << "*\t" // CIGAR
                             << '=' << '\t' // RNEXT
                             << qa.pos + 1 << '\t' // PNEXT (only 1 read in template)
                             << 0 << '\t' // TLEN (spec says 0, not read len)

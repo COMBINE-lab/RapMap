@@ -115,18 +115,23 @@ using FixedWriter = rapmap::utils::FixedWriter;
 template <typename RapMapIndexT, typename MutexT>
 void processReadsSingleSA(single_parser * parser,
                           RapMapIndexT& rmi,
-                          //CollectorT& hitCollector,
                           MutexT* iomutex,
                           std::shared_ptr<spdlog::logger> outQueue,
                           HitCounters& hctr,
                           uint32_t maxNumHits,
                           bool noOutput,
                           bool strictCheck,
+                          bool sensitive,
                           bool consistentHits) {
 
     using OffsetT = typename RapMapIndexT::IndexType;
 
     SACollector<RapMapIndexT> hitCollector(&rmi);
+    if (sensitive) {
+        hitCollector.disableNIP();
+    }
+    hitCollector.setStrictCheck(strictCheck);
+
     auto& txpNames = rmi.txpNames;
     auto& txpLens = rmi.txpLens;
     uint32_t n{0};
@@ -159,7 +164,7 @@ void processReadsSingleSA(single_parser * parser,
 	    readLen = read.seq.length();//j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
-            hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, strictCheck, consistentHits);
+            hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, consistentHits);
             auto numHits = hits.size();
             hctr.totHits += numHits;
 
@@ -232,12 +237,18 @@ void processReadsPairSA(paired_parser* parser,
                         uint32_t maxNumHits,
                         bool noOutput,
                         bool strictCheck,
+                        bool sensitive,
                         bool nonStrictMerge,
                         bool consistentHits) {
 
     using OffsetT = typename RapMapIndexT::IndexType;
 
     SACollector<RapMapIndexT> hitCollector(&rmi);
+    if (sensitive) {
+        hitCollector.disableNIP();
+    }
+    hitCollector.setStrictCheck(strictCheck);
+
     auto& txpNames = rmi.txpNames;
     auto& txpLens = rmi.txpLens;
     uint32_t n{0};
@@ -281,13 +292,11 @@ void processReadsPairSA(paired_parser* parser,
             bool lh = hitCollector(rpair.first.seq,
                                    leftHits, saSearcher,
                                    MateStatus::PAIRED_END_LEFT,
-                                   strictCheck,
                                    consistentHits);
 
             bool rh = hitCollector(rpair.second.seq,
                                    rightHits, saSearcher,
                                    MateStatus::PAIRED_END_RIGHT,
-                                   strictCheck,
                                    consistentHits);
 
             if (nonStrictMerge) {
@@ -360,6 +369,7 @@ bool spawnProcessReadsThreads(
                               uint32_t maxNumHits,
                               bool noOutput,
                               bool strictCheck,
+                              bool sensitive,
                               bool fuzzy,
                               bool consistentHits) {
 
@@ -379,6 +389,7 @@ bool spawnProcessReadsThreads(
                                      maxNumHits,
                                      noOutput,
                                      strictCheck,
+                                     sensitive,
                                      fuzzy,
                                      consistentHits);
             }
@@ -398,6 +409,7 @@ bool spawnProcessReadsThreads(
                               uint32_t maxNumHits,
                               bool noOutput,
                               bool strictCheck,
+                              bool sensitive,
                               bool consistentHits) {
 
             std::vector<std::thread> threads;
@@ -412,6 +424,7 @@ bool spawnProcessReadsThreads(
                                      maxNumHits,
                                      noOutput,
                                      strictCheck,
+                                     sensitive,
                                      consistentHits);
             }
             for (auto& t : threads) { t.join(); }
@@ -430,6 +443,7 @@ bool mapReads(RapMapIndexT& rmi,
 	      TCLAP::ValueArg<std::string>& outname,
 	      TCLAP::SwitchArg& noout,
 	      TCLAP::SwitchArg& strict,
+          TCLAP::SwitchArg& sensitive,
           TCLAP::SwitchArg& fuzzy,
           TCLAP::SwitchArg& consistent) {
 
@@ -490,6 +504,7 @@ bool mapReads(RapMapIndexT& rmi,
 	    pairParserPtr->start();
             spawnProcessReadsThreads(nthread, pairParserPtr.get(), rmi, iomutex,
                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck,
+                                     sensitive.getValue(),
                                      fuzzyIntersection, consistentHits);
         } else {
             std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(unmatedReads.getValue(), ',');
@@ -501,7 +516,7 @@ bool mapReads(RapMapIndexT& rmi,
             /** Create the threads depending on the collector type **/
             spawnProcessReadsThreads(nthread, singleParserPtr.get(), rmi, iomutex,
                                       outLog, hctrs, maxNumHits.getValue(), noout.getValue(),
-                                     strictCheck, consistentHits);
+                                     strictCheck, sensitive.getValue(), consistentHits);
         }
 	std::cerr << "\n\n";
 
@@ -543,6 +558,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::ValueArg<uint32_t> maxNumHits("m", "maxNumHits", "Reads mapping to more than this many loci are discarded", false, 200, "positive integer");
   TCLAP::ValueArg<std::string> outname("o", "output", "The output file (default: stdout)", false, "", "path");
   TCLAP::SwitchArg noout("n", "noOutput", "Don't write out any alignments (for speed testing purposes)", false);
+  TCLAP::SwitchArg sensitive("e", "sensitive", "Perform a more sensitive quasi-mapping by disabling NIP skipping", false);
   TCLAP::SwitchArg strict("s", "strictCheck", "Perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
   TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
   TCLAP::SwitchArg consistent("c", "consistentHits", "Ensure that the hits collected are consistent (co-linear)", false);
@@ -555,6 +571,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(outname);
   cmd.add(numThreads);
   cmd.add(maxNumHits);
+  cmd.add(sensitive);
   cmd.add(strict);
   cmd.add(fuzzy);
   cmd.add(consistent);
@@ -623,7 +640,7 @@ int rapMapSAMap(int argc, char* argv[]) {
           rmi.load(indexPrefix);
           success = mapReads(rmi, consoleLog, index, read1, read2,
                              unmatedReads, numThreads, maxNumHits,
-                             outname, noout, strict, fuzzy, consistent);
+                             outname, noout, strict, sensitive, fuzzy, consistent);
       } else {
           RapMapSAIndex<int64_t,
                         RegHashT<uint64_t, rapmap::utils::SAInterval<int64_t>,
@@ -631,7 +648,7 @@ int rapMapSAMap(int argc, char* argv[]) {
           rmi.load(indexPrefix);
           success = mapReads(rmi, consoleLog, index, read1, read2,
                              unmatedReads, numThreads, maxNumHits,
-                             outname, noout, strict, fuzzy, consistent);
+                             outname, noout, strict, sensitive, fuzzy, consistent);
       }
     } else {
         //std::cerr << "Loading 32-bit suffix array index: \n";
@@ -642,7 +659,7 @@ int rapMapSAMap(int argc, char* argv[]) {
             rmi.load(indexPrefix);
             success = mapReads(rmi, consoleLog, index, read1, read2,
                                unmatedReads, numThreads, maxNumHits,
-                               outname, noout, strict, fuzzy, consistent);
+                               outname, noout, strict, sensitive, fuzzy, consistent);
         } else {
             RapMapSAIndex<int32_t,
                           RegHashT<uint64_t, rapmap::utils::SAInterval<int32_t>,
@@ -650,7 +667,7 @@ int rapMapSAMap(int argc, char* argv[]) {
             rmi.load(indexPrefix);
             success = mapReads(rmi, consoleLog, index, read1, read2,
                                unmatedReads, numThreads, maxNumHits,
-                               outname, noout, strict, fuzzy, consistent);
+                               outname, noout, strict, sensitive, fuzzy, consistent);
         }
     }
 
