@@ -59,11 +59,9 @@ public:
   void setStrictCheck(bool sc) { strictCheck_ = sc; }
 
   /** Construct an SACollector given an index **/
-  SACollector(RapMapIndexT* rmi) : rmi_(rmi), 
-                                   disableNIP_(false),
-                                   covReq_(0.0),
-                                   maxInterval_(1000), 
-                                   strictCheck_(false) {}
+  SACollector(RapMapIndexT* rmi)
+      : rmi_(rmi), disableNIP_(false), covReq_(0.0), maxInterval_(1000),
+        strictCheck_(false) {}
 
   enum HitStatus { ABSENT = -1, UNTESTED = 0, PRESENT = 1 };
   // Record if k-mers are hits in the
@@ -99,6 +97,7 @@ public:
 
     using QuasiAlignment = rapmap::utils::QuasiAlignment;
     using MateStatus = rapmap::utils::MateStatus;
+    using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
 
     auto& rankDict = rmi_->rankDict;
     auto& txpStarts = rmi_->txpOffsets;
@@ -135,23 +134,26 @@ public:
     // forward and reverse-complement strand matches
     std::vector<KmerDirScore> kmerScores;
 
-    using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
-
+    // Where we store the SA intervals for forward and rc hits
     std::vector<SAIntervalHit> fwdSAInts;
     std::vector<SAIntervalHit> rcSAInts;
 
-    std::vector<uint32_t> leftTxps, leftTxpsRC;
-    std::vector<uint32_t> rightTxps, rightTxpsRC;
-
     // Number of nucleotides to skip when encountering a homopolymer k-mer.
-    OffsetT homoPolymerSkip = k / 2;
+    OffsetT homoPolymerSkip = 1; // k / 2;
+
+    // Iterator for k-mer and rc k-mer lookups
     auto merIt = hashEnd;
     auto rcMerIt = hashEnd;
+
+    // The position of the k-mer in the read
     size_t pos{0};
+    // The position of the next 'N' in the read
     size_t invalidPos{0};
+
     // Find a hit within the read
     // While we haven't fallen off the end
     while (re <= readEndIt) {
+
       // Get the k-mer at the current start position.
       // And make sure that it's valid (contains no Ns).
       pos = std::distance(readStartIt, rb);
@@ -160,20 +162,31 @@ public:
       // only check if we don't yet know that there are no remaining
       // Ns
       if (invalidPos != std::string::npos) {
-          invalidPos = read.find_first_of("nN", pos);
-          if (invalidPos <= pos + k) {
-              rb = read.begin() + invalidPos + 1;
-              re = rb + k;
-              continue;
-          }
+        invalidPos = read.find_first_of("nN", pos);
+        if (invalidPos <= pos + k) {
+          rb = read.begin() + invalidPos + 1;
+          re = rb + k;
+          continue;
+        }
       }
-      
+
       // If the next k-bases are valid, get the k-mer and
       // reverse complement k-mer
       mer = rapmap::utils::my_mer(read.c_str() + pos);
       if (mer.is_homopolymer()) {
         rb += homoPolymerSkip;
         re += homoPolymerSkip;
+        /* Walk base-by-base rather than skipping
+        // If the first N is within k bases, then this k-mer is invalid
+        if (invalidPos < pos + k) {
+            // Skip to the k-mer starting at the next position
+            // (i.e. right past the N)
+            rb = read.begin() + invalidPos + 1;
+            re = rb + k;
+            // Go to the next iteration of the while loop
+            continue;
+        }
+        */
         continue;
       }
       rcMer = mer.get_reverse_complement();
@@ -184,7 +197,6 @@ public:
 
       // If we can find the k-mer in the hash
       if (merIt != hashEnd) {
-        
         if (strictCheck_) {
           ++fwdHit;
           // If we also match this k-mer in the rc direction
@@ -228,11 +240,11 @@ public:
     if (!foundHit) {
       return false;
     }
-    
+
     bool didCheckFwd{false};
     // If we had a hit on the forward strand
     if (fwdHit) {
-        didCheckFwd = true;
+      didCheckFwd = true;
       getSAHits_(saSearcher,
                  read,             // the read
                  rb,               // where to start the search
@@ -240,11 +252,7 @@ public:
                  fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false);
     }
 
-    // Good enough?
-    //bool checkRC = (rcHit >= fwdHit);
-    // otherwise use this one
     bool checkRC = useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
-
     // If we had a hit on the reverse complement strand
     if (checkRC) {
       rapmap::utils::reverseRead(read, rcBuffer_);
@@ -254,25 +262,23 @@ public:
                  nullptr,           // pointer to the search interval
                  rcCov, rcHit, fwdHit, rcSAInts, kmerScores, true);
     }
-    
-    // Now, if we *didn't* check the forward strand at first, but we encountered fwd hits 
+
+    // Now, if we *didn't* check the forward strand at first, but we encountered
+    // fwd hits
     // while looking at the RC strand, then check the fwd strand now
-    
-    // Good enough?
-    //bool checkFwd = (fwdHit >= rcHit);
-    // otherwise use this one
     bool checkFwd = useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
     if (!didCheckFwd and checkFwd) {
-        didCheckFwd = true;
+      didCheckFwd = true;
       getSAHits_(saSearcher,
-                 read,             // the read
-                 read.begin(),               // where to start the search
-                 nullptr, // pointer to the search interval
+                 read,         // the read
+                 read.begin(), // where to start the search
+                 nullptr,      // pointer to the search interval
                  fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false);
     }
 
     if (strictCheck_) {
       // If we're computing coverage, then we can make use of that info here
+      //useCoverageCheck = false;
       if (useCoverageCheck) {
         if (fwdCov > rcCov) {
           rcSAInts.clear();
@@ -452,6 +458,82 @@ public:
   }
 
 private:
+  // spot-check k-mers to see if there are forward or rc hits
+  template <typename IteratorT>
+  inline void
+  spotCheck_(rapmap::utils::my_mer mer,
+             size_t pos, // the position of the k-mer on the read
+             size_t readLen,
+             IteratorT* merItPtr,           // nullptr if we haven't checked yet
+             IteratorT* complementMerItPtr, // nullptr if we haven't checked yet
+             bool isRC, // is this being called from the RC of the read
+             uint32_t& strandHits, uint32_t& otherStrandHits,
+             std::vector<KmerDirScore>& kmerScores
+             ) {
+    IteratorT merIt;
+    IteratorT complementMerIt;
+    auto& khash = rmi_->khash;
+    auto hashEnd = khash.end();
+    auto k = rapmap::utils::my_mer::k();
+
+    auto complementMer = mer.get_reverse_complement();
+
+    if (merItPtr == nullptr) {
+      // We haven't tested this, so do that here
+      merIt = khash.find(mer.get_bits(0, 2 * k));
+    } else {
+      // we already have this
+      merIt = *merItPtr;
+    }
+
+    if (complementMerItPtr == nullptr) {
+      // We haven't tested this, so do that here
+      complementMerIt = khash.find(complementMer.get_bits(0, 2 * k));
+    } else {
+      // we already have this
+      complementMerIt = *complementMerItPtr;
+    }
+
+    HitStatus status{UNTESTED};
+    HitStatus complementStatus{UNTESTED};
+
+    if (merIt != hashEnd) {
+      ++strandHits;
+      status = PRESENT;
+    } else {
+      status = ABSENT;
+    }
+    if (complementMerIt != hashEnd) {
+      ++otherStrandHits;
+      complementStatus = PRESENT;
+    } else {
+      complementStatus = ABSENT;
+    }
+
+    HitStatus fwdStatus = isRC ? complementStatus : status;
+    HitStatus rcStatus = isRC ? status : complementStatus;
+
+    if (strictCheck_) {
+      // If we're on the reverse complement strand, then
+      // we have to adjust kmerPos to be with respect to the
+      // forward strand.
+      if (isRC) {
+        auto kp = pos;
+        pos = readLen - kp - k;
+        mer = complementMer;
+      }
+      kmerScores.emplace_back(mer, pos, fwdStatus, rcStatus);
+    }
+  }
+  /* 
+  // Attempts to find the next valid k-mer (a k-mer that doesn't contain an 'N' and is 
+  // not a homopolymer).  If no such k-mer exists within the read, then it returns false. 
+  inline bool getNextValidKmer_(std, size_t& pos, rapmap::utils::my_mer& mer) {
+      bool validMer = mer.from_chars(read + pos);
+      // if this kmer contains an 'N' then validMer is false, else true
+  }
+  */
+
   inline void getSAHits_(
       SASearcher<RapMapIndexT>& saSearcher, std::string& read,
       std::string::iterator startIt,
@@ -465,15 +547,17 @@ private:
     auto& khash = rmi_->khash;
 
     auto hashEnd = khash.end();
+    decltype(hashEnd)* nullItPtr = nullptr;
+
     auto readLen = read.length();
     auto readStartIt = read.begin();
     auto readEndIt = read.end();
     OffsetT matchedLen{0};
 
     auto k = rapmap::utils::my_mer::k();
-    auto skipOverlapMMP = k - 1; 
+    auto skipOverlapMMP = k - 1;
     auto skipOverlapNIP = k - 1;
-    OffsetT homoPolymerSkip = k / 2;
+    OffsetT homoPolymerSkip = 1;//k / 2;
 
     auto rb = readStartIt;
     auto re = rb + k;
@@ -487,6 +571,7 @@ private:
     size_t sampFactor{1};
     bool lastSearch{false};
     size_t prevMMPEnd{0};
+    bool validMer{true};
 
     // If we have some place to start that we have already computed
     // then use it.
@@ -506,52 +591,46 @@ private:
       // The distance from the beginning of the read to the
       // start of the k-mer
       pos = std::distance(readStartIt, rb);
+      validMer = mer.from_chars(read.c_str() + pos);
+      // Get the next valid k-mer at some position >= pos
+      //validMer = getNextValidKmer_(read, pos, mer);
+      //if (!validMer) { return; }
 
-      // See if this k-mer would contain an N
-      // only check if we don't yet know that there are no remaining
-      // Ns
-      if (invalidPos != std::string::npos) {
+      // If this k-mer contains an 'N', then find the position
+      // of this character and skip one past it.
+      if (!validMer) {
         invalidPos = read.find_first_of("nN", pos);
         // If the first N is within k bases, then this k-mer is invalid
         if (invalidPos < pos + k) {
-            // Skip to the k-mer starting at the next position
-            // (i.e. right past the N)
-            rb = read.begin() + invalidPos + 1;
-            re = rb + k;
-            // Go to the next iteration of the while loop
-            continue;
+          // Skip to the k-mer starting at the next position
+          // (i.e. right past the N)
+          rb = read.begin() + invalidPos + 1;
+          re = rb + k;
+          // Go to the next iteration of the while loop
+          continue;
         }
       }
+      // If we got here, we have a k-mer without an 'N'
 
-      // Get the k-mer
-      mer = rapmap::utils::my_mer(read.c_str() + pos);
       // If this is a homopolymer, then skip it
       if (mer.is_homopolymer()) {
-        char nuc = std::toupper(*rb);
-        while (std::toupper(*re) == nuc) {
-          ++rb;
-          ++re;
-          // if we walk off the end, then we're done
-          if (re > readEndIt) {
-            return;
-          }
-        }
-        // we found a different character
-        pos = std::distance(readStartIt, rb);
+        rb += homoPolymerSkip; 
+        re += homoPolymerSkip;
         /*
-      rb += homoPolymerSkip;
-      re += homoPolymerSkip;
-      // If the default skip jumps us off the end of the read
-      // then try to check the last k-mer
-      if (re >= readEndIt and !lastSearch) {
-        rb = readEndIt - k;
-        re = rb + k;
-        // but give up if that's still a homopolymer
-        lastSearch = true;
-      }
-      continue;
+        rb += homoPolymerSkip;
+        re += homoPolymerSkip;
+        // If the default skip jumps us off the end of the read
+        // then try to check the last k-mer
+        if (re >= readEndIt and !lastSearch) {
+          rb = readEndIt - k;
+          re = rb + k;
+          // but give up if that's still a homopolymer
+          lastSearch = true;
+        }
         */
+        continue;
       }
+      
       // If it's not a homopolymer, then get the complement
       // k-mer and query both in the hash.
       complementMer = mer.get_reverse_complement();
@@ -559,33 +638,9 @@ private:
 
       // If we found the k-mer
       if (merIt != hashEnd) {
-        if (strictCheck_) {
-          ++strandHits;
-          // If we're on the reverse complement strand, then
-          // we have to adjust kmerPos to be with respect to the
-          // forward strand.
-          if (isRC) {
-            auto kp = pos;
-            pos = readLen - kp - k;
-            mer = mer.get_reverse_complement();
-          }
-          kmerScores.emplace_back(mer, pos, ABSENT, ABSENT);
-          if (isRC) {
-            kmerScores.back().rcScore = PRESENT;
-          } else {
-            kmerScores.back().fwdScore = PRESENT;
-          }
+        spotCheck_(mer, pos, readLen, &merIt, nullItPtr, isRC, strandHits,
+                   otherStrandHits, kmerScores);
 
-          complementMerIt = khash.find(complementMer.get_bits(0, 2 * k));
-          if (complementMerIt != hashEnd) {
-            ++otherStrandHits;
-            if (isRC) { // if we are RC, the other strand is fwd
-              kmerScores.back().fwdScore = PRESENT;
-            } else {
-              kmerScores.back().rcScore = PRESENT;
-            }
-          }
-        }
         lb = merIt->second.begin();
         ub = merIt->second.end();
       skipSetup:
@@ -603,10 +658,10 @@ private:
 
           size_t matchOffset = std::distance(readStartIt, rb);
           size_t correction = 0;
-          
+
           // NOTE: prevMMPEnd points 1 position past the last *match* of the
-          // previous MMP (i.e. it points to the *first mismatch*).  This is 
-          // why we ignore the case where prevMMPEnd == matchOffset, and why 
+          // previous MMP (i.e. it points to the *first mismatch*).  This is
+          // why we ignore the case where prevMMPEnd == matchOffset, and why
           // we don't have to add 1 to correction.
           if (prevMMPEnd > matchOffset) {
             correction = prevMMPEnd - matchOffset;
@@ -617,41 +672,30 @@ private:
 
           // If we didn't end the match b/c we exhausted the query
           // test the mismatching k-mer in the other strand
-          if (strictCheck_ and rb + matchedLen < readEndIt) {
-            int32_t kmerPos = static_cast<int32_t>(
+          if (rb + matchedLen < readEndIt) {
+            uint32_t kmerPos = static_cast<uint32_t>(
                 std::distance(readStartIt, rb + matchedLen - skipOverlapMMP));
-
-            // validNucs is true if mer contained no 'Ns'
             bool validNucs = mer.from_chars(read.c_str() + kmerPos);
             if (validNucs) {
-                // no hit on the current strand
+              /*
+              // since the MMP *ended* before the end of the read, we assume
+              // that the k-mer one past the MMP is a mismatch (i.e is ABSENT)
+              // we avoid looking it up in spotCheck_ by simply passing a pointer
+              // to the end of the k-mer hash, which will treat this mer as ABSENT.
+              auto endItPtr = &hashEnd;
+              */
+              // Even though the MMP *ended* before the end of the read, we're still
+              // going to check the mismatching k-mer in both directions to ensure that
+              // it doesn't appear somewhere else in the forward direction
+              spotCheck_(mer, kmerPos, readLen, nullItPtr, nullItPtr, isRC,
+                         strandHits, otherStrandHits, kmerScores);
+            }
+          } // we didn't end the search by falling off the end
+        }   // This hit was worth recording --- occurred fewer then maxInterval_
+            // times
 
-                // If we're on the reverse complement strand, then
-                // we have to adjust kmerPos to be with respect to the
-                // forward strand.
-                if (isRC) {
-                  auto kp = kmerPos;
-                  kmerPos = readLen - kp - k;
-                  mer = mer.get_reverse_complement();
-                }
-                kmerScores.emplace_back(mer, kmerPos, ABSENT, ABSENT);
-                
-                // Test the complementary strand
-                complementMer = mer.get_reverse_complement();
-                complementMerIt = khash.find(complementMer.get_bits(0, 2 * k));
-                if (complementMerIt != hashEnd) {
-                    ++otherStrandHits;
-                    if (isRC) { // if we are RC, the other strand is fwd
-                        kmerScores.back().fwdScore = PRESENT;
-                    } else {
-                        kmerScores.back().rcScore = PRESENT;
-                    }
-                }
-            } // The k-mer was valid (had no Ns)
-          } // we're performing a strict check
-        } // This hit was worth recording --- occurred fewer then maxInterval_ times
-
-        // If we've previously declared that the search that just occurred was our last, then we're done!
+        // If we've previously declared that the search that just occurred was
+        // our last, then we're done!
         if (lastSearch) {
           return;
         }
@@ -660,7 +704,7 @@ private:
         auto mismatchIt = rb + matchedLen;
         // If we reached the end of the read, then we're done.
         if (mismatchIt >= readEndIt) {
-            return;
+          return;
         }
 
         auto remainingDistance = std::distance(mismatchIt, readEndIt);
@@ -670,7 +714,7 @@ private:
 
         // Where we would jump if we just used the MMP
         auto skipMatch = mismatchIt - skipOverlapMMP;
-        //if (skipMatch + k )
+        // if (skipMatch + k )
         // Where we would jump if we used the LCE
         auto skipLCE = rb + lce - skipOverlapNIP;
         // Pick the maximum of the two
@@ -697,6 +741,11 @@ private:
         }
 
       } else { // If we couldn't match this k-mer, move on to the next.
+          
+        // &merIt should point to the end of the k-mer hash,
+        // complementMerItPtr is null because we want to spot-check the complement k-mer.
+        spotCheck_(mer, pos, readLen, &merIt, nullItPtr, isRC, strandHits,
+                   otherStrandHits, kmerScores);
         rb += sampFactor;
         re = rb + k;
       }

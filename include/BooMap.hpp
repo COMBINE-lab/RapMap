@@ -52,6 +52,15 @@ public:
         data_.emplace_back(k, v);
     }
 
+    bool validate_hash(){
+        for( auto& e : data_ ) {
+            if (e.first != data_[boophf_->lookup(e.first)].first) {
+                std::cerr << "lookup of " << e.first << " failed!\n";
+            }
+        }
+        return true;
+    }
+
     bool build(int nthreads=1) {
         size_t numElem = data_.size();
         KeyIterator<decltype(data_.begin())> kb(data_.begin());
@@ -60,11 +69,8 @@ public:
         BooPHFT* ph = new BooPHFT(numElem, keyIt, nthreads);
         boophf_.reset(ph);
         std::cerr << "reordering keys and values to coincide with phf ... ";
-        std::vector<size_t> inds; inds.reserve(data_.size());
-        for (size_t i = 0; i < data_.size(); ++i) {
-            inds.push_back(ph->lookup(data_[i].first));
-        }
-        reorder_destructive_(inds.begin(), inds.end(), data_.begin());
+        reorder_fn_();
+        //validate_hash();
         std::cerr << "done\n";
         built_ = true;
         return built_;
@@ -163,6 +169,50 @@ private:
         }
         return true;
     }
+
+  
+    void reorder_fn_()  {
+	/* Adapted from code at: http://blog.merovius.de/2014/08/12/applying-permutation-in-constant.html */
+        // Note, we can actually do this with out the bitvector by using the high-order bit 
+        // of the start of the suffix array intervals (since they are signed integers and negative
+        // positions are forbidden). 
+      std::vector<bool> bits(data_.size(), false);
+	for ( size_t i = 0; i < data_.size(); ++i ) {
+	  if (!bits[i]) {
+	    decltype(data_.front()) v = data_[i];
+	    auto j = boophf_->lookup(data_[i].first);
+	    while (i != j) {
+            auto pj = boophf_->lookup(data_[j].first);
+	      std::swap(data_[j], v);
+	      bits[j] = 1;
+	      j = pj; 
+	    }
+	    data_[i] = v;
+	  }
+	}
+
+	/* http://blog.merovius.de/2014/08/12/applying-permutation-in-constant.html
+	    for i := 0; i < len(vals); i++ {
+        if perm[i] < 0 {
+            // already correct - unmark and go on
+            // (note that ^a is the bitwise negation
+            perm[i] = ^perm[i]
+            continue
+        }
+
+        v, j := vals[i], perm[i]
+        for j != i {
+            vals[j], v = v, vals[j]
+            // When we find this element in the future, we must not swap it any
+            // further, so we mark it here
+            perm[j], j = ^perm[j], perm[j]
+        }
+        vals[i] = v
+    }
+}
+	*/
+    }
+
 
     // From : http://stackoverflow.com/questions/838384/reorder-vector-using-a-vector-of-indices
     template< typename order_iterator, typename value_iterator >

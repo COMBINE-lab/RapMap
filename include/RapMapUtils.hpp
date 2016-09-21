@@ -168,7 +168,7 @@ namespace rapmap {
 	  end = *(il.begin());
 	}
 	*/
-
+        using index_type = IndexT;
         IndexT begin_;
         IndexT end_;
         

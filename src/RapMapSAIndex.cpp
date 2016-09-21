@@ -91,6 +91,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
     }
     indexStream.close();
     uint32_t idxK = h.kmerLen();
+    rapmap::utils::my_mer::k(idxK);
 
     // This part takes the longest, so do it in it's own asynchronous task
     std::future<bool> loadingHash = std::async(std::launch::async, [this, logger, indDir]() -> bool {
@@ -160,7 +161,6 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         logger->error("Failed to load hash!");
         std::exit(1);
     }
-    rapmap::utils::my_mer::k(idxK);
 
     logger->info("Done loading index");
     return true;
