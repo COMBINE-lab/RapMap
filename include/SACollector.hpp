@@ -60,7 +60,8 @@ public:
 
   /** Construct an SACollector given an index **/
   SACollector(RapMapIndexT* rmi)
-      : rmi_(rmi), disableNIP_(false), covReq_(0.0), maxInterval_(1000),
+      : rmi_(rmi), hashEnd_(rmi->khash.end()), disableNIP_(false), 
+        covReq_(0.0), maxInterval_(1000),
         strictCheck_(false) {}
 
   enum HitStatus { ABSENT = -1, UNTESTED = 0, PRESENT = 1 };
@@ -105,7 +106,7 @@ public:
     auto& khash = rmi_->khash;
     auto& text = rmi_->seq;
     auto salen = SA.size();
-    auto hashEnd = khash.end();
+    //auto hashEnd_ = khash.end();
     auto readLen = read.length();
     auto maxDist = 1.5 * readLen;
 
@@ -142,8 +143,8 @@ public:
     OffsetT homoPolymerSkip = 1; // k / 2;
 
     // Iterator for k-mer and rc k-mer lookups
-    auto merIt = hashEnd;
-    auto rcMerIt = hashEnd;
+    auto merIt = hashEnd_;
+    auto rcMerIt = hashEnd_;
 
     // The position of the k-mer in the read
     size_t pos{0};
@@ -196,11 +197,11 @@ public:
       rcMerIt = khash.find(rcMer.get_bits(0, 2 * k));
 
       // If we can find the k-mer in the hash
-      if (merIt != hashEnd) {
+      if (merIt != hashEnd_) {
         if (strictCheck_) {
           ++fwdHit;
           // If we also match this k-mer in the rc direction
-          if (rcMerIt != hashEnd) {
+          if (rcMerIt != hashEnd_) {
             ++rcHit;
             kmerScores.emplace_back(mer, pos, PRESENT, PRESENT);
           } else { // Otherwise it doesn't match in the rc direction
@@ -208,14 +209,14 @@ public:
           }
         } else { // no strict check
           ++fwdHit;
-          if (rcMerIt != hashEnd) {
+          if (rcMerIt != hashEnd_) {
             ++rcHit;
           }
         }
       }
 
       // See if the reverse complement k-mer is in the hash
-      if (rcMerIt != hashEnd) {
+      if (rcMerIt != hashEnd_) {
         // The original k-mer didn't match in the foward direction
         if (!fwdHit) {
           ++rcHit;
@@ -307,7 +308,7 @@ public:
             // If the forward k-mer is untested, then test it
             if (kms.fwdScore == UNTESTED) {
               auto merIt = khash.find(kms.kmer.get_bits(0, 2 * k));
-              kms.fwdScore = (merIt != hashEnd) ? PRESENT : ABSENT;
+              kms.fwdScore = (merIt != hashEnd_) ? PRESENT : ABSENT;
             }
             // accumulate the score
             fwdScore += kms.fwdScore;
@@ -316,7 +317,7 @@ public:
             if (kms.rcScore == UNTESTED) {
               rcMer = kms.kmer.get_reverse_complement();
               auto rcMerIt = khash.find(rcMer.get_bits(0, 2 * k));
-              kms.rcScore = (rcMerIt != hashEnd) ? PRESENT : ABSENT;
+              kms.rcScore = (rcMerIt != hashEnd_) ? PRESENT : ABSENT;
             }
             // accumulate the score
             rcScore += kms.rcScore;
@@ -473,7 +474,7 @@ private:
     IteratorT merIt;
     IteratorT complementMerIt;
     auto& khash = rmi_->khash;
-    auto hashEnd = khash.end();
+    //auto hashEnd_ = khash.end();
     auto k = rapmap::utils::my_mer::k();
 
     auto complementMer = mer.get_reverse_complement();
@@ -497,13 +498,13 @@ private:
     HitStatus status{UNTESTED};
     HitStatus complementStatus{UNTESTED};
 
-    if (merIt != hashEnd) {
+    if (merIt != hashEnd_) {
       ++strandHits;
       status = PRESENT;
     } else {
       status = ABSENT;
     }
-    if (complementMerIt != hashEnd) {
+    if (complementMerIt != hashEnd_) {
       ++otherStrandHits;
       complementStatus = PRESENT;
     } else {
@@ -546,8 +547,8 @@ private:
     using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
     auto& khash = rmi_->khash;
 
-    auto hashEnd = khash.end();
-    decltype(hashEnd)* nullItPtr = nullptr;
+    //auto hashEnd_ = khash.end();
+    decltype(hashEnd_)* nullItPtr = nullptr;
 
     auto readLen = read.length();
     auto readStartIt = read.begin();
@@ -565,8 +566,8 @@ private:
     size_t invalidPos{0};
 
     rapmap::utils::my_mer mer, complementMer;
-    auto merIt = hashEnd;
-    auto complementMerIt = hashEnd;
+    auto merIt = hashEnd_;
+    auto complementMerIt = hashEnd_;
     size_t pos{0};
     size_t sampFactor{1};
     bool lastSearch{false};
@@ -637,7 +638,7 @@ private:
       merIt = khash.find(mer.get_bits(0, 2 * k));
 
       // If we found the k-mer
-      if (merIt != hashEnd) {
+      if (merIt != hashEnd_) {
         spotCheck_(mer, pos, readLen, &merIt, nullItPtr, isRC, strandHits,
                    otherStrandHits, kmerScores);
 
@@ -682,7 +683,7 @@ private:
               // that the k-mer one past the MMP is a mismatch (i.e is ABSENT)
               // we avoid looking it up in spotCheck_ by simply passing a pointer
               // to the end of the k-mer hash, which will treat this mer as ABSENT.
-              auto endItPtr = &hashEnd;
+              auto endItPtr = &hashEnd_;
               */
               // Even though the MMP *ended* before the end of the read, we're still
               // going to check the mismatching k-mer in both directions to ensure that
@@ -753,6 +754,7 @@ private:
   }
 
   RapMapIndexT* rmi_;
+  decltype(rmi_->khash.end()) hashEnd_;
   bool disableNIP_;
   double covReq_;
   OffsetT maxInterval_;
