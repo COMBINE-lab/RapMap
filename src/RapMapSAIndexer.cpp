@@ -41,7 +41,7 @@
 #include <cereal/types/utility.hpp>
 #include <cereal/types/vector.hpp>
 
-//#include "BooMap.hpp"
+#include "BooMap.hpp"
 #include "FrugalBooMap.hpp"
 #include "xxhash.h"
 
@@ -126,7 +126,7 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
                       size_t tlen, uint32_t k, std::vector<IndexT>& SA,
                       uint32_t numHashThreads) {
   //BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
-  FrugalBooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
+  PerfectHashT<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
   intervals.setSAPtr(&SA);
   intervals.setTextPtr(concatText.data(), concatText.length());
 

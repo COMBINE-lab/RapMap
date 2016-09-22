@@ -66,8 +66,9 @@
 #include "kseq.h"
 }
 */
+
 #include "stringpiece.h"
-//#include "BooMap.hpp"
+#include "BooMap.hpp"
 #include "FrugalBooMap.hpp"
 #include "PairSequenceParser.hpp"
 #include "PairAlignmentFormatter.hpp"
@@ -639,7 +640,7 @@ int rapMapSAMap(int argc, char* argv[]) {
       //BigSAIdxPtr.reset(new RapMapSAIndex<int64_t>);
       //BigSAIdxPtr->load(indexPrefix, h.kmerLen());
       if (h.perfectHash()) {
-          RapMapSAIndex<int64_t, FrugalBooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>> rmi;
+          RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int64_t>>> rmi;
           rmi.load(indexPrefix);
           rmi.khash.setSAPtr(&rmi.SA);
           rmi.khash.setTextPtr(rmi.seq.c_str(), rmi.seq.length());
@@ -660,7 +661,7 @@ int rapMapSAMap(int argc, char* argv[]) {
       //SAIdxPtr.reset(new RapMapSAIndex<int32_t>);
       //SAIdxPtr->load(indexPrefix, h.kmerLen());
         if (h.perfectHash()) {
-            RapMapSAIndex<int32_t, FrugalBooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>> rmi;
+            RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int32_t>>> rmi;
             rmi.load(indexPrefix);
             rmi.khash.setSAPtr(&rmi.SA);
             rmi.khash.setTextPtr(rmi.seq.c_str(), rmi.seq.length());

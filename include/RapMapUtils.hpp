@@ -59,7 +59,12 @@ class RapMapIndex;
 template<typename KeyT, typename ValT, typename HasherT>
 //using RegHashT = google::dense_hash_map<KeyT, ValT, HasherT>;
 using RegHashT = spp::sparse_hash_map<KeyT, ValT, HasherT>;
-//using PerfectHashT = FrugalBooMap<KeyT, ValT>;
+
+template<typename KeyT, typename ValT>
+class FrugalBooMap;
+
+template<typename KeyT, typename ValT>
+using PerfectHashT = FrugalBooMap<KeyT, ValT>;
 
 namespace rapmap {
     namespace utils {

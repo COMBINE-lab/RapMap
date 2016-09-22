@@ -20,6 +20,7 @@
 //
 
 #include "HitManager.hpp"
+#include "BooMap.hpp"
 #include "FrugalBooMap.hpp"
 #include <type_traits>
 
@@ -674,8 +675,8 @@ namespace rapmap {
 									     rapmap::utils::KmerKeyHasher>>;
       using SAIndex64BitDense = RapMapSAIndex<int64_t, RegHashT<uint64_t, rapmap::utils::SAInterval<int64_t>,
 									     rapmap::utils::KmerKeyHasher>>;
-      using SAIndex32BitPerfect = RapMapSAIndex<int32_t, FrugalBooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
-      using SAIndex64BitPerfect = RapMapSAIndex<int64_t, FrugalBooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
+      using SAIndex32BitPerfect = RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
+      using SAIndex64BitPerfect = RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
 
         template
         void intersectSAIntervalWithOutput<SAIndex32BitDense>(SAIntervalHit<int32_t>& h,
