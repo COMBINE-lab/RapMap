@@ -67,7 +67,8 @@
 }
 */
 #include "stringpiece.h"
-#include "BooMap.hpp"
+//#include "BooMap.hpp"
+#include "FrugalBooMap.hpp"
 #include "PairSequenceParser.hpp"
 #include "PairAlignmentFormatter.hpp"
 #include "SingleAlignmentFormatter.hpp"
@@ -484,6 +485,8 @@ bool mapReads(RapMapIndexT& rmi,
     bool strictCheck = strict.getValue();
     bool fuzzyIntersection = fuzzy.getValue();
     bool consistentHits = consistent.getValue();
+    //for the parser
+    size_t chunkSize{10000};
 	SpinLockT iomutex;
 	{
 	    ScopedTimer timer;
@@ -500,7 +503,7 @@ bool mapReads(RapMapIndexT& rmi,
             }
 
 	    uint32_t nprod = (read1Vec.size() > 1) ? 2 : 1; 
-	    pairParserPtr.reset(new paired_parser(read1Vec, read2Vec, nthread, nprod));
+	    pairParserPtr.reset(new paired_parser(read1Vec, read2Vec, nthread, nprod, chunkSize));
 	    pairParserPtr->start();
             spawnProcessReadsThreads(nthread, pairParserPtr.get(), rmi, iomutex,
                                      outLog, hctrs, maxNumHits.getValue(), noout.getValue(), strictCheck,
@@ -511,7 +514,7 @@ bool mapReads(RapMapIndexT& rmi,
 
 
 	    uint32_t nprod = (unmatedReadVec.size() > 1) ? 2 : 1; 
-	    singleParserPtr.reset(new single_parser(unmatedReadVec, nthread, nprod));
+	    singleParserPtr.reset(new single_parser(unmatedReadVec, nthread, nprod, chunkSize));
 	    singleParserPtr->start();
             /** Create the threads depending on the collector type **/
             spawnProcessReadsThreads(nthread, singleParserPtr.get(), rmi, iomutex,
@@ -636,8 +639,10 @@ int rapMapSAMap(int argc, char* argv[]) {
       //BigSAIdxPtr.reset(new RapMapSAIndex<int64_t>);
       //BigSAIdxPtr->load(indexPrefix, h.kmerLen());
       if (h.perfectHash()) {
-          RapMapSAIndex<int64_t, BooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>> rmi;
+          RapMapSAIndex<int64_t, FrugalBooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>> rmi;
           rmi.load(indexPrefix);
+          rmi.khash.setSAPtr(&rmi.SA);
+          rmi.khash.setTextPtr(rmi.seq.c_str(), rmi.seq.length());
           success = mapReads(rmi, consoleLog, index, read1, read2,
                              unmatedReads, numThreads, maxNumHits,
                              outname, noout, strict, sensitive, fuzzy, consistent);
@@ -655,8 +660,10 @@ int rapMapSAMap(int argc, char* argv[]) {
       //SAIdxPtr.reset(new RapMapSAIndex<int32_t>);
       //SAIdxPtr->load(indexPrefix, h.kmerLen());
         if (h.perfectHash()) {
-            RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>> rmi;
+            RapMapSAIndex<int32_t, FrugalBooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>> rmi;
             rmi.load(indexPrefix);
+            rmi.khash.setSAPtr(&rmi.SA);
+            rmi.khash.setTextPtr(rmi.seq.c_str(), rmi.seq.length());
             success = mapReads(rmi, consoleLog, index, read1, read2,
                                unmatedReads, numThreads, maxNumHits,
                                outname, noout, strict, sensitive, fuzzy, consistent);

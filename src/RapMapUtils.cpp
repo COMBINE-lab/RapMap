@@ -30,7 +30,8 @@
 #include "SingleAlignmentFormatter.hpp"
 //#include "jellyfish/whole_sequence_parser.hpp"
 #include "FastxParser.hpp"
-#include "BooMap.hpp"
+//#include "BooMap.hpp"
+#include "FrugalBooMap.hpp"
 
 namespace rapmap {
     namespace utils {
@@ -526,8 +527,8 @@ using SAIndex32BitDense = RapMapSAIndex<int32_t, RegHashT<uint64_t, rapmap::util
 								       rapmap::utils::KmerKeyHasher>>;
 using SAIndex64BitDense = RapMapSAIndex<int64_t, RegHashT<uint64_t, rapmap::utils::SAInterval<int64_t>,
 								       rapmap::utils::KmerKeyHasher>>;
-using SAIndex32BitPerfect = RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
-using SAIndex64BitPerfect = RapMapSAIndex<int64_t, BooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
+using SAIndex32BitPerfect = RapMapSAIndex<int32_t, FrugalBooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
+using SAIndex64BitPerfect = RapMapSAIndex<int64_t, FrugalBooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
 
 // Explicit instantiations
 // pair parser, 32-bit, dense hash

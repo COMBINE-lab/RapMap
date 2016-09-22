@@ -59,6 +59,7 @@ class RapMapIndex;
 template<typename KeyT, typename ValT, typename HasherT>
 //using RegHashT = google::dense_hash_map<KeyT, ValT, HasherT>;
 using RegHashT = spp::sparse_hash_map<KeyT, ValT, HasherT>;
+//using PerfectHashT = FrugalBooMap<KeyT, ValT>;
 
 namespace rapmap {
     namespace utils {
@@ -207,11 +208,15 @@ namespace rapmap {
     class KmerKeyHasher {
         //spp::spp_hash<uint64_t> hasher;
         public:
-        inline size_t operator()(const uint64_t& m) const { //{ return hasher(m); }
+        //inline size_t operator()(const uint64_t& m) const { //{ return hasher(m); }
+        inline size_t operator()(const rapmap::utils::my_mer& m) const { //{ return hasher(m); }
                 //auto k = rapmap::utils::my_mer::k();
                 //auto v = m.get_bits(0, 2*k);
-                auto v = m;
-                return XXH64(static_cast<void*>(&v), 8, 0);
+                //auto v = m;
+            return XXH64(static_cast<void*>(const_cast<rapmap::utils::my_mer::base_type*>(m.data())), sizeof(m.word(0)) * m.nb_words(), 0);
+            }
+        inline size_t operator()(const uint64_t& m) const { //{ return hasher(m); }
+            return XXH64(static_cast<void*>(const_cast<uint64_t*>(&m)), sizeof(m), 0);
             }
     };
 

@@ -41,8 +41,8 @@
 #include <cereal/types/utility.hpp>
 #include <cereal/types/vector.hpp>
 
-#include "BooMap.hpp"
-//#include "FrugalBooMap.hpp"
+//#include "BooMap.hpp"
+#include "FrugalBooMap.hpp"
 #include "xxhash.h"
 
 #include "spdlog/spdlog.h"
@@ -125,10 +125,10 @@ template <typename IndexT>
 bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
                       size_t tlen, uint32_t k, std::vector<IndexT>& SA,
                       uint32_t numHashThreads) {
-  BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
-  //FrugalBooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
-  //intervals.setSAPtr(&SA);
-  //intervals.setTextPtr(concatText.data(), concatText.length());
+  //BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
+  FrugalBooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
+  intervals.setSAPtr(&SA);
+  intervals.setTextPtr(concatText.data(), concatText.length());
 
   // The start and stop of the current interval
   IndexT start = 0, stop = 0;
@@ -255,12 +255,13 @@ template <typename IndexT>
 bool buildHash(const std::string& outputDir, std::string& concatText,
                size_t tlen, uint32_t k, std::vector<IndexT>& SA) {
   // Now, build the k-mer lookup table
-    RegHashT<uint64_t, rapmap::utils::SAInterval<IndexT>,
+    // The base type should always be uint64_t
+    using WordT = rapmap::utils::my_mer::base_type;
+    RegHashT<WordT, rapmap::utils::SAInterval<IndexT>,
                          rapmap::utils::KmerKeyHasher> khash;
     //RegHashT<uint64_t, IndexT, rapmap::utils::KmerKeyHasher> overflowhash;
     //std::cerr << "sizeof(SAInterval<IndexT>) = " << sizeof(rapmap::utils::SAInterval<IndexT>) << '\n';
     //khash.set_empty_key(std::numeric_limits<uint64_t>::max());
-
   // The start and stop of the current interval
   IndexT start = 0, stop = 0;
   // An iterator to the beginning of the text
@@ -282,8 +283,8 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
       if (nextKmer != currentKmer) {
         if (currentKmer.length() == k and
             currentKmer.find_first_of('$') == std::string::npos) {
-          mer = rapmap::utils::my_mer(currentKmer);
-          auto bits = mer.get_bits(0, 2 * k);
+          mer = currentKmer;
+          auto bits = mer.word(0);
           auto hashIt = khash.find(bits);
           if (hashIt == khash.end()) {
             if (start > 1) {
@@ -351,8 +352,8 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
       // in the hash.
       if (currentKmer.length() == k and
           currentKmer.find_first_of('$') == std::string::npos) {
-        mer = rapmap::utils::my_mer(currentKmer);
-        auto bits = mer.get_bits(0, 2 * k);
+        mer = currentKmer.c_str();
+        auto bits = mer.word(0);
         auto hashIt = khash.find(bits);
         if (hashIt == khash.end()) {
           if (start > 2) {
@@ -405,8 +406,8 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
   if (start < tlen) {
     if (currentKmer.length() == k and
         currentKmer.find_first_of('$') != std::string::npos) {
-      mer = rapmap::utils::my_mer(currentKmer);
-      khash[mer.get_bits(0, 2 * k)] = {start, stop};
+      mer = currentKmer.c_str();
+      khash[mer.word(0)] = {start, stop};
       /*
       IndexT len = stop - start;
       bool overflow = (len >= std::numeric_limits<uint8_t>::max());
@@ -424,7 +425,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
   {
     ScopedTimer timer;
     std::cerr << "saving hash to disk . . . ";
-    khash.serialize(typename spp_utils::pod_hash_serializer<uint64_t, rapmap::utils::SAInterval<IndexT>>(),
+    khash.serialize(typename spp_utils::pod_hash_serializer<WordT, rapmap::utils::SAInterval<IndexT>>(),
                     &hashStream);
     std::cerr << "done\n";
   }
@@ -719,9 +720,16 @@ int rapMapSAIndex(int argc, char* argv[]) {
       "n", "noClip",
       "Don't clip poly-A tails from the ends of target sequences", false);
   TCLAP::SwitchArg perfectHash(
-      "p", "perfectHash", "Use a perfect hash instead of dense hash --- "
+      "p", "perfectHash", "Use a perfect hash instead of sparse hash --- "
                           "somewhat slows construction, but uses less memory",
       false);
+  /*
+  TCLAP::SwitchArg perfectHash(
+      "f", "frugalPerfectHash", "Use a frugal variant of the perfect hash --- "
+                          "this will considerably slow construction, and somewhat slow lookup, but "
+                          "hash construction and the subsequent mapping will require the least memory."
+      false);
+  */
   TCLAP::ValueArg<uint32_t> numHashThreads(
       "x", "numThreads",
       "Use this many threads to build the perfect hash function", false, 4,

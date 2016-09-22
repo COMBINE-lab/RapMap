@@ -19,7 +19,8 @@
 // along with RapMap.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#include "BooMap.hpp"
+//#include "BooMap.hpp"
+#include "FrugalBooMap.hpp"
 #include "RapMapSAIndex.hpp"
 #include "IndexHeader.hpp"
 #include <cereal/types/unordered_map.hpp>
@@ -61,7 +62,7 @@ bool loadHashFromIndex(const std::string& indexDir,
 
 template <typename IndexT>
 bool loadHashFromIndex(const std::string& indexDir,
-		       BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> & h) {
+		       FrugalBooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> & h) {
     std::string hashBase = indexDir + "hash_info";
     h.load(hashBase);
     return true;
@@ -172,5 +173,5 @@ template class RapMapSAIndex<int32_t,  RegHashT<uint64_t,
 template class RapMapSAIndex<int64_t,  RegHashT<uint64_t,
                       rapmap::utils::SAInterval<int64_t>,
                       rapmap::utils::KmerKeyHasher>>;
-template class RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
-template class RapMapSAIndex<int64_t, BooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
+template class RapMapSAIndex<int32_t, FrugalBooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
+template class RapMapSAIndex<int64_t, FrugalBooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;

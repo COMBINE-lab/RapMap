@@ -193,8 +193,8 @@ public:
       rcMer = mer.get_reverse_complement();
 
       // See if we can find this k-mer in the hash
-      merIt = khash.find(mer.get_bits(0, 2 * k));
-      rcMerIt = khash.find(rcMer.get_bits(0, 2 * k));
+      merIt = khash.find(mer.word(0));//get_bits(0, 2 * k));
+      rcMerIt = khash.find(rcMer.word(0));//rcMer.get_bits(0, 2 * k));
 
       // If we can find the k-mer in the hash
       if (merIt != hashEnd_) {
@@ -307,7 +307,7 @@ public:
             auto& kms = *kmsIt;
             // If the forward k-mer is untested, then test it
             if (kms.fwdScore == UNTESTED) {
-              auto merIt = khash.find(kms.kmer.get_bits(0, 2 * k));
+              auto merIt = khash.find(kms.kmer.word(0));//get_bits(0, 2 * k));
               kms.fwdScore = (merIt != hashEnd_) ? PRESENT : ABSENT;
             }
             // accumulate the score
@@ -316,7 +316,7 @@ public:
             // If the rc k-mer is untested, then test it
             if (kms.rcScore == UNTESTED) {
               rcMer = kms.kmer.get_reverse_complement();
-              auto rcMerIt = khash.find(rcMer.get_bits(0, 2 * k));
+              auto rcMerIt = khash.find(rcMer.word(0));//get_bits(0, 2 * k));
               kms.rcScore = (rcMerIt != hashEnd_) ? PRESENT : ABSENT;
             }
             // accumulate the score
@@ -471,8 +471,8 @@ private:
              uint32_t& strandHits, uint32_t& otherStrandHits,
              std::vector<KmerDirScore>& kmerScores
              ) {
-    IteratorT merIt;
-    IteratorT complementMerIt;
+    IteratorT merIt = hashEnd_;
+    IteratorT complementMerIt = hashEnd_;
     auto& khash = rmi_->khash;
     //auto hashEnd_ = khash.end();
     auto k = rapmap::utils::my_mer::k();
@@ -481,7 +481,7 @@ private:
 
     if (merItPtr == nullptr) {
       // We haven't tested this, so do that here
-      merIt = khash.find(mer.get_bits(0, 2 * k));
+      merIt = khash.find(mer.word(0));//get_bits(0, 2 * k));
     } else {
       // we already have this
       merIt = *merItPtr;
@@ -489,7 +489,7 @@ private:
 
     if (complementMerItPtr == nullptr) {
       // We haven't tested this, so do that here
-      complementMerIt = khash.find(complementMer.get_bits(0, 2 * k));
+      complementMerIt = khash.find(complementMer.word(0));//get_bits(0, 2 * k));
     } else {
       // we already have this
       complementMerIt = *complementMerItPtr;
@@ -635,7 +635,7 @@ private:
       // If it's not a homopolymer, then get the complement
       // k-mer and query both in the hash.
       complementMer = mer.get_reverse_complement();
-      merIt = khash.find(mer.get_bits(0, 2 * k));
+      merIt = khash.find(mer.word(0));//get_bits(0, 2 * k));
 
       // If we found the k-mer
       if (merIt != hashEnd_) {

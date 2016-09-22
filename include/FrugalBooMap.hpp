@@ -15,26 +15,25 @@
 
 #include <sys/stat.h>
 
+
 // adapted from :
 // http://stackoverflow.com/questions/34875315/implementation-my-own-list-and-iterator-stl-c
-template <typename Iter, typename IndexT>
+template <typename Iter, typename IndexT, typename HashMapT>
 class KeyProxyIterator {
 public:
-    typedef KeyProxyIterator<Iter, IndexT> self_type;
+    typedef KeyProxyIterator<Iter, IndexT, HashMapT> self_type;
     typedef uint64_t value_type;//std::iterator_traits<Iter>::value_type::first_type value_type;
     typedef value_type& reference;
     typedef value_type* pointer;
     typedef std::forward_iterator_tag iterator_category;
     typedef int64_t difference_type;
 
-    KeyProxyIterator(Iter first, std::vector<IndexT>* saPtr, const char* txtPtr, unsigned int k) : 
-        curr_(first), saPtr_(saPtr), txtPtr_(txtPtr) {}
+    KeyProxyIterator(Iter first, HashMapT* hm) : 
+        curr_(first), hm_(hm) {}
     KeyProxyIterator operator++() { KeyProxyIterator i = *this; curr_++; return i; }
     KeyProxyIterator operator++(int) { ++curr_; return *this; }
     reference operator*() { 
-        // Does not validate the argument!
-        mer_.from_chars(txtPtr_ + (*saPtr_)[curr_->begin()]);
-        intRep_ = mer_.get_bits(0, 2*k_);
+        intRep_ = hm_->getKmerFromPos_(*curr_, mer_);
         return intRep_; 
     }
     /*
@@ -51,22 +50,22 @@ private:
     rapmap::utils::my_mer mer_;
     uint64_t intRep_;
     Iter curr_;
-    unsigned int k_;
-    std::vector<IndexT>* saPtr_{nullptr};
-    const char* txtPtr_{nullptr};
+    bool valid_{false};
+    HashMapT* hm_{nullptr}; 
 };
 
-template <typename IterT>
+
+template <typename IterT, typename ProxyValueT>
 class KVProxy {
 public:
-    typedef KVProxy<IterT> self_type;
+    typedef KVProxy<IterT, ProxyValueT> self_type;
     typedef typename std::iterator_traits<IterT>::value_type ValueT;
     typedef std::pair<uint64_t, ValueT> value_type;
-    typedef value_type& reference;
-    typedef value_type* pointer;
+    typedef std::pair<uint64_t, ProxyValueT>& reference;
+    typedef std::pair<uint64_t, ProxyValueT>* pointer;
 
-    KVProxy(uint64_t mer, IterT it, bool isEnd = false) : curr_(it) {
-        if(!isEnd) {pair_ = std::make_pair(mer, *it);}
+    KVProxy(uint64_t mer, IterT it, ValueT len, bool isEnd = false) : curr_(it) {
+        if(!isEnd) {ProxyValueT x{*it, len}; pair_ = std::make_pair(mer, x);}
     }
     reference operator*() { return pair_; }
     pointer operator->() { return &pair_; }
@@ -76,7 +75,7 @@ public:
     bool operator<=(const self_type& rhs) { return curr_ <= rhs.curr_; }
 private:
     IterT curr_;
-    std::pair<uint64_t, ValueT> pair_;
+    std::pair<uint64_t, ProxyValueT> pair_;
 };
 
 
@@ -88,10 +87,11 @@ private:
 template <typename KeyT, typename ValueT>
 class FrugalBooMap {
 public:
+    using self_type = FrugalBooMap<KeyT, ValueT>;
     using HasherT = boomphf::SingleHashFunctor<KeyT>;
     using BooPHFT = boomphf::mphf<KeyT, HasherT>;
     typedef typename ValueT::index_type IndexT;
-    using IteratorT = KVProxy<typename std::vector<ValueT>::iterator>;
+    using IteratorT = KVProxy<typename std::vector<IndexT>::iterator, ValueT>;
 
     //using IteratorT = typename std::vector<std::pair<KeyT, ValueT>>::iterator;
 
@@ -101,16 +101,29 @@ public:
 
     void add(KeyT&& k, ValueT&& v) {
         // In the frugal map, we don't even keep the key!
-        data_.emplace_back(v);
+        data_.emplace_back(v.begin());
+        IndexT l = v.end() - v.begin();
+        if (l >= std::numeric_limits<uint8_t>::max()) {
+            overflow_[v.begin()] = l;
+            lens_.emplace_back(std::numeric_limits<uint8_t>::max());
+        } else {
+            lens_.emplace_back(static_cast<uint8_t>(l));
+        }
     }
 
 
     bool validate_hash(){
         auto k_ = rapmap::utils::my_mer::k();
-        rapmap::utils::my_mer mer_;
         for( auto& e : data_ ) {
+            rapmap::utils::my_mer kmer(txtPtr_ + (*saPtr_)[e]);
+            auto ind = boophf_->lookup(kmer.word(0));
+            if (ind >= data_.size()) { 
+                rapmap::utils::my_mer km(txtPtr_ + (*saPtr_)[e]);
+                std::cerr << "index for " << km << " was " << ind << ", outside bounds of data_ (" << data_.size() << ")\n";
+                return false;
+            }
             auto mer = getKmerFromInterval_(e);
-            if (mer != getKmerFromInterval_(data_[boophf_->lookup(mer)]) ) {
+            if (mer != getKmerFromInterval_(data_[ind]) ) {
                 std::cerr << "lookup of " << mer << " failed!\n";
             }
         }
@@ -122,8 +135,8 @@ public:
         size_t numElem = data_.size();
         k_ = rapmap::utils::my_mer::k();
         twok_ = 2 * k_; 
-        KeyProxyIterator<decltype(data_.begin()), IndexT> kb(data_.begin(), saPtr_, txtPtr_, k_);
-        KeyProxyIterator<decltype(data_.begin()), IndexT> ke(data_.end(), saPtr_, txtPtr_, k_);
+        KeyProxyIterator<decltype(data_.begin()), IndexT, self_type> kb(data_.begin(), this);
+        KeyProxyIterator<decltype(data_.begin()), IndexT, self_type> ke(data_.end(), this);
         auto keyIt = boomphf::range(kb, ke);
         BooPHFT* ph = new BooPHFT(numElem, keyIt, nthreads);
         boophf_.reset(ph);
@@ -136,27 +149,31 @@ public:
         reorder_destructive_(inds.begin(), inds.end(), data_.begin());
         */
         reorder_fn_();
-        validate_hash();
+        //std::cerr << "validating hash\n";
+        //validate_hash();
         std::cerr << "done\n";
+        std::cerr << "size of overflow table is " << overflow_.size() << '\n';
         built_ = true;
         return built_;
     }
 
     inline IteratorT find(const KeyT& k) {
         auto intervalIndex = boophf_->lookup(k);
-        auto ind = data_[intervalIndex].begin();
+        if (intervalIndex >= data_.size()) return end();
+        auto ind = data_[intervalIndex];
+        auto textInd = (*saPtr_)[ind];
+        rapmap::utils::my_mer m(txtPtr_ + textInd);
 
-        if (ind < saPtr_->size()) {
-            auto textInd = (*saPtr_)[ind];
-            if (textInd + k < textLen_) {
-                rapmap::utils::my_mer m(txtPtr_ + textInd);
-                // If what we find matches the key, return the iterator
-                // otherwise we don't have the key (it must have been here if it
-                // existed).
-                return (m == k) ? IteratorT(m, data_.begin() + intervalIndex) : end();
-            } 
-        } 
-        // The search sould have been invalid, the key must not exist.
+        // If what we find matches the key, return the iterator
+        // otherwise we don't have the key (it must have been here if it
+        // existed).
+        if (m.word(0) == k) {
+            IndexT l = *(lens_.begin() + intervalIndex);
+            if (l == std::numeric_limits<uint8_t>::max()) {
+                l = overflow_[ind];
+            }
+            return IteratorT(m.word(0), data_.begin() + intervalIndex, ind + l);
+        }
         return end();
     }
     
@@ -171,10 +188,10 @@ public:
     }
     */
     
-    inline IteratorT begin() { return IteratorT(0, data_.begin()); }
-    inline IteratorT end() { return IteratorT(0, data_.end(), true); }
-    inline IteratorT cend() const { return IteratorT(0, data_.cend(), true); }
-    inline IteratorT cbegin() const { return IteratorT(0, data_.cbegin()); }
+    inline IteratorT begin() { return IteratorT(0, data_.begin(), lens_.front()); }
+    inline IteratorT end() { return IteratorT(0, data_.end(), 0, true); }
+    inline IteratorT cend() const { return IteratorT(0, data_.cend(), 0, true); }
+    inline IteratorT cbegin() const { return IteratorT(0, data_.cbegin(), lens_.front()); }
     
     void save(const std::string& ofileBase) {
         if (built_) {
@@ -200,6 +217,8 @@ public:
                 {
                     cereal::BinaryOutputArchive outArchive(valStream);
                     outArchive(data_);
+                    outArchive(lens_);
+                    overflow_.serialize(typename spp_utils::pod_hash_serializer<IndexT, IndexT>(), &valStream);
                 }
                 valStream.close();
             }
@@ -232,6 +251,8 @@ public:
             {
                 cereal::BinaryInputArchive inArchive(dataStream);
                 inArchive(data_);
+                inArchive(lens_);
+                overflow_.unserialize(typename spp_utils::pod_hash_serializer<IndexT, IndexT>(), &dataStream);
             }
             dataStream.close();
         }
@@ -240,6 +261,28 @@ public:
         twok_ = 2*k_;
         built_ = true;
     }
+
+    inline KeyT getKmerFromInterval_(ValueT& ival) {
+        rapmap::utils::my_mer m;// copy the global mer to get k-mer object
+        m.from_chars(txtPtr_ + (*saPtr_)[ival.begin()]);
+        return m.word(0);
+    }
+
+    // variant where we provide an existing mer object
+    inline KeyT getKmerFromInterval_(ValueT& ival, rapmap::utils::my_mer& m) {
+        m.from_chars(txtPtr_ + (*saPtr_)[ival.begin()]);
+        return m.word(0);
+    }
+
+    // variant where we provide an existing mer object
+    inline KeyT getKmerFromPos_(IndexT pos, rapmap::utils::my_mer& m) {
+        m.from_chars(txtPtr_ + (*saPtr_)[pos]);
+        return m.word(0);
+    }
+
+    std::vector<IndexT>* saPtr_;
+    const char* txtPtr_; 
+    size_t textLen_;
 
 private:
     // Taken from http://stackoverflow.com/questions/12774207/fastest-way-to-check-if-a-file-exist-using-standard-c-c11-c
@@ -254,41 +297,43 @@ private:
         return true;
     }
 
-    inline KeyT getKmerFromInterval_(ValueT& ival) {
-        auto m = mer_; // copy the global mer to get k-mer object
-        mer_.from_chars(txtPtr_ + (*saPtr_)[ival.begin()]);
-        return mer_.get_bits(0, twok_);
-    }
-
     void reorder_fn_()  {
         /* Adapted from code at: http://blog.merovius.de/2014/08/12/applying-permutation-in-constant.html */
         // Note, we can actually do this with out the bitvector by using the high-order bit 
         // of the start of the suffix array intervals (since they are signed integers and negative
         // positions are forbidden). 
+        rapmap::utils::my_mer mer;
         std::vector<bool> bits(data_.size(), false);
         for ( size_t i = 0; i < data_.size(); ++i ) {
             if (!bits[i]) {
                 decltype(data_.front()) v = data_[i];
-                auto j = boophf_->lookup(getKmerFromInterval_(data_[i]));
+                decltype(lens_.front()) v2 = lens_[i];
+                auto j = boophf_->lookup(getKmerFromPos_(data_[i], mer));
                 while (i != j) {
-                    auto pj = boophf_->lookup(getKmerFromInterval_(data_[j]));
+                    auto pj = boophf_->lookup(getKmerFromPos_(data_[j], mer));
                     std::swap(data_[j], v);
+                    std::swap(lens_[j], v2);
                     bits[j] = 1;
                     j = pj; 
                 }
                 data_[i] = v;
+                lens_[i] = v2;
             }
         }
     }
 
     rapmap::utils::my_mer mer_;
-    std::vector<IndexT>* saPtr_;
-    const char* txtPtr_; 
-    size_t textLen_;
     bool built_;
-    std::vector<ValueT> data_;
+    // Starting offset in the suffix array
+    std::vector<IndexT> data_;
+    // Length of the interval
+    std::vector<uint8_t> lens_;
+    // Overflow table if interval is >= std::numeric_limits<uint8_t>::max()
+    spp::sparse_hash_map<IndexT, IndexT> overflow_;
     std::unique_ptr<BooPHFT> boophf_{nullptr};
     unsigned int k_;
     unsigned int twok_;
 };
+
+
 #endif // __BOO_MAP_FRUGAL__
