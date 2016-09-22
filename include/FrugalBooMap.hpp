@@ -50,7 +50,6 @@ private:
     rapmap::utils::my_mer mer_;
     uint64_t intRep_;
     Iter curr_;
-    bool valid_{false};
     HashMapT* hm_{nullptr}; 
 };
 
@@ -113,7 +112,6 @@ public:
 
 
     bool validate_hash(){
-        auto k_ = rapmap::utils::my_mer::k();
         for( auto& e : data_ ) {
             rapmap::utils::my_mer kmer(txtPtr_ + (*saPtr_)[e]);
             auto ind = boophf_->lookup(kmer.word(0));
@@ -133,21 +131,12 @@ public:
 
     bool build(int nthreads=1) {
         size_t numElem = data_.size();
-        k_ = rapmap::utils::my_mer::k();
-        twok_ = 2 * k_; 
         KeyProxyIterator<decltype(data_.begin()), IndexT, self_type> kb(data_.begin(), this);
         KeyProxyIterator<decltype(data_.begin()), IndexT, self_type> ke(data_.end(), this);
         auto keyIt = boomphf::range(kb, ke);
         BooPHFT* ph = new BooPHFT(numElem, keyIt, nthreads);
         boophf_.reset(ph);
         std::cerr << "reordering keys and values to coincide with phf ... ";
-        /*
-        std::vector<size_t> inds; inds.reserve(data_.size());
-        for (size_t i = 0; i < data_.size(); ++i) {
-            inds.push_back(ph->lookup(data_[i].first));
-        }
-        reorder_destructive_(inds.begin(), inds.end(), data_.begin());
-        */
         reorder_fn_();
         //std::cerr << "validating hash\n";
         //validate_hash();
@@ -257,8 +246,6 @@ public:
             dataStream.close();
         }
 
-        k_ = rapmap::utils::my_mer::k();
-        twok_ = 2*k_;
         built_ = true;
     }
 
@@ -279,10 +266,6 @@ public:
         m.from_chars(txtPtr_ + (*saPtr_)[pos]);
         return m.word(0);
     }
-
-    std::vector<IndexT>* saPtr_;
-    const char* txtPtr_; 
-    size_t textLen_;
 
 private:
     // Taken from http://stackoverflow.com/questions/12774207/fastest-way-to-check-if-a-file-exist-using-standard-c-c11-c
@@ -322,6 +305,9 @@ private:
         }
     }
 
+    std::vector<IndexT>* saPtr_;
+    const char* txtPtr_; 
+    size_t textLen_;
     rapmap::utils::my_mer mer_;
     bool built_;
     // Starting offset in the suffix array
@@ -331,8 +317,6 @@ private:
     // Overflow table if interval is >= std::numeric_limits<uint8_t>::max()
     spp::sparse_hash_map<IndexT, IndexT> overflow_;
     std::unique_ptr<BooPHFT> boophf_{nullptr};
-    unsigned int k_;
-    unsigned int twok_;
 };
 
 
