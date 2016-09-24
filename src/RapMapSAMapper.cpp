@@ -472,7 +472,7 @@ bool mapReads(RapMapIndexT& rmi,
 	size_t queueSize{268435456};
 	spdlog::set_async_mode(queueSize);
 	auto outputSink = std::make_shared<spdlog::sinks::ostream_sink_mt>(outStream);
-	std::shared_ptr<spdlog::logger> outLog = std::make_shared<spdlog::logger>("outLog", outputSink);
+	std::shared_ptr<spdlog::logger> outLog = std::make_shared<spdlog::logger>("rapmap::outLog", outputSink);
 	outLog->set_pattern("%v");
 
 	uint32_t nthread = numThreads.getValue();
