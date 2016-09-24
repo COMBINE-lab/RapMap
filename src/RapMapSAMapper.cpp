@@ -127,6 +127,7 @@ struct MappingOpts {
     bool strictCheck{false};
     bool fuzzy{false};
     bool consistentHits{false};
+    bool quiet{false};
 };
 
 template <typename RapMapIndexT, typename MutexT>
@@ -196,7 +197,7 @@ void processReadsSingleSA(single_parser * parser,
 
             if (hctr.numReads > hctr.lastPrint + 1000000) {
         		hctr.lastPrint.store(hctr.numReads.load());
-                if (iomutex->try_lock()){
+                if (!mopts->quiet and iomutex->try_lock()){
                     if (hctr.numReads > 0) {
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
                         std::cerr << "\033[F\033[F\033[F";
@@ -332,7 +333,7 @@ void processReadsPairSA(paired_parser* parser,
 
             if (hctr.numReads > hctr.lastPrint + 1000000) {
         		hctr.lastPrint.store(hctr.numReads.load());
-                if (iomutex->try_lock()) {
+                if (!mopts->quiet and iomutex->try_lock()) {
                     if (hctr.numReads > 0) {
                         std::cerr << "\r\r";
                     }
@@ -422,7 +423,7 @@ template <typename RapMapIndexT>
 bool mapReads(RapMapIndexT& rmi,
 	      std::shared_ptr<spdlog::logger> consoleLog,
           MappingOpts* mopts) {
-	std::cerr << "\n\n\n\n";
+	if (!mopts->quiet) { std::cerr << "\n\n\n\n"; }
 
 	bool pairedEnd = mopts->pairedEnd;//(read1.isSet() or read2.isSet());
 	// from: http://stackoverflow.com/questions/366955/obtain-a-stdostream-either-from-stdcout-or-stdofstreamfile
@@ -460,7 +461,7 @@ bool mapReads(RapMapIndexT& rmi,
     size_t chunkSize{10000};
 	SpinLockT iomutex;
 	{
-	    ScopedTimer timer;
+	    ScopedTimer timer(!mopts->quiet);
 	    HitCounters hctrs;
 	    consoleLog->info("mapping reads . . . \n\n\n");
         if (pairedEnd) {
@@ -489,7 +490,7 @@ bool mapReads(RapMapIndexT& rmi,
             spawnProcessReadsThreads(nthread, singleParserPtr.get(), rmi, iomutex,
                                       outLog, hctrs, mopts);
         }
-	std::cerr << "\n\n";
+	if (!mopts->quiet) { std::cerr << "\n\n"; }
 
 
     consoleLog->info("Done mapping reads.");
@@ -510,9 +511,32 @@ bool mapReads(RapMapIndexT& rmi,
 	return true;
 }
 
-int rapMapSAMap(int argc, char* argv[]) {
-  std::cerr << "RapMap Mapper (SA-based)\n";
+void displayOpts(MappingOpts& mopts, spdlog::logger* log) {
+        fmt::MemoryWriter optWriter;
+        optWriter.write("\ncommand line options\n"
+                        "====================\n");
+        optWriter.write("index: {}\n", mopts.index);
+        if (mopts.pairedEnd) {
+            optWriter.write("read(s) 1: {}\n", mopts.read1);
+            optWriter.write("read(s) 2: {}\n", mopts.read2);
+        } else {
+            optWriter.write("unmated read(s): {}\n", mopts.unmatedReads);
+        }
+        optWriter.write("output: {}\n", mopts.outname); 
+        optWriter.write("num. threads: {}\n", mopts.numThreads); 
+        optWriter.write("max num. hits: {}\n", mopts.maxNumHits); 
+        optWriter.write("quasi-coverage: {}\n", mopts.quasiCov); 
+        optWriter.write("no output: {}\n", mopts.noOutput); 
+        optWriter.write("sensitive: {}\n", mopts.sensitive); 
+        optWriter.write("strict check: {}\n", mopts.strictCheck); 
+        optWriter.write("fuzzy intersection: {}\n", mopts.fuzzy); 
+        optWriter.write("consistent hits: {}\n", mopts.consistentHits); 
+        optWriter.write("====================");
+        log->info(optWriter.str());
+}
 
+
+int rapMapSAMap(int argc, char* argv[]) {
   std::string versionString = rapmap::version;
   TCLAP::CmdLine cmd(
 		     "RapMap Mapper",
@@ -533,6 +557,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::SwitchArg strict("s", "strictCheck", "Perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
   TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
   TCLAP::SwitchArg consistent("c", "consistentHits", "Ensure that the hits collected are consistent (co-linear)", false);
+  TCLAP::SwitchArg quiet("q", "quiet", "Disable all console output apart from warnings and errors", false);
   cmd.add(index);
   cmd.add(noout);
 
@@ -547,16 +572,21 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(strict);
   cmd.add(fuzzy);
   cmd.add(consistent);
-
+  cmd.add(quiet);
   
   auto rawConsoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
   auto consoleSink =
       std::make_shared<spdlog::sinks::ansicolor_sink>(rawConsoleSink);
   auto consoleLog = spdlog::create("stderrLog", {consoleSink});
-
+  
   try {
 
     cmd.parse(argc, argv);
+    // If we're supposed to be quiet, only print out warnings and above
+    if (quiet.getValue()) {
+        consoleLog->set_level(spdlog::level::warn);
+    }
+
     bool pairedEnd = (read1.isSet() or read2.isSet());
     if (pairedEnd and (read1.isSet() != read2.isSet())) {
       consoleLog->error("You must set both the -1 and -2 arguments to align "
@@ -587,7 +617,7 @@ int rapMapSAMap(int argc, char* argv[]) {
 			"doesn't exist", indexPrefix);
       std::exit(1);
     }
-
+    
     MappingOpts mopts;
     if (pairedEnd) {
         mopts.read1 = read1.getValue();
@@ -605,6 +635,14 @@ int rapMapSAMap(int argc, char* argv[]) {
     mopts.strictCheck = strict.getValue();
     mopts.consistentHits = consistent.getValue();
     mopts.fuzzy = fuzzy.getValue();
+    mopts.quiet = quiet.getValue();
+
+    if (quasiCov.isSet() and !sensitive.isSet()) {
+        consoleLog->info("The --quasiCoverage option is set to {}, but the --sensitive flag was not set. The former implies the later. Enabling sensitive mode.", quasiCov.getValue());
+        mopts.sensitive = true;
+    }
+
+    displayOpts(mopts, consoleLog.get());
 
     IndexHeader h;
     std::ifstream indexStream(indexPrefix + "header.json");
