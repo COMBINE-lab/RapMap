@@ -1,5 +1,27 @@
+//
+// RapMap - Rapid and accurate mapping of short reads to transcriptomes using
+// quasi-mapping.
+// Copyright (C) 2015, 2016 Rob Patro, Avi Srivastava, Hirak Sarkar
+//
+// This file is part of RapMap.
+//
+// RapMap is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// RapMap is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with RapMap.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 #include "HitManager.hpp"
 #include "BooMap.hpp"
+#include "FrugalBooMap.hpp"
 #include <type_traits>
 
 namespace rapmap {
@@ -11,7 +33,7 @@ namespace rapmap {
                 uint32_t maxDist,
                 std::vector<QuasiAlignment>& hits,
                 MateStatus mateStatus){
-            bool foundHit{false};
+            //bool foundHit{false};
             // One processed hit per transcript
             for (auto& ph : processedHits) {
                 auto tid = ph.tid;
@@ -41,9 +63,9 @@ namespace rapmap {
                         uint32_t maxDist,
                         std::vector<QuasiAlignment>& hits,
                         MateStatus mateStatus){
-                bool foundHit{false};
+                //bool foundHit{false};
                 // One processed hit per transcript
-	            auto startOffset = hits.size();
+	            //auto startOffset = hits.size();
                 for (auto& ph : processedHits) {
                         // If this is an *active* position list
                         if (ph.second.active) {
@@ -78,7 +100,7 @@ namespace rapmap {
                         uint32_t maxDist,
                         std::vector<QuasiAlignment>& hits,
                         MateStatus mateStatus){
-                bool foundHit{false};
+                //bool foundHit{false};
 
                 // One processed hit per transcript
                 for (auto& ph : processedHits) {
@@ -128,7 +150,7 @@ namespace rapmap {
             // Iterator into, length of and end of the positon list for h2
             auto rightPosIt = posList.begin() + h2.kinfo->offset;
             auto rightPosLen = h2.kinfo->count;
-            auto rightPosEnd = rightPosIt + rightPosLen;
+            // auto rightPosEnd = rightPosIt + rightPosLen;
             // Iterator into, length of and end of the transcript list for h2
             auto rightTxpIt = eqClassLabels.begin() + eqClassRight.txpListStart;
             auto rightTxpListLen = eqClassRight.txpListLen;
@@ -353,7 +375,6 @@ namespace rapmap {
             // Convenient bindings for variables we'll use
             auto& SA = rmi.SA;
             //auto& txpIDs = rmi.positionIDs;
-            auto& rankDict = rmi.rankDict;
             auto& txpStarts = rmi.txpOffsets;
 
             // Walk through every hit in the new interval 'h'
@@ -418,7 +439,7 @@ namespace rapmap {
                 // Iterator into, length of and end of the positon list
                 auto posIt = posList.begin() + minHit->kinfo->offset;
                 auto posLen = minHit->kinfo->count;
-                auto posEnd = posIt + posLen;
+                // auto posEnd = posIt + posLen;
                 // Iterator into, length of and end of the transcript list
                 auto txpIt = eqClassLabels.begin() + eqClass.txpListStart;
                 auto txpListLen = eqClass.txpListLen;
@@ -578,6 +599,7 @@ namespace rapmap {
         SAHitMap intersectSAHits(
                 std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi,
+                size_t readLen,
                 bool strictFilter 
                 ) {
             using OffsetT = typename RapMapIndexT::IndexType;
@@ -601,7 +623,6 @@ namespace rapmap {
             auto& SA = rmi.SA;
             auto& txpStarts = rmi.txpOffsets;
             //auto& txpIDs = rmi.positionIDs;
-	    auto& rankDict = rmi.rankDict;
 
             // Start with the smallest interval
             // i.e. interval with the fewest hits.
@@ -640,7 +661,7 @@ namespace rapmap {
             for (auto it = outHits.begin(); it != outHits.end(); ++it) {
                 bool enoughHits = (it->second.numActive >= requiredNumHits);
                 it->second.active = (strictFilter) ? 
-                    (enoughHits and it->second.checkConsistent(requiredNumHits)) :
+                    (enoughHits and it->second.checkConsistent(readLen, requiredNumHits)) :
                     (enoughHits);
             }
             return outHits;
@@ -650,12 +671,12 @@ namespace rapmap {
         /**
         * Need to explicitly instantiate the versions we use
         */
-      using SAIndex32BitDense = RapMapSAIndex<int32_t,google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int32_t>,
+      using SAIndex32BitDense = RapMapSAIndex<int32_t, RegHashT<uint64_t, rapmap::utils::SAInterval<int32_t>,
 									     rapmap::utils::KmerKeyHasher>>;
-      using SAIndex64BitDense = RapMapSAIndex<int64_t,google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<int64_t>,
+      using SAIndex64BitDense = RapMapSAIndex<int64_t, RegHashT<uint64_t, rapmap::utils::SAInterval<int64_t>,
 									     rapmap::utils::KmerKeyHasher>>;
-      using SAIndex32BitPerfect = RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
-      using SAIndex64BitPerfect = RapMapSAIndex<int64_t, BooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
+      using SAIndex32BitPerfect = RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
+      using SAIndex64BitPerfect = RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
 
         template
         void intersectSAIntervalWithOutput<SAIndex32BitDense>(SAIntervalHit<int32_t>& h,
@@ -671,11 +692,11 @@ namespace rapmap {
 
         template
         SAHitMap intersectSAHits<SAIndex32BitDense>(std::vector<SAIntervalHit<int32_t>>& inHits,
-                                                    SAIndex32BitDense& rmi, bool strictFilter);
+                                                    SAIndex32BitDense& rmi, size_t readLen, bool strictFilter);
 
         template
         SAHitMap intersectSAHits<SAIndex64BitDense>(std::vector<SAIntervalHit<int64_t>>& inHits,
-          SAIndex64BitDense& rmi, bool strictFilter);
+                                                    SAIndex64BitDense& rmi, size_t readLen, bool strictFilter);
 
         template
         void intersectSAIntervalWithOutput<SAIndex32BitPerfect>(SAIntervalHit<int32_t>& h,
@@ -691,10 +712,10 @@ namespace rapmap {
 
         template
         SAHitMap intersectSAHits<SAIndex32BitPerfect>(std::vector<SAIntervalHit<int32_t>>& inHits,
-                                                      SAIndex32BitPerfect& rmi, bool strictFilter);
+                                                      SAIndex32BitPerfect& rmi, size_t readLen, bool strictFilter);
 
         template
         SAHitMap intersectSAHits<SAIndex64BitPerfect>(std::vector<SAIntervalHit<int64_t>>& inHits,
-                                                      SAIndex64BitPerfect& rmi, bool strictFilter);
+                                                      SAIndex64BitPerfect& rmi, size_t readLen, bool strictFilter);
     }
 }

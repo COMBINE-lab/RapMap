@@ -1,3 +1,24 @@
+//
+// RapMap - Rapid and accurate mapping of short reads to transcriptomes using
+// quasi-mapping.
+// Copyright (C) 2015, 2016 Rob Patro, Avi Srivastava, Hirak Sarkar
+//
+// This file is part of RapMap.
+//
+// RapMap is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// RapMap is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with RapMap.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -21,14 +42,14 @@
 #include <cereal/types/vector.hpp>
 
 #include "BooMap.hpp"
+#include "FrugalBooMap.hpp"
 #include "xxhash.h"
 
 #include "spdlog/spdlog.h"
 
+#include "FastxParser.hpp"
 // Jellyfish 2 include
 #include "jellyfish/mer_dna.hpp"
-#include "jellyfish/stream_manager.hpp"
-#include "jellyfish/whole_sequence_parser.hpp"
 
 #include "divsufsort.h"
 #include "divsufsort64.h"
@@ -47,15 +68,11 @@
 #include "jellyfish/thread_exec.hpp"
 #include "rank9b.h"
 
-#include "sparsehash/dense_hash_map"
-
 #include "IndexHeader.hpp"
 
 #include <chrono>
 
-using stream_manager =
-    jellyfish::stream_manager<std::vector<std::string>::const_iterator>;
-using single_parser = jellyfish::whole_sequence_parser<stream_manager>;
+using single_parser = fastx_parser::FastxParser<fastx_parser::ReadSeq>;
 using TranscriptID = uint32_t;
 using TranscriptIDVector = std::vector<TranscriptID>;
 using KmerIDMap = std::vector<TranscriptIDVector>;
@@ -108,7 +125,10 @@ template <typename IndexT>
 bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
                       size_t tlen, uint32_t k, std::vector<IndexT>& SA,
                       uint32_t numHashThreads) {
-  BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
+  //BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
+  PerfectHashT<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
+  intervals.setSAPtr(&SA);
+  intervals.setTextPtr(concatText.data(), concatText.length());
 
   // The start and stop of the current interval
   IndexT start = 0, stop = 0;
@@ -235,11 +255,13 @@ template <typename IndexT>
 bool buildHash(const std::string& outputDir, std::string& concatText,
                size_t tlen, uint32_t k, std::vector<IndexT>& SA) {
   // Now, build the k-mer lookup table
-  google::dense_hash_map<uint64_t, rapmap::utils::SAInterval<IndexT>,
-                         rapmap::utils::KmerKeyHasher>
-      khash;
-  khash.set_empty_key(std::numeric_limits<uint64_t>::max());
-
+    // The base type should always be uint64_t
+    using WordT = rapmap::utils::my_mer::base_type;
+    RegHashT<WordT, rapmap::utils::SAInterval<IndexT>,
+                         rapmap::utils::KmerKeyHasher> khash;
+    //RegHashT<uint64_t, IndexT, rapmap::utils::KmerKeyHasher> overflowhash;
+    //std::cerr << "sizeof(SAInterval<IndexT>) = " << sizeof(rapmap::utils::SAInterval<IndexT>) << '\n';
+    //khash.set_empty_key(std::numeric_limits<uint64_t>::max());
   // The start and stop of the current interval
   IndexT start = 0, stop = 0;
   // An iterator to the beginning of the text
@@ -261,8 +283,8 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
       if (nextKmer != currentKmer) {
         if (currentKmer.length() == k and
             currentKmer.find_first_of('$') == std::string::npos) {
-          mer = rapmap::utils::my_mer(currentKmer);
-          auto bits = mer.get_bits(0, 2 * k);
+          mer = currentKmer;
+          auto bits = mer.word(0);
           auto hashIt = khash.find(bits);
           if (hashIt == khash.end()) {
             if (start > 1) {
@@ -286,14 +308,24 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
             }
 
             khash[bits] = {start, stop};
+            /*
+            IndexT len = stop - start;
+            bool overflow = (len >= std::numeric_limits<uint8_t>::max());
+            uint8_t blen = overflow ? std::numeric_limits<uint8_t>::max() : 
+                static_cast<uint8_t>(len);
+            khash[bits] = {start, blen};
+            if (overflow) {
+                overflowhash[bits] = len;
+            }
+            */
           } else {
             std::cerr << "\nERROR (1): trying to add same suffix "
                       << currentKmer << " (len = " << currentKmer.length()
                       << ") multiple times!\n";
             auto prevInt = hashIt->second;
-            std::cerr << "existing interval is [" << prevInt.begin << ", "
-                      << prevInt.end << ")\n";
-            for (auto x = prevInt.begin; x < prevInt.end; ++x) {
+            std::cerr << "existing interval is [" << prevInt.begin() << ", "
+                      << prevInt.end() << ")\n";
+            for (auto x = prevInt.begin(); x < prevInt.end(); ++x) {
               auto suff = concatText.substr(SA[x], k);
               for (auto c : suff) {
                 std::cerr << "*" << c << "*";
@@ -320,8 +352,8 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
       // in the hash.
       if (currentKmer.length() == k and
           currentKmer.find_first_of('$') == std::string::npos) {
-        mer = rapmap::utils::my_mer(currentKmer);
-        auto bits = mer.get_bits(0, 2 * k);
+        mer = currentKmer.c_str();
+        auto bits = mer.word(0);
         auto hashIt = khash.find(bits);
         if (hashIt == khash.end()) {
           if (start > 2) {
@@ -336,13 +368,23 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
             }
           }
           khash[bits] = {start, stop};
+          /*
+          IndexT len = stop - start;
+          bool overflow = (len >= std::numeric_limits<uint8_t>::max());
+          uint8_t blen = overflow ? std::numeric_limits<uint8_t>::max() : 
+              static_cast<uint8_t>(len);
+          khash[bits] = {start, blen};
+          if (overflow) {
+              overflowhash[bits] = len;
+          }
+          */
         } else {
           std::cerr << "\nERROR (2): trying to add same suffix " << currentKmer
                     << "multiple times!\n";
           auto prevInt = hashIt->second;
-          std::cerr << "existing interval is [" << prevInt.begin << ", "
-                    << prevInt.end << ")\n";
-          for (auto x = prevInt.begin; x < prevInt.end; ++x) {
+          std::cerr << "existing interval is [" << prevInt.begin() << ", "
+                    << prevInt.end() << ")\n";
+          for (auto x = prevInt.begin(); x < prevInt.end(); ++x) {
             std::cerr << concatText.substr(SA[x], k) << "\n";
           }
           std::cerr << "new interval is [" << start << ", " << stop << ")\n";
@@ -364,8 +406,18 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
   if (start < tlen) {
     if (currentKmer.length() == k and
         currentKmer.find_first_of('$') != std::string::npos) {
-      mer = rapmap::utils::my_mer(currentKmer);
-      khash[mer.get_bits(0, 2 * k)] = {start, stop};
+      mer = currentKmer.c_str();
+      khash[mer.word(0)] = {start, stop};
+      /*
+      IndexT len = stop - start;
+      bool overflow = (len >= std::numeric_limits<uint8_t>::max());
+      uint8_t blen = overflow ? std::numeric_limits<uint8_t>::max() : 
+          static_cast<uint8_t>(len);
+      khash[mer.get_bits(0, 2 * k)] = {start, blen};
+      if (overflow) {
+          overflowhash[mer.get_bits(0, 2 * k)] = len;
+      }
+      */
     }
   }
   std::cerr << "\nkhash had " << khash.size() << " keys\n";
@@ -373,13 +425,8 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
   {
     ScopedTimer timer;
     std::cerr << "saving hash to disk . . . ";
-    cereal::BinaryOutputArchive hashArchive(hashStream);
-    // hashArchive(k);
-    khash.serialize(typename google::dense_hash_map<
-                        uint64_t, rapmap::utils::SAInterval<IndexT>,
-                        rapmap::utils::KmerKeyHasher>::NopointerSerializer(),
+    khash.serialize(typename spp_utils::pod_hash_serializer<WordT, rapmap::utils::SAInterval<IndexT>>(),
                     &hashStream);
-    // hashArchive(khash);
     std::cerr << "done\n";
   }
   hashStream.close();
@@ -392,7 +439,9 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
 template <typename ParserT> //, typename CoverageCalculator>
 void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
                         bool noClipPolyA, bool usePerfectHash,
-                        uint32_t numHashThreads, std::mutex& iomutex,
+                        uint32_t numHashThreads, 
+                        std::string& sepStr,
+                        std::mutex& iomutex,
                         std::shared_ptr<spdlog::logger> log) {
   // Seed with a real random value, if available
   std::random_device rd;
@@ -435,12 +484,13 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
   fmt::MemoryWriter txpSeqStream;
   {
     ScopedTimer timer;
-    while (true) {
-      typename ParserT::job j(*parser);
-      if (j.is_empty())
-        break;
-      for (size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
-        std::string& readStr = j->data[i].seq;
+    // Get the read group by which this thread will
+    // communicate with the parser (*once per-thread*)
+    auto rg = parser->getReadGroup();
+
+    while (parser->refill(rg)) {
+      for (auto& read : rg) { // for each sequence
+        std::string& readStr = read.seq;
         readStr.erase(
             std::remove_if(readStr.begin(), readStr.end(),
                            [](const char a) -> bool { return !(isprint(a)); }),
@@ -470,7 +520,7 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
             if (newEndPos == std::string::npos) {
               log->warn("Entry with header [{}] appeared to be all A's; it "
                         "will be removed from the index!",
-                        j->data[i].header);
+                        read.name);
               readStr.resize(0);
             } else {
               readStr.resize(newEndPos + 1);
@@ -482,22 +532,26 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
         readLen = readStr.size();
         // If the transcript was completely removed during clipping, don't
         // include it in the index.
-        if (readStr.size() >= k) {
+        if (readStr.size() > 0) {
           // If we're suspicious the user has fed in a *genome* rather
           // than a transcriptome, say so here.
           if (readStr.size() >= tooLong) {
             log->warn("Entry with header [{}] was longer than {} nucleotides.  "
                       "Are you certain that "
                       "we are indexing a transcriptome and not a genome?",
-                      j->data[i].header, tooLong);
+                      read.name, tooLong);
+          } else if (readStr.size() < k) {
+            log->warn("Entry with header [{}], had length less than "
+                      "the k-mer length of {} (perhaps after poly-A clipping)",
+                      read.name, k);
           }
 
           uint32_t txpIndex = n++;
 
           // The name of the current transcript
-          auto& recHeader = j->data[i].header;
+          auto& recHeader = read.name;
           transcriptNames.emplace_back(
-              recHeader.substr(0, recHeader.find_first_of(" \t")));
+                                       recHeader.substr(0, recHeader.find_first_of(sepStr)));//" \t")));
 
           // The position at which this transcript starts
           transcriptStarts.push_back(currIndex);
@@ -507,9 +561,9 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
           currIndex += readLen + 1;
           onePos.push_back(currIndex - 1);
         } else {
-            log->warn("Discarding entry with header [{}], since it was shorter than "
-                      "the k-mer length of {} (perhaps after poly-A clipping)", 
-                      j->data[i].header, k);
+            log->warn("Discarding entry with header [{}], since it had length 0 "
+                      "(perhaps after poly-A clipping)",
+                      read.name);
         }
       }
       if (n % 10000 == 0) {
@@ -658,13 +712,24 @@ int rapMapSAIndex(int argc, char* argv[]) {
       "path");
   TCLAP::ValueArg<uint32_t> kval("k", "klen", "The length of k-mer to index",
                                  false, 31, "positive integer less than 32");
+
+  TCLAP::ValueArg<std::string> customSeps("s", "headerSep", "Instead of a space or tab, break the header at the first "
+                                          "occurrence of this string, and name the transcript as the token before "
+                                          "the first separator", false, " \t", "string");
   TCLAP::SwitchArg noClip(
       "n", "noClip",
       "Don't clip poly-A tails from the ends of target sequences", false);
   TCLAP::SwitchArg perfectHash(
-      "p", "perfectHash", "Use a perfect hash instead of dense hash --- "
+      "p", "perfectHash", "Use a perfect hash instead of sparse hash --- "
                           "somewhat slows construction, but uses less memory",
       false);
+  /*
+  TCLAP::SwitchArg perfectHash(
+      "f", "frugalPerfectHash", "Use a frugal variant of the perfect hash --- "
+                          "this will considerably slow construction, and somewhat slow lookup, but "
+                          "hash construction and the subsequent mapping will require the least memory."
+      false);
+  */
   TCLAP::ValueArg<uint32_t> numHashThreads(
       "x", "numThreads",
       "Use this many threads to build the perfect hash function", false, 4,
@@ -674,12 +739,15 @@ int rapMapSAIndex(int argc, char* argv[]) {
   cmd.add(kval);
   cmd.add(noClip);
   cmd.add(perfectHash);
+  cmd.add(customSeps);
   cmd.add(numHashThreads);
   cmd.parse(argc, argv);
 
   // stupid parsing for now
   std::string transcriptFile(transcripts.getValue());
   std::vector<std::string> transcriptFiles({transcriptFile});
+
+  std::string sepStr = customSeps.getValue();
 
   uint32_t k = kval.getValue();
   if (k % 2 == 0) {
@@ -712,20 +780,19 @@ int rapMapSAIndex(int argc, char* argv[]) {
   auto fileLog = spdlog::create("fileLog", {fileSink});
   auto jointLog = spdlog::create("jointLog", {fileSink, consoleSink});
 
-  size_t maxReadGroup{1000}; // Number of reads in each "job"
-  size_t concurrentFile{2};  // Number of files to read simultaneously
-  size_t numThreads{2};
-  stream_manager streams(transcriptFiles.begin(), transcriptFiles.end(),
-                         concurrentFile);
-  std::unique_ptr<single_parser> transcriptParserPtr{nullptr};
-  transcriptParserPtr.reset(
-      new single_parser(4 * numThreads, maxReadGroup, concurrentFile, streams));
+  size_t numThreads{1};
 
+  std::unique_ptr<single_parser> transcriptParserPtr{nullptr};
+
+  size_t numProd = 1;
+  transcriptParserPtr.reset(
+			    new single_parser(transcriptFiles, numThreads, numProd));
+  transcriptParserPtr->start();
   bool noClipPolyA = noClip.getValue();
   bool usePerfectHash = perfectHash.getValue();
   uint32_t numPerfectHashThreads = numHashThreads.getValue();
   std::mutex iomutex;
   indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA,
-                     usePerfectHash, numPerfectHashThreads, iomutex, jointLog);
+                     usePerfectHash, numPerfectHashThreads, sepStr, iomutex, jointLog);
   return 0;
 }

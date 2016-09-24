@@ -1,3 +1,24 @@
+//
+// RapMap - Rapid and accurate mapping of short reads to transcriptomes using
+// quasi-mapping.
+// Copyright (C) 2015, 2016 Rob Patro, Avi Srivastava, Hirak Sarkar
+//
+// This file is part of RapMap.
+//
+// RapMap is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// RapMap is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with RapMap.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 #ifndef __RAP_MAP_UTILS_HPP__
 #define __RAP_MAP_UTILS_HPP__
 
@@ -5,10 +26,13 @@
 #include <cmath>
 #include <memory>
 #include "xxhash.h"
+#include "sparsepp.h"
+#include "SparseHashSerializer.hpp"
 #include <cereal/archives/binary.hpp>
 #include "jellyfish/mer_dna.hpp"
 #include "spdlog/spdlog.h"
-#include "spdlog/details/format.h"
+#include "spdlog/fmt/ostr.h"
+#include "spdlog/fmt/fmt.h"
 #include "PairSequenceParser.hpp"
 
 #ifdef RAPMAP_SALMON_SUPPORT
@@ -32,6 +56,16 @@ class SingleAlignmentFormatter;
 // Forward-declare because the C++ compiler is dumb
 class RapMapIndex;
 
+template<typename KeyT, typename ValT, typename HasherT>
+//using RegHashT = google::dense_hash_map<KeyT, ValT, HasherT>;
+using RegHashT = spp::sparse_hash_map<KeyT, ValT, HasherT>;
+
+template<typename KeyT, typename ValT>
+class FrugalBooMap;
+
+template<typename KeyT, typename ValT>
+using PerfectHashT = FrugalBooMap<KeyT, ValT>;
+
 namespace rapmap {
     namespace utils {
 
@@ -49,7 +83,7 @@ namespace rapmap {
     template <typename IndexT>
         void writeSAMHeader(IndexT& rmi, std::shared_ptr<spdlog::logger> out) {
             fmt::MemoryWriter hd;
-            hd.write("@HD\tVN:0.1\tSO:unknown\n");
+	    hd.write("@HD\tVN:1.0\tSO:unknown\n");
 
             auto& txpNames = rmi.txpNames;
             auto& txpLens = rmi.txpLens;
@@ -58,18 +92,18 @@ namespace rapmap {
             for (size_t i = 0; i < numRef; ++i) {
                 hd.write("@SQ\tSN:{}\tLN:{:d}\n", txpNames[i], txpLens[i]);
             }
-            // Eventuall output a @PG line
-            //hd.format("@PG\t");
+            // Eventually output a @PG line
+            hd.write("@PG\tID:rapmap\tPN:rapmap\tVN:0.3.1\n");
             std::string headerStr(hd.str());
             // Don't include the last '\n', since the logger will do it for us.
             headerStr.pop_back();
-            out->info() << headerStr;
+            out->info(headerStr);
         }
 
     template <typename IndexT>
         void writeSAMHeader(IndexT& rmi, std::ostream& outStream) {
             fmt::MemoryWriter hd;
-            hd.write("@HD\tVN:0.1\tSO:unknown\n");
+	    hd.write("@HD\tVN:1.0\tSO:unknown\n");
 
             auto& txpNames = rmi.txpNames;
             auto& txpLens = rmi.txpLens;
@@ -78,8 +112,8 @@ namespace rapmap {
             for (size_t i = 0; i < numRef; ++i) {
                 hd.write("@SQ\tSN:{}\tLN:{:d}\n", txpNames[i], txpLens[i]);
             }
-            // Eventuall output a @PG line
-            //hd.format("@PG\t");
+            // Eventually output a @PG line
+            hd.write("@PG\tID:rapmap\tPN:rapmap\tVN:0.3.1\n");
             outStream << hd.str();
         }
 
@@ -116,13 +150,17 @@ namespace rapmap {
     struct SAIntervalWithKey {
         uint64_t kmer;
       //  SAInterval<IndexT> second;
-        IndexT begin;
-        IndexT end;
-        template <typename Archive>
-            void load(Archive& ar) { ar(kmer, begin, end); }
+        IndexT begin_;
+        IndexT end_;
+
+        inline IndexT begin() { return begin_; }
+        inline IndexT end() { return end_; }
 
         template <typename Archive>
-            void save(Archive& ar) const { ar(kmer, begin, end); }
+            void load(Archive& ar) { ar(kmer, begin_, end_); }
+
+        template <typename Archive>
+            void save(Archive& ar) const { ar(kmer, begin_, end_); }
     };
 
     template <typename IndexT>
@@ -136,14 +174,20 @@ namespace rapmap {
 	  end = *(il.begin());
 	}
 	*/
+        using index_type = IndexT;
+        IndexT begin_;
+        IndexT end_;
+        
+        inline IndexT begin() { return begin_; }
+        inline IndexT end() { return end_; }
 
-        IndexT begin;
-        IndexT end;
         template <typename Archive>
-            void load(Archive& ar) { ar(begin, end); }
+        void load(Archive& ar) { ar(begin_, end_); }
+        //void load(Archive& ar) { ar(begin_, len_); }
 
         template <typename Archive>
-            void save(Archive& ar) const { ar(begin, end); }
+        void save(Archive& ar) const { ar(begin_, end_); }
+        //void save(Archive& ar) const { ar(begin_, len_); }
     };
 
 
@@ -167,12 +211,17 @@ namespace rapmap {
     };
 
     class KmerKeyHasher {
+        //spp::spp_hash<uint64_t> hasher;
         public:
-            size_t operator()(const uint64_t& m) const {
+        //inline size_t operator()(const uint64_t& m) const { //{ return hasher(m); }
+        inline size_t operator()(const rapmap::utils::my_mer& m) const { //{ return hasher(m); }
                 //auto k = rapmap::utils::my_mer::k();
                 //auto v = m.get_bits(0, 2*k);
-                auto v = m;
-                return XXH64(static_cast<void*>(&v), 8, 0);
+                //auto v = m;
+            return XXH64(static_cast<void*>(const_cast<rapmap::utils::my_mer::base_type*>(m.data())), sizeof(m.word(0)) * m.nb_words(), 0);
+            }
+        inline size_t operator()(const uint64_t& m) const { //{ return hasher(m); }
+            return XXH64(static_cast<void*>(const_cast<uint64_t*>(&m)), sizeof(m), 0);
             }
     };
 
@@ -301,7 +350,7 @@ namespace rapmap {
         inline double score() { return 1.0; }
         inline uint32_t fragLength() const { return fragLen; }
 
-        inline uint32_t fragLengthPedantic(uint32_t txpLen) const { 
+        inline uint32_t fragLengthPedantic(uint32_t txpLen) const {
             if (mateStatus != rapmap::utils::MateStatus::PAIRED_END_PAIRED
                 or fwd == mateIsFwd) {
                 return 0;
@@ -389,13 +438,13 @@ namespace rapmap {
          * This enforces a more stringent consistency check on
          * the hits for this transcript.  The hits must be co-linear
          * with respect to the query and target.
-         * 
+         *
          * input: numToCheck --- the number of hits to check in sorted order
          *                       hits after the last of these need not be consistent.
-         * return: numToCheck if the first numToCheck hits are consistent; 
+         * return: numToCheck if the first numToCheck hits are consistent;
          *         -1 otherwise
          **/
-        int32_t checkConsistent(int32_t numToCheck) {
+        int32_t checkConsistent(size_t readLen, int32_t numToCheck) {
             auto numHits = tqvec.size();
 
             // special case for only 1 or two hits (common)
@@ -403,20 +452,37 @@ namespace rapmap {
                 return numToCheck;
             } else if (numHits == 2) {
                 auto& h1 = (tqvec[0].queryPos < tqvec[1].queryPos) ? tqvec[0] : tqvec[1];
-                auto& h2 = (tqvec[0].queryPos < tqvec[1].queryPos) ? tqvec[1] : tqvec[2];
-                return (h2.pos > h1.pos) ? (numToCheck) : -1;
+                auto& h2 = (tqvec[0].queryPos < tqvec[1].queryPos) ? tqvec[1] : tqvec[0];
+                if (h2.pos > h1.pos) {
+                    int32_t distortion = (h2.pos - h1.pos) - (h2.queryPos - h1.queryPos);
+                    return (distortion > -10 and distortion < 10) ? numToCheck : -1;
+                } else {
+                    return -1;
+                }
+                //return (h2.pos > h1.pos) ? (numToCheck) : -1;
             } else {
                 // first, sort by query position
-                std::sort(tqvec.begin(), tqvec.end(), 
+                std::sort(tqvec.begin(), tqvec.end(),
                           [](const SATxpQueryPos& q1, const SATxpQueryPos& q2) -> bool {
                               return q1.queryPos < q2.queryPos;
                           });
 
                 int32_t lastRefPos{std::numeric_limits<int32_t>::min()};
+                int32_t lastQueryPos{std::numeric_limits<int32_t>::min()};
+                bool firstHit{true};
+                //int32_t maxDistortion{0};
                 for (size_t i = 0; i < numToCheck; ++i) {
                     int32_t refPos = static_cast<int32_t>(tqvec[i].pos);
+                    int32_t queryPos = static_cast<int32_t>(tqvec[i].queryPos);
                     if (refPos > lastRefPos) {
+                        int32_t distortion = 
+                            firstHit ? 0 : ((refPos - lastRefPos) - (queryPos - lastQueryPos));
+                        firstHit = false;
+                        if (distortion < -10 or distortion > 10) {
+                            return i;
+                        }
                         lastRefPos = refPos;
+                        lastQueryPos = queryPos;
                     } else {
                         return i;
                     }
@@ -633,6 +699,12 @@ namespace rapmap {
                 std::string& readWork,
                 std::string& qualWork);
 
+        void reverseRead(std::string& seq,
+                         std::string& readWork);
+
+
+        std::string reverseComplement(std::string& seq);
+
         template <typename ReadPairT, typename IndexT>
         uint32_t writeAlignmentsToStream(
                 ReadPairT& r,
@@ -701,7 +773,7 @@ namespace rapmap {
                                 int32_t startRead2 = std::max(rightIt->pos, signedZero);
                                 bool read1First{(startRead1 < startRead2)};
                                 int32_t fragStartPos = read1First ? startRead1 : startRead2;
-                                int32_t fragEndPos = read1First ? 
+                                int32_t fragEndPos = read1First ?
                                     (startRead2 + rightIt->readLen) : (startRead1 + leftIt->readLen);
                                 uint32_t fragLen = fragEndPos - fragStartPos;
                                 jointHits.emplace_back(leftTxp,
@@ -765,7 +837,7 @@ namespace rapmap {
                                 int32_t startRead2 = std::max(rightIt->pos, signedZero);
                                 bool read1First{(startRead1 < startRead2)};
                                 int32_t fragStartPos = read1First ? startRead1 : startRead2;
-                                int32_t fragEndPos = read1First ? 
+                                int32_t fragEndPos = read1First ?
                                     (startRead2 + rightIt->readLen) : (startRead1 + leftIt->readLen);
                                 uint32_t fragLen = fragEndPos - fragStartPos;
                                 jointHits.emplace_back(leftTxp,

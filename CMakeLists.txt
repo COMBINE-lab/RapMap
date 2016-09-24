@@ -4,15 +4,15 @@ enable_testing()
 
 project (RapMap)
 
-set(CPACK_PACKAGE_VERSION "0.3.0")
+set(CPACK_PACKAGE_VERSION "0.4.0")
 SET(CPACK_PACKAGE_VERSION_MAJOR "0")
-set(CPACK_PACKAGE_VERSION_MINOR "3")
+set(CPACK_PACKAGE_VERSION_MINOR "4")
 set(CPACK_PACKAGE_VERSION_PATCH "0")
 set(PROJECT_VERSION ${CPACK_PACKAGE_VERSION})
 set(CPACK_GENERATOR "TGZ")
 set(CPACK_SOURCE_GENERATOR "TGZ")
 set(CPACK_PACKAGE_VENDOR "Stony Brook University")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "RapMap - Wicked-fast quasi/pseudo/lightweight alignment")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "RapMap - Wicked-fast qasi-mapping")
 set(CPACK_PACKAGE_NAME
   "${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME
@@ -26,8 +26,12 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 #    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DEMPHF_USE_POPCOUNT")
 #endif(SSE4_2_FOUND)
 
-set (WARNING_IGNORE_FLAGS "-Wno-deprecated-register -Wno-c++11-narrowing -Wno-unknown-pragmas")
-set (BOOST_CXX_FLAGS "-Wno-deprecated-register -std=c++11")
+if (APPLE)
+set (WARNING_IGNORE_FLAGS "-Wno-deprecated-register -Wno-unknon-pragmas -Wreturn-type -Werror=return-type")
+else()
+set (WARNING_IGNORE_FLAGS "-Wno-unknown-pragmas -Wreturn-type -Werror=return-type")
+endif()
+
 ## Prefer static to dynamic libraries
 SET(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
 
@@ -38,7 +42,14 @@ else()
   set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 endif()
 
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM -Wall -std=c++11 -Wno-unknown-pragmas -Wreturn-type -Werror=return-type")
+
+if (QUIET_BUILD)
+  set(WALL "")
+else()
+  set(WALL "-Wall")
+endif()
+
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM ${WALL} -std=c++11")
 
 ##
 # OSX is strange (some might say, stupid in this regard).  Deal with it's quirkines here.
@@ -98,10 +109,6 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
     endif()
 
     set (WARNING_IGNORE_FLAGS "${WARNING_IGNORE_FLAGS} -Wno-unused-local-typedefs")
-    set (BOOST_TOOLSET "gcc")
-    set (BOOST_CONFIGURE_TOOLSET "--with-toolset=gcc")
-	set (BCXX_FLAGS "-std=c++11")
-    set (BOOST_EXTRA_FLAGS toolset=gcc cxxflags=${BCXX_FLAGS})
 # Tentatively, we support clang now
 elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
     set(CLANG TRUE)
@@ -111,10 +118,6 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
     if (HAVE_LIBCPP)
         message ("It appears that you're compiling with clang and that libc++ is available, so I'll use that")
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
-	    set (BOOST_TOOLSET "clang")
-        set (BOOST_CONFIGURE_TOOLSET "--with-toolset=clang")
-	    set (BCXX_FLAGS "-stdlib=libc++ -DBOOST_HAS_INT128")
-	    set (BOOST_EXTRA_FLAGS toolset=clang cxxflags=${BCXX_FLAGS} linkflags="-stdlib=libc++")
         set (JELLYFISH_CXX_FLAGS "-stdlib=libc++")
     # Otherwise, use libstdc++ (and make it static)
     else()
@@ -174,20 +177,6 @@ ExternalProject_Add(libdivsufsort
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR> -DBUILD_DIVSUFSORT64=TRUE -DUSE_OPENMP=TRUE -DBUILD_SHARED_LIBS=FALSE
 )
 set(SUFFARRAY_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/external/install/include)
-
-message("Build system will fetch and build SparseHash")
-message("==================================================================")
-ExternalProject_Add(libsparsehash
-    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-    DOWNLOAD_COMMAND curl -k -L https://github.com/COMBINE-lab/sparsehash/archive/sparsehash-2.0.2.tar.gz -o sparsehash-2.0.2.tar.gz &&
-        tar -xzf sparsehash-2.0.2.tar.gz
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/sparsehash-sparsehash-2.0.2
-    BUILD_IN_SOURCE TRUE
-    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
-    CONFIGURE_COMMAND sh -c "CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} ./configure --prefix=<INSTALL_DIR>"
-    INSTALL_COMMAND make install
-)
-
 
 if (NOT CEREAL_ROOT)
 	set(CEREAL_ROOT ${GAT_SOURCE_DIR}/external/install)

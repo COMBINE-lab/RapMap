@@ -92,7 +92,8 @@ Since RapMap uses Jellyfish, it must be released under the GPL.  However, this i
 
 # Citation
 
-Use this bibtex entry to cite RapMap
+If you use RapMap, or wish to cite the quasi-mapping concept or our algorithm for computing quasi-mappings, please 
+use this bibtex entry. 
 
 ```
 @article{Srivastava15062016,
@@ -109,5 +110,4 @@ journal = {Bioinformatics}
 }
 ```
 
-Other formats can be found here:
-http://bioinformatics.oxfordjournals.org/citmgr?gca=bioinfo%3B32%2F12%2Fi192
+Other citation formats for the RapMap paper are available [here](http://bioinformatics.oxfordjournals.org/citmgr?gca=bioinfo%3B32%2F12%2Fi192).
