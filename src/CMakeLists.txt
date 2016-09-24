@@ -88,7 +88,6 @@ target_link_libraries(rapmap
     ${SUFFARRAY64_LIB}
     ${GAT_SOURCE_DIR}/external/install/lib/libjellyfish-2.0.a
     m
-    pthread
     ${LIBLZMA_LIBRARIES}
     ${NON_APPLECLANG_LIBS}
     ${FAST_MALLOC_LIB}
