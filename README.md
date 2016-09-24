@@ -89,3 +89,25 @@ RapMap is experimental, and the code, at this point, is subject to me testing ou
 # License 
 
 Since RapMap uses Jellyfish, it must be released under the GPL.  However, this is currently the only GPL dependency.  If it can be replaced, I'd like to re-license RapMap under the BSD license.  I'd be happy to accept pull-requests that replace the Jellyfish components with a library released under a more liberal license (BSD-compatible), but note that I will *not* accept such pull requests if they reduce the speed or increase the memory consumption over the Jellyfish-based version.
+
+# Citation
+
+If you use RapMap, or wish to cite the quasi-mapping concept or our algorithm for computing quasi-mappings, please 
+use this bibtex entry. 
+
+```
+@article{Srivastava15062016,
+author = {Srivastava, Avi and Sarkar, Hirak and Gupta, Nitish and Patro, Rob}, 
+title = {RapMap: a rapid, sensitive and accurate tool for mapping RNA-seq reads to transcriptomes},
+volume = {32}, 
+number = {12}, 
+pages = {i192-i200}, 
+year = {2016}, 
+doi = {10.1093/bioinformatics/btw277},
+URL = {http://bioinformatics.oxfordjournals.org/content/32/12/i192.abstract}, 
+eprint = {http://bioinformatics.oxfordjournals.org/content/32/12/i192.full.pdf+html}, 
+journal = {Bioinformatics} 
+}
+```
+
+Other citation formats for the RapMap paper are available [here](http://bioinformatics.oxfordjournals.org/citmgr?gca=bioinfo%3B32%2F12%2Fi192).

@@ -31,6 +31,7 @@
 //#include "jellyfish/whole_sequence_parser.hpp"
 #include "FastxParser.hpp"
 #include "BooMap.hpp"
+#include "FrugalBooMap.hpp"
 
 namespace rapmap {
     namespace utils {
@@ -123,6 +124,12 @@ namespace rapmap {
             }
             //std::swap(seq, readWork);
             //std::swap(qual, qualWork);
+        }
+
+        std::string reverseComplement(std::string& seq) {
+            std::string work;
+            reverseRead(seq, work);
+            return work;
         }
 
         template <typename ReadT, typename IndexT>
@@ -285,7 +292,7 @@ namespace rapmap {
                         rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
                             flags1 |= 0x100; flags2 |= 0x100;
-                        }
+                        } 
 
                         auto txpLen = txpLens[qa.tid];
                         rapmap::utils::adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
@@ -356,6 +363,7 @@ namespace rapmap {
                         if (alnCtr != 0) {
                             flags1 |= 0x100; flags2 |= 0x100;
                         }
+
 			/*
 			else {
                             // If this is the first alignment for this read
@@ -456,7 +464,7 @@ namespace rapmap {
                             << transcriptName << '\t' // RNAME (same as mate)
                             << qa.pos + 1 << '\t' // POS (same as mate)
                             << 0 << '\t' // MAPQ
-                            << unalignedSeq->length() << 'S' << '\t' // CIGAR
+                            << "*\t" // CIGAR
                             << '=' << '\t' // RNEXT
                             << qa.pos + 1 << '\t' // PNEXT (only 1 read in template)
                             << 0 << '\t' // TLEN (spec says 0, not read len)
@@ -519,8 +527,8 @@ using SAIndex32BitDense = RapMapSAIndex<int32_t, RegHashT<uint64_t, rapmap::util
 								       rapmap::utils::KmerKeyHasher>>;
 using SAIndex64BitDense = RapMapSAIndex<int64_t, RegHashT<uint64_t, rapmap::utils::SAInterval<int64_t>,
 								       rapmap::utils::KmerKeyHasher>>;
-using SAIndex32BitPerfect = RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
-using SAIndex64BitPerfect = RapMapSAIndex<int64_t, BooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
+using SAIndex32BitPerfect = RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
+using SAIndex64BitPerfect = RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
 
 // Explicit instantiations
 // pair parser, 32-bit, dense hash

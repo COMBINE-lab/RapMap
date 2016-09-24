@@ -21,6 +21,7 @@
 
 #include "HitManager.hpp"
 #include "BooMap.hpp"
+#include "FrugalBooMap.hpp"
 #include <type_traits>
 
 namespace rapmap {
@@ -32,7 +33,7 @@ namespace rapmap {
                 uint32_t maxDist,
                 std::vector<QuasiAlignment>& hits,
                 MateStatus mateStatus){
-            bool foundHit{false};
+            //bool foundHit{false};
             // One processed hit per transcript
             for (auto& ph : processedHits) {
                 auto tid = ph.tid;
@@ -62,9 +63,9 @@ namespace rapmap {
                         uint32_t maxDist,
                         std::vector<QuasiAlignment>& hits,
                         MateStatus mateStatus){
-                bool foundHit{false};
+                //bool foundHit{false};
                 // One processed hit per transcript
-	            auto startOffset = hits.size();
+	            //auto startOffset = hits.size();
                 for (auto& ph : processedHits) {
                         // If this is an *active* position list
                         if (ph.second.active) {
@@ -99,7 +100,7 @@ namespace rapmap {
                         uint32_t maxDist,
                         std::vector<QuasiAlignment>& hits,
                         MateStatus mateStatus){
-                bool foundHit{false};
+                //bool foundHit{false};
 
                 // One processed hit per transcript
                 for (auto& ph : processedHits) {
@@ -149,7 +150,7 @@ namespace rapmap {
             // Iterator into, length of and end of the positon list for h2
             auto rightPosIt = posList.begin() + h2.kinfo->offset;
             auto rightPosLen = h2.kinfo->count;
-            auto rightPosEnd = rightPosIt + rightPosLen;
+            // auto rightPosEnd = rightPosIt + rightPosLen;
             // Iterator into, length of and end of the transcript list for h2
             auto rightTxpIt = eqClassLabels.begin() + eqClassRight.txpListStart;
             auto rightTxpListLen = eqClassRight.txpListLen;
@@ -374,7 +375,6 @@ namespace rapmap {
             // Convenient bindings for variables we'll use
             auto& SA = rmi.SA;
             //auto& txpIDs = rmi.positionIDs;
-            auto& rankDict = rmi.rankDict;
             auto& txpStarts = rmi.txpOffsets;
 
             // Walk through every hit in the new interval 'h'
@@ -439,7 +439,7 @@ namespace rapmap {
                 // Iterator into, length of and end of the positon list
                 auto posIt = posList.begin() + minHit->kinfo->offset;
                 auto posLen = minHit->kinfo->count;
-                auto posEnd = posIt + posLen;
+                // auto posEnd = posIt + posLen;
                 // Iterator into, length of and end of the transcript list
                 auto txpIt = eqClassLabels.begin() + eqClass.txpListStart;
                 auto txpListLen = eqClass.txpListLen;
@@ -623,7 +623,6 @@ namespace rapmap {
             auto& SA = rmi.SA;
             auto& txpStarts = rmi.txpOffsets;
             //auto& txpIDs = rmi.positionIDs;
-	    auto& rankDict = rmi.rankDict;
 
             // Start with the smallest interval
             // i.e. interval with the fewest hits.
@@ -676,8 +675,8 @@ namespace rapmap {
 									     rapmap::utils::KmerKeyHasher>>;
       using SAIndex64BitDense = RapMapSAIndex<int64_t, RegHashT<uint64_t, rapmap::utils::SAInterval<int64_t>,
 									     rapmap::utils::KmerKeyHasher>>;
-      using SAIndex32BitPerfect = RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
-      using SAIndex64BitPerfect = RapMapSAIndex<int64_t, BooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
+      using SAIndex32BitPerfect = RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
+      using SAIndex64BitPerfect = RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
 
         template
         void intersectSAIntervalWithOutput<SAIndex32BitDense>(SAIntervalHit<int32_t>& h,

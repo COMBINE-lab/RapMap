@@ -20,6 +20,7 @@
 //
 
 #include "BooMap.hpp"
+#include "FrugalBooMap.hpp"
 #include "RapMapSAIndex.hpp"
 #include "IndexHeader.hpp"
 #include <cereal/types/unordered_map.hpp>
@@ -46,6 +47,21 @@ void set_empty_key(spp::sparse_hash_map<uint64_t,
 }
 */
 
+    // Set the SA and text pointer if this is a perfect hash
+template <typename IndexT>
+void setPerfectHashPointers(RegHashT<uint64_t,
+                            rapmap::utils::SAInterval<IndexT>,
+                            rapmap::utils::KmerKeyHasher>& khash, std::vector<IndexT>& SA, std::string& seq) {
+    // do nothing
+}
+
+template <typename IndexT>
+void setPerfectHashPointers(PerfectHashT<uint64_t,
+                            rapmap::utils::SAInterval<IndexT>>& khash, std::vector<IndexT>& SA, std::string& seq) {
+    khash.setSAPtr(&SA);
+    khash.setTextPtr(seq.c_str(), seq.length());
+}
+
 // These are **free** functions that are used for loading the
 // appropriate type of hash.
 template <typename IndexT>
@@ -61,7 +77,7 @@ bool loadHashFromIndex(const std::string& indexDir,
 
 template <typename IndexT>
 bool loadHashFromIndex(const std::string& indexDir,
-		       BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> & h) {
+		       PerfectHashT<uint64_t, rapmap::utils::SAInterval<IndexT>> & h) {
     std::string hashBase = indexDir + "hash_info";
     h.load(hashBase);
     return true;
@@ -91,6 +107,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
     }
     indexStream.close();
     uint32_t idxK = h.kmerLen();
+    rapmap::utils::my_mer::k(idxK);
 
     // This part takes the longest, so do it in it's own asynchronous task
     std::future<bool> loadingHash = std::async(std::launch::async, [this, logger, indDir]() -> bool {
@@ -160,8 +177,8 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         logger->error("Failed to load hash!");
         std::exit(1);
     }
-    rapmap::utils::my_mer::k(idxK);
-
+    // Set the SA and text pointer if this is a perfect hash
+    setPerfectHashPointers(khash, SA, seq); 
     logger->info("Done loading index");
     return true;
 }
@@ -172,5 +189,5 @@ template class RapMapSAIndex<int32_t,  RegHashT<uint64_t,
 template class RapMapSAIndex<int64_t,  RegHashT<uint64_t,
                       rapmap::utils::SAInterval<int64_t>,
                       rapmap::utils::KmerKeyHasher>>;
-template class RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
-template class RapMapSAIndex<int64_t, BooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
+template class RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
+template class RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
