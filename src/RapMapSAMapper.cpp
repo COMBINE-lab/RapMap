@@ -548,7 +548,10 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(fuzzy);
   cmd.add(consistent);
 
-  auto consoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
+  
+  auto rawConsoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
+  auto consoleSink =
+      std::make_shared<spdlog::sinks::ansicolor_sink>(rawConsoleSink);
   auto consoleLog = spdlog::create("stderrLog", {consoleSink});
 
   try {
