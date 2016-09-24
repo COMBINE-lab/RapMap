@@ -81,6 +81,7 @@ set (PTHREAD_LIB)
 ##
 # First take care of what to do if we have gcc
 ##
+set (JELLYFISH_CXX_FLAGS "-fPIC") 
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
     execute_process(
         COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
@@ -118,7 +119,7 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
     if (HAVE_LIBCPP)
         message ("It appears that you're compiling with clang and that libc++ is available, so I'll use that")
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
-        set (JELLYFISH_CXX_FLAGS "-stdlib=libc++")
+	set (JELLYFISH_CXX_FLAGS "${JELLYFISH_CXX_FLAGS} -stdlib=libc++")
     # Otherwise, use libstdc++ (and make it static)
     else()
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libstdc++")
