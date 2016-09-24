@@ -47,6 +47,21 @@ void set_empty_key(spp::sparse_hash_map<uint64_t,
 }
 */
 
+    // Set the SA and text pointer if this is a perfect hash
+template <typename IndexT>
+void setPerfectHashPointers(RegHashT<uint64_t,
+                            rapmap::utils::SAInterval<IndexT>,
+                            rapmap::utils::KmerKeyHasher>& khash, std::vector<IndexT>& SA, std::string& seq) {
+    // do nothing
+}
+
+template <typename IndexT>
+void setPerfectHashPointers(PerfectHashT<uint64_t,
+                            rapmap::utils::SAInterval<IndexT>>& khash, std::vector<IndexT>& SA, std::string& seq) {
+    khash.setSAPtr(&SA);
+    khash.setTextPtr(seq.c_str(), seq.length());
+}
+
 // These are **free** functions that are used for loading the
 // appropriate type of hash.
 template <typename IndexT>
@@ -162,7 +177,8 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         logger->error("Failed to load hash!");
         std::exit(1);
     }
-
+    // Set the SA and text pointer if this is a perfect hash
+    setPerfectHashPointers(khash, SA, seq); 
     logger->info("Done loading index");
     return true;
 }
