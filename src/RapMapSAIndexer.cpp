@@ -443,11 +443,8 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
                         std::string& sepStr,
                         std::mutex& iomutex,
                         std::shared_ptr<spdlog::logger> log) {
-  // Seed with a real random value, if available
-  std::random_device rd;
-
   // Create a random uniform distribution
-  std::default_random_engine eng(rd());
+  std::default_random_engine eng(271828);
 
   std::uniform_int_distribution<> dis(0, 3);
 
