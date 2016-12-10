@@ -131,6 +131,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         seqArchive(txpOffsets);
         //seqArchive(positionIDs);
         seqArchive(seq);
+        seqArchive(txpCompleteLens);
     }
     seqStream.close();
 
@@ -168,7 +169,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         }
         // The last length is just the length of the suffix array - the last offset
         txpLens[txpOffsets.size()-1] = (SA.size() - 1) - txpOffsets[txpOffsets.size() - 1];
-    }
+    } 
 
     logger->info("Waiting to finish loading hash");
     loadingHash.wait();

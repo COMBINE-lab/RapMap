@@ -311,7 +311,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
             /*
             IndexT len = stop - start;
             bool overflow = (len >= std::numeric_limits<uint8_t>::max());
-            uint8_t blen = overflow ? std::numeric_limits<uint8_t>::max() : 
+            uint8_t blen = overflow ? std::numeric_limits<uint8_t>::max() :
                 static_cast<uint8_t>(len);
             khash[bits] = {start, blen};
             if (overflow) {
@@ -371,7 +371,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
           /*
           IndexT len = stop - start;
           bool overflow = (len >= std::numeric_limits<uint8_t>::max());
-          uint8_t blen = overflow ? std::numeric_limits<uint8_t>::max() : 
+          uint8_t blen = overflow ? std::numeric_limits<uint8_t>::max() :
               static_cast<uint8_t>(len);
           khash[bits] = {start, blen};
           if (overflow) {
@@ -411,7 +411,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
       /*
       IndexT len = stop - start;
       bool overflow = (len >= std::numeric_limits<uint8_t>::max());
-      uint8_t blen = overflow ? std::numeric_limits<uint8_t>::max() : 
+      uint8_t blen = overflow ? std::numeric_limits<uint8_t>::max() :
           static_cast<uint8_t>(len);
       khash[mer.get_bits(0, 2 * k)] = {start, blen};
       if (overflow) {
@@ -437,9 +437,10 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
 // available. A job behaves like a pointer to the type
 // jellyfish::sequence_list (see whole_sequence_parser.hpp).
 template <typename ParserT> //, typename CoverageCalculator>
-void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
+void indexTranscriptsSA(ParserT* parser,
+                        std::string& outputDir,
                         bool noClipPolyA, bool usePerfectHash,
-                        uint32_t numHashThreads, 
+                        uint32_t numHashThreads,
                         std::string& sepStr,
                         std::mutex& iomutex,
                         std::shared_ptr<spdlog::logger> log) {
@@ -478,6 +479,9 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
   // rsdic::RSDicBuilder rsdb;
   std::vector<uint64_t>
       onePos; // Positions in the bit array where we should write a '1'
+  // remember the initial lengths (e.g., before clipping etc., of all transcripts)
+  std::vector<uint32_t> completeLengths;
+  // the stream of transcript sequence
   fmt::MemoryWriter txpSeqStream;
   {
     ScopedTimer timer;
@@ -494,6 +498,7 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
             readStr.end());
 
         uint32_t readLen = readStr.size();
+        uint32_t completeLen = readLen;
         // First, replace non ATCG nucleotides
         for (size_t b = 0; b < readLen; ++b) {
           readStr[b] = ::toupper(readStr[b]);
@@ -552,6 +557,8 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
 
           // The position at which this transcript starts
           transcriptStarts.push_back(currIndex);
+          // The un-molested length of this transcript
+          completeLengths.push_back(completeLen);
 
           txpSeqStream << readStr;
           txpSeqStream << '$';
@@ -625,6 +632,7 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
     }
     // seqArchive(positionIDs);
     seqArchive(concatText);
+    seqArchive(completeLengths);
     std::cerr << "done\n";
   }
   seqStream.close();
@@ -685,7 +693,7 @@ void indexTranscriptsSA(ParserT* parser, std::string& outputDir,
     }
   }
 
-  std::string indexVersion = "q3";
+  std::string indexVersion = "q4";
   IndexHeader header(IndexType::QUASI, indexVersion, true, k, largeIndex,
                      usePerfectHash);
   // Finally (since everything presumably succeeded) write the header
@@ -791,5 +799,14 @@ int rapMapSAIndex(int argc, char* argv[]) {
   std::mutex iomutex;
   indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA,
                      usePerfectHash, numPerfectHashThreads, sepStr, iomutex, jointLog);
+
+  // Output info about the reference
+  std::ofstream refInfoStream(indexDir + "refInfo.json");
+  {
+    cereal::JSONOutputArchive archive(refInfoStream);
+    archive(cereal::make_nvp("ReferenceFiles", transcriptFiles));
+  }
+  refInfoStream.close();
+
   return 0;
 }
