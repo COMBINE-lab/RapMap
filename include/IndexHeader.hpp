@@ -50,6 +50,8 @@ class IndexHeader {
                 ar( cereal::make_nvp("KmerLen", kmerLen_) );
                 ar( cereal::make_nvp("BigSA", bigSA_) );
                 ar( cereal::make_nvp("PerfectHash", perfectHash_) );
+                ar( cereal::make_nvp("SeqHash", seqHash_) );
+                ar( cereal::make_nvp("NameHash", nameHash_) );
             }
 
         template <typename Archive>
@@ -61,6 +63,8 @@ class IndexHeader {
                 ar( cereal::make_nvp("KmerLen", kmerLen_) );
                 ar( cereal::make_nvp("BigSA", bigSA_) );
                 ar( cereal::make_nvp("PerfectHash", perfectHash_) );
+                ar( cereal::make_nvp("SeqHash", seqHash_) );
+                ar( cereal::make_nvp("NameHash", nameHash_) );
             } catch (const cereal::Exception& e) {
                 auto cerrLog = spdlog::get("stderrLog");
                 cerrLog->error("Encountered exception [{}] when loading index.", e.what());
@@ -78,6 +82,11 @@ class IndexHeader {
         bool bigSA() const { return bigSA_; }
         bool perfectHash() const { return perfectHash_; }
 
+        void setSeqHash(const std::string& seqHash) { seqHash_ = seqHash; }
+        void setNameHash(const std::string& nameHash) { nameHash_ = nameHash; }
+        std::string seqHash() const { return seqHash_; }
+        std::string nameHash() const { return nameHash_; }
+
     private:
         // The type of index we have
         IndexType type_;
@@ -92,6 +101,10 @@ class IndexHeader {
         bool bigSA_;
         // Are we using a perfect hash in the index or not?
         bool perfectHash_;
+        // Hash of sequences in txome
+        std::string seqHash_;
+        // Hash of sequence names in txome
+        std::string nameHash_;
 };
 
 
