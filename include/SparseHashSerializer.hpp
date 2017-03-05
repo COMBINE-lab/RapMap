@@ -22,7 +22,7 @@
 #ifndef SPARSEPP_HASH_SERALIZER_HPP
 #define SPARSEPP_HASH_SERALIZER_HPP
 
-#include "sparsepp.h"
+#include "sparsepp/spp.h"
 
 namespace spp_utils {
 

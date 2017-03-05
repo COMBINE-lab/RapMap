@@ -26,7 +26,7 @@
 #include <cmath>
 #include <memory>
 #include "xxhash.h"
-#include "sparsepp.h"
+#include "sparsepp/spp.h"
 #include "SparseHashSerializer.hpp"
 #include <cereal/archives/binary.hpp>
 #include "jellyfish/mer_dna.hpp"

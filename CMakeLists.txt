@@ -183,7 +183,7 @@ if (NOT CEREAL_ROOT)
 	set(CEREAL_ROOT ${GAT_SOURCE_DIR}/external/install)
 endif()
 
-find_package (Cereal 1.1.2)
+find_package (Cereal 1.2.2)
 if (NOT CEREAL_FOUND)
 
 	message("Build system will fetch and build the Cereal serialization library")
@@ -191,12 +191,12 @@ if (NOT CEREAL_FOUND)
 	include(ExternalProject)
 	ExternalProject_Add(libcereal
 	    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-	    DOWNLOAD_COMMAND curl -k -L https://github.com/USCiLab/cereal/archive/v1.1.2.tar.gz -o cereal-v1.1.2.tar.gz &&
-		tar -xzvf cereal-v1.1.2.tar.gz
-	    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.1.2
+	    DOWNLOAD_COMMAND curl -k -L https://github.com/USCiLab/cereal/archive/v1.2.2.tar.gz -o cereal-v1.2.2.tar.gz &&
+		tar -xzvf cereal-v1.2.2.tar.gz
+	    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.2.2
 	    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
 	    UPDATE_COMMAND sh -c "mkdir -p <SOURCE_DIR>/build"
-	    BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.1.2/build
+	    BINARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/cereal-1.2.2/build
 	    CONFIGURE_COMMAND ""
 	    BUILD_COMMAND ""
 	    INSTALL_COMMAND sh -c "mkdir -p <INSTALL_DIR>/include && cp -r <SOURCE_DIR>/include/cereal <INSTALL_DIR>/include"
