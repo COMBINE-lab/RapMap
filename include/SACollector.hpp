@@ -249,7 +249,8 @@ public:
       getSAHits_(saSearcher,
                  read,             // the read
                  rb,               // where to start the search
-                 &(merIt->second), // pointer to the search interval
+                 &(merIt->second.interval), // pointer to the search interval
+				 merIt->second.lcpLength, // starting lcpLength
                  fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false);
     }
 
@@ -261,6 +262,7 @@ public:
                  rcBuffer_,         // the read
                  rcBuffer_.begin(), // where to start the search
                  nullptr,           // pointer to the search interval
+				 0, //starting lcpLength
                  rcCov, rcHit, fwdHit, rcSAInts, kmerScores, true);
     }
 
@@ -274,6 +276,7 @@ public:
                  read,         // the read
                  read.begin(), // where to start the search
                  nullptr,      // pointer to the search interval
+				 0, //starting lcpLength
                  fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false);
     }
 
@@ -538,7 +541,7 @@ private:
   inline void getSAHits_(
       SASearcher<RapMapIndexT>& saSearcher, std::string& read,
       std::string::iterator startIt,
-      rapmap::utils::SAInterval<OffsetT>* startInterval, size_t& cov,
+      rapmap::utils::SAInterval<OffsetT>* startInterval, uint8_t lcpLengthIn, size_t& cov,
       uint32_t& strandHits, uint32_t& otherStrandHits,
       std::vector<rapmap::utils::SAIntervalHit<OffsetT>>& saInts,
       std::vector<KmerDirScore>& kmerScores,
@@ -563,6 +566,7 @@ private:
     auto rb = readStartIt;
     auto re = rb + k;
     OffsetT lb, ub;
+    uint8_t lcpLength = lcpLengthIn;
     size_t invalidPos{0};
 
     rapmap::utils::my_mer mer, complementMer;
@@ -585,6 +589,7 @@ private:
       invalidPos = pos;
       lb = startInterval->begin();
       ub = startInterval->end();
+
       goto skipSetup;
     }
 
@@ -642,8 +647,9 @@ private:
         spotCheck_(mer, pos, readLen, &merIt, nullItPtr, isRC, strandHits,
                    otherStrandHits, kmerScores);
 
-        lb = merIt->second.begin();
-        ub = merIt->second.end();
+        lb = merIt->second.interval.begin();
+        ub = merIt->second.interval.end();
+        lcpLength = merIt->second.lcpLength ;
       skipSetup:
         // lb must be 1 *less* then the current lb
         // We can't move any further in the reverse complement direction
@@ -655,7 +661,7 @@ private:
         if (ub > lb and diff < maxInterval_) {
           uint32_t queryStart =
               static_cast<uint32_t>(std::distance(readStartIt, rb));
-          saInts.emplace_back(lb, ub, matchedLen, queryStart, isRC);
+          saInts.emplace_back(lb, ub, matchedLen, queryStart, lcpLength,isRC);
 
           size_t matchOffset = std::distance(readStartIt, rb);
           size_t correction = 0;

@@ -667,12 +667,18 @@ int rapMapSAMap(int argc, char* argv[]) {
       //BigSAIdxPtr.reset(new RapMapSAIndex<int64_t>);
       //BigSAIdxPtr->load(indexPrefix, h.kmerLen());
       if (h.perfectHash()) {
-          RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int64_t>>> rmi;
+          //RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int64_t>>> rmi;
+          RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::kmerVal<int64_t>>> rmi;
           rmi.load(indexPrefix);
           success = mapReads(rmi, consoleLog, &mopts);
       } else {
+    	  /*
           RapMapSAIndex<int64_t,
                         RegHashT<uint64_t, rapmap::utils::SAInterval<int64_t>,
+                                               rapmap::utils::KmerKeyHasher>> rmi_1;
+          */
+          RapMapSAIndex<int64_t,
+                        RegHashT<uint64_t, rapmap::utils::kmerVal<int64_t>,
                                                rapmap::utils::KmerKeyHasher>> rmi;
           rmi.load(indexPrefix);
           success = mapReads(rmi, consoleLog, &mopts);
@@ -682,12 +688,13 @@ int rapMapSAMap(int argc, char* argv[]) {
       //SAIdxPtr.reset(new RapMapSAIndex<int32_t>);
       //SAIdxPtr->load(indexPrefix, h.kmerLen());
         if (h.perfectHash()) {
-            RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int32_t>>> rmi;
+            //RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int32_t>>> rmi;
+            RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::kmerVal<int32_t>>> rmi;
             rmi.load(indexPrefix);
             success = mapReads(rmi, consoleLog, &mopts);
         } else {
             RapMapSAIndex<int32_t,
-                          RegHashT<uint64_t, rapmap::utils::SAInterval<int32_t>,
+                          RegHashT<uint64_t, rapmap::utils::kmerVal<int32_t>,
                                                  rapmap::utils::KmerKeyHasher>> rmi;
             rmi.load(indexPrefix);
             success = mapReads(rmi, consoleLog, &mopts);

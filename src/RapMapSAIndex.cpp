@@ -50,14 +50,14 @@ void set_empty_key(spp::sparse_hash_map<uint64_t,
     // Set the SA and text pointer if this is a perfect hash
 template <typename IndexT>
 void setPerfectHashPointers(RegHashT<uint64_t,
-                            rapmap::utils::SAInterval<IndexT>,
+                            rapmap::utils::kmerVal<IndexT>,
                             rapmap::utils::KmerKeyHasher>& khash, std::vector<IndexT>& SA, std::string& seq) {
     // do nothing
 }
 
 template <typename IndexT>
 void setPerfectHashPointers(PerfectHashT<uint64_t,
-                            rapmap::utils::SAInterval<IndexT>>& khash, std::vector<IndexT>& SA, std::string& seq) {
+                            rapmap::utils::kmerVal<IndexT>>& khash, std::vector<IndexT>& SA, std::string& seq) {
     khash.setSAPtr(&SA);
     khash.setTextPtr(seq.c_str(), seq.length());
 }
@@ -67,17 +67,18 @@ void setPerfectHashPointers(PerfectHashT<uint64_t,
 template <typename IndexT>
 bool loadHashFromIndex(const std::string& indexDir,
                        RegHashT<uint64_t,
-                       rapmap::utils::SAInterval<IndexT>,
+                       //rapmap::utils::kmerVal<IndexT>,
+                       rapmap::utils::kmerVal<IndexT>,
                        rapmap::utils::KmerKeyHasher>& khash) {
       std::ifstream hashStream(indexDir + "hash.bin", std::ios::binary);
-      khash.unserialize(typename spp_utils::pod_hash_serializer<uint64_t, rapmap::utils::SAInterval<IndexT>>(),
+      khash.unserialize(typename spp_utils::pod_hash_serializer<uint64_t, rapmap::utils::kmerVal<IndexT>>(),
 			&hashStream);
       return true;
 }
 
 template <typename IndexT>
 bool loadHashFromIndex(const std::string& indexDir,
-		       PerfectHashT<uint64_t, rapmap::utils::SAInterval<IndexT>> & h) {
+		       PerfectHashT<uint64_t, rapmap::utils::kmerVal<IndexT>> & h) {
     std::string hashBase = indexDir + "hash_info";
     h.load(hashBase);
     return true;
@@ -183,7 +184,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
     logger->info("Done loading index");
     return true;
 }
-
+/*
 template class RapMapSAIndex<int32_t,  RegHashT<uint64_t,
                       rapmap::utils::SAInterval<int32_t>,
                       rapmap::utils::KmerKeyHasher>>;
@@ -192,3 +193,12 @@ template class RapMapSAIndex<int64_t,  RegHashT<uint64_t,
                       rapmap::utils::KmerKeyHasher>>;
 template class RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
 template class RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
+*/
+template class RapMapSAIndex<int32_t,  RegHashT<uint64_t,
+                      rapmap::utils::kmerVal<int32_t>,
+                      rapmap::utils::KmerKeyHasher>>;
+template class RapMapSAIndex<int64_t,  RegHashT<uint64_t,
+                      rapmap::utils::kmerVal<int64_t>,
+                      rapmap::utils::KmerKeyHasher>>;
+template class RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::kmerVal<int32_t>>>;
+template class RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::kmerVal<int64_t>>>;

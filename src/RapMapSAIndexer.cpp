@@ -251,6 +251,22 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
   return success;
 }
 
+
+template <typename IndexT>
+uint8_t findLCPLength(std::string &concatText,size_t tlen, std::vector<IndexT>& SA,
+		IndexT start,IndexT stop){
+		uint8_t lcplen = 0 ;
+		auto o1 = SA[start] + lcplen ;
+		auto o2 = SA[stop] + lcplen ;
+		auto maxIndex = std::max(o1,o2) ;
+		while(maxIndex + lcplen < tlen and concatText[o1+lcplen] == concatText[o2+lcplen]){
+			if(concatText[o1+lcplen] == '$') { break; }
+			if(lcplen >= 255) { return 0; }
+			++lcplen ;
+		}
+		return lcplen ;
+}
+
 // IndexT is the index type.
 // int32_t for "small" suffix arrays
 // int64_t for "large" ones
@@ -260,7 +276,15 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
   // Now, build the k-mer lookup table
     // The base type should always be uint64_t
     using WordT = rapmap::utils::my_mer::base_type;
-    RegHashT<WordT, rapmap::utils::SAInterval<IndexT>,
+
+    /*
+    typedef struct {
+    	rapmap::utils::SAInterval<IndexT> interval ;
+    	uint8_t lcpLength ;
+    }kmerVal;
+    */
+
+  RegHashT<WordT, rapmap::utils::kmerVal<IndexT>,
                          rapmap::utils::KmerKeyHasher> khash;
     //RegHashT<uint64_t, IndexT, rapmap::utils::KmerKeyHasher> overflowhash;
     //std::cerr << "sizeof(SAInterval<IndexT>) = " << sizeof(rapmap::utils::SAInterval<IndexT>) << '\n';
@@ -310,7 +334,8 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
                         << ") = (stop =  " << stop << ")\n";
             }
 
-            khash[bits] = {start, stop};
+            auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop);
+            khash[bits] = {start, stop, lcpLength};
             /*
             IndexT len = stop - start;
             bool overflow = (len >= std::numeric_limits<uint8_t>::max());
@@ -325,7 +350,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
             std::cerr << "\nERROR (1): trying to add same suffix "
                       << currentKmer << " (len = " << currentKmer.length()
                       << ") multiple times!\n";
-            auto prevInt = hashIt->second;
+            auto prevInt = hashIt->second.interval;
             std::cerr << "existing interval is [" << prevInt.begin() << ", "
                       << prevInt.end() << ")\n";
             for (auto x = prevInt.begin(); x < prevInt.end(); ++x) {
@@ -370,7 +395,9 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
               std::exit(1);
             }
           }
-          khash[bits] = {start, stop};
+          auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop);
+          khash[bits] = {start, stop, lcpLength};
+          //khash[bits] = {start, stop};
           /*
           IndexT len = stop - start;
           bool overflow = (len >= std::numeric_limits<uint8_t>::max());
@@ -384,7 +411,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
         } else {
           std::cerr << "\nERROR (2): trying to add same suffix " << currentKmer
                     << "multiple times!\n";
-          auto prevInt = hashIt->second;
+          auto prevInt = hashIt->second.interval;
           std::cerr << "existing interval is [" << prevInt.begin() << ", "
                     << prevInt.end() << ")\n";
           for (auto x = prevInt.begin(); x < prevInt.end(); ++x) {
@@ -428,7 +455,9 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
   {
     ScopedTimer timer;
     std::cerr << "saving hash to disk . . . ";
-    khash.serialize(typename spp_utils::pod_hash_serializer<WordT, rapmap::utils::SAInterval<IndexT>>(),
+    //khash.serialize(typename spp_utils::pod_hash_serializer<WordT, rapmap::utils::SAInterval<IndexT>>(),
+    //                &hashStream);
+    khash.serialize(typename spp_utils::pod_hash_serializer<WordT, rapmap::utils::kmerVal<IndexT>>(),
                     &hashStream);
     std::cerr << "done\n";
   }

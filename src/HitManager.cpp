@@ -671,14 +671,23 @@ namespace rapmap {
         /**
         * Need to explicitly instantiate the versions we use
         */
+      /*
       using SAIndex32BitDense = RapMapSAIndex<int32_t, RegHashT<uint64_t, rapmap::utils::SAInterval<int32_t>,
 									     rapmap::utils::KmerKeyHasher>>;
       using SAIndex64BitDense = RapMapSAIndex<int64_t, RegHashT<uint64_t, rapmap::utils::SAInterval<int64_t>,
 									     rapmap::utils::KmerKeyHasher>>;
       using SAIndex32BitPerfect = RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
       using SAIndex64BitPerfect = RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
+       */
 
-        template
+      using SAIndex32BitDense = RapMapSAIndex<int32_t, RegHashT<uint64_t, rapmap::utils::kmerVal<int32_t>,
+									     rapmap::utils::KmerKeyHasher>>;
+      using SAIndex64BitDense = RapMapSAIndex<int64_t, RegHashT<uint64_t, rapmap::utils::kmerVal<int64_t>,
+									     rapmap::utils::KmerKeyHasher>>;
+      using SAIndex32BitPerfect = RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::kmerVal<int32_t>>>;
+      using SAIndex64BitPerfect = RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::kmerVal<int64_t>>>;
+
+      template
         void intersectSAIntervalWithOutput<SAIndex32BitDense>(SAIntervalHit<int32_t>& h,
                                                               SAIndex32BitDense& rmi, 
                                                               uint32_t intervalCounter, 

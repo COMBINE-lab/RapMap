@@ -190,6 +190,13 @@ namespace rapmap {
         //void save(Archive& ar) const { ar(begin_, len_); }
     };
 
+    template <typename IndexT>
+    struct kmerVal{
+    	using index_type = IndexT;
+    	SAInterval<IndexT> interval ;
+    	uint8_t lcpLength ;
+    };
+
 
     struct HitCounters {
         std::atomic<uint64_t> peHits{0};
@@ -409,12 +416,13 @@ namespace rapmap {
 
     template <typename OffsetT>
     struct SAIntervalHit {
-        SAIntervalHit(OffsetT beginIn, OffsetT endIn, uint32_t lenIn, uint32_t queryPosIn, bool queryRCIn) :
-            begin(beginIn), end(endIn), len(lenIn), queryPos(queryPosIn), queryRC(queryRCIn) {}
+        SAIntervalHit(OffsetT beginIn, OffsetT endIn, uint32_t lenIn, uint32_t queryPosIn, uint8_t lcpLengthIn, bool queryRCIn) :
+            begin(beginIn), end(endIn), len(lenIn), queryPos(queryPosIn), lcpLength(lcpLengthIn), queryRC(queryRCIn) {}
 
 	      OffsetT span() { return end - begin; }
         OffsetT begin, end;
         uint32_t len, queryPos;
+        uint8_t lcpLength;
         bool queryRC;
     };
 
