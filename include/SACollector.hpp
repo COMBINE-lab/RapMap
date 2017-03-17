@@ -376,7 +376,7 @@ public:
         // the offset into this transcript
         auto pos = globalPos - txpStarts[txpID];
         int32_t hitPos = pos - saIntervalHit.queryPos;
-        hits.emplace_back(txpID, hitPos, true, readLen);
+        hits.emplace_back(txpID, hitPos, true, readLen,saIntervalHit.lcpLength);
         hits.back().mateStatus = mateStatus;
       }
       // Now sort by transcript ID (then position) and eliminate
@@ -416,7 +416,7 @@ public:
         // the offset into this transcript
         auto pos = globalPos - txpStarts[txpID];
         int32_t hitPos = pos - saIntervalHit.queryPos;
-        hits.emplace_back(txpID, hitPos, false, readLen);
+        hits.emplace_back(txpID, hitPos, false, readLen, saIntervalHit.lcpLength);
         hits.back().mateStatus = mateStatus;
       }
       // Now sort by transcript ID (then position) and eliminate

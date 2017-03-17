@@ -327,6 +327,7 @@ namespace rapmap {
 		pos(std::numeric_limits<int32_t>::max()),
 		fwd(true),
 		readLen(std::numeric_limits<uint32_t>::max()),
+		lcpLength(0),
 		fragLen(std::numeric_limits<uint32_t>::max()),
 		isPaired(false)
 #ifdef RAPMAP_SALMON_SUPPORT
@@ -336,11 +337,14 @@ namespace rapmap {
 
         QuasiAlignment(uint32_t tidIn, int32_t posIn,
                 bool fwdIn, uint32_t readLenIn,
+				uint8_t lcpLengthIn = 0,
                 uint32_t fragLenIn = 0,
                 bool isPairedIn = false) :
             tid(tidIn), pos(posIn), fwd(fwdIn),
-            readLen(readLenIn), fragLen(fragLenIn),
-            isPaired(isPairedIn)
+            readLen(readLenIn),
+			lcpLength(lcpLengthIn),
+			fragLen(fragLenIn),
+			isPaired(isPairedIn)
 #ifdef RAPMAP_SALMON_SUPPORT
         ,format(LibraryFormat::formatFromID(0))
 #endif // RAPMAP_SALMON_SUPPORT
@@ -356,6 +360,7 @@ namespace rapmap {
         inline uint32_t transcriptID() const { return tid; }
         inline double score() { return 1.0; }
         inline uint32_t fragLength() const { return fragLen; }
+        inline uint8_t getlcpLength() const { return lcpLength; }
 
         inline uint32_t fragLengthPedantic(uint32_t txpLen) const {
             if (mateStatus != rapmap::utils::MateStatus::PAIRED_END_PAIRED
@@ -381,6 +386,8 @@ namespace rapmap {
 
         // Only 1 since the mate must have the same tid
         // we won't call *chimeric* alignments here.
+        //input from @hirak
+        //I am gonna put fusion thing here
         uint32_t tid;
         // Left-most position of the hit
         int32_t pos;
@@ -399,6 +406,9 @@ namespace rapmap {
         uint32_t mateLen;
         // Is this a paired *alignment* or not
         bool isPaired;
+        //lcpLength has is added @hirak
+        uint8_t lcpLength;
+
         MateStatus mateStatus;
     };
 
@@ -427,19 +437,20 @@ namespace rapmap {
     };
 
     struct SATxpQueryPos {
-	SATxpQueryPos(uint32_t posIn, uint32_t qposIn, bool queryRCIn, bool activeIn = false) :
-		pos(posIn), queryPos(qposIn), queryRC(queryRCIn), active(activeIn) {}
+	SATxpQueryPos(uint32_t posIn, uint32_t qposIn, uint8_t lcpLengthIn, bool queryRCIn, bool activeIn = false) :
+		pos(posIn), queryPos(qposIn), lcpLength(lcpLengthIn), queryRC(queryRCIn), active(activeIn) {}
 	uint32_t pos, queryPos;
+	uint8_t lcpLength;
 	bool queryRC, active;
     };
 
     struct ProcessedSAHit {
 	    ProcessedSAHit() : tid(std::numeric_limits<uint32_t>::max()), active(false), numActive(1) {}
 
-	    ProcessedSAHit(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t queryPosIn, bool queryRCIn) :
+	    ProcessedSAHit(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t queryPosIn, uint8_t lcpLengthIn, bool queryRCIn) :
 		    tid(txpIDIn), active(false), numActive(1)
 	    {
-		tqvec.emplace_back(txpPosIn, queryPosIn, queryRCIn);
+		tqvec.emplace_back(txpPosIn, queryPosIn, lcpLengthIn, queryRCIn);
 	    }
 
         /**

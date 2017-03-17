@@ -78,7 +78,7 @@ namespace rapmap {
                                 bool hitRC = minPosIt->queryRC;
                                 int32_t hitPos = minPosIt->pos - minPosIt->queryPos;
                                 bool isFwd = !hitRC;
-                                hits.emplace_back(tid, hitPos, isFwd, readLen);
+                                hits.emplace_back(tid, hitPos, isFwd, readLen, minPosIt->lcpLength);
                                 hits.back().mateStatus = mateStatus;
                         }
                 }
@@ -390,7 +390,7 @@ namespace rapmap {
                 if (txpListIt->second.numActive == intervalCounter) {
                   auto globalPos = SA[i];
                   auto localPos = globalPos - txpStarts[txpID];
-                  txpListIt->second.tqvec.emplace_back(localPos, h.queryPos, h.queryRC);
+                  txpListIt->second.tqvec.emplace_back(localPos, h.queryPos, h.lcpLength, h.queryRC);
                 }
               }
             }
@@ -641,7 +641,7 @@ namespace rapmap {
                     //auto tid = txpIDs[globalPos];
                     auto tid = rmi.transcriptAtPosition(globalPos);
                     auto txpPos = globalPos - txpStarts[tid];
-                    outHits[tid].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
+                    outHits[tid].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->lcpLength, minHit->queryRC);
                 }
             }
             // =========
