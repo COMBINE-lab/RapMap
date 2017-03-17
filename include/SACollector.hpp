@@ -1,7 +1,7 @@
 //
 // RapMap - Rapid and accurate mapping of short reads to transcriptomes using
 // quasi-mapping.
-// Copyright (C) 2015, 2016 Rob Patro, Avi Srivastava, Hirak Sarkar
+// Copyright (C) 2015, 2016, 2017 Rob Patro, Avi Srivastava, Hirak Sarkar
 //
 // This file is part of RapMap.
 //
