@@ -76,8 +76,8 @@ class RapMapSAIndex {
     std::vector<std::string> txpNames;
     std::vector<IndexT> txpOffsets;
     std::vector<IndexT> txpLens;
-    std::vector<IndexT> txpCompleteLens;
     std::vector<IndexT> positionIDs;
+    std::vector<uint32_t> txpCompleteLens;
     std::vector<rapmap::utils::SAIntervalWithKey<IndexT>> kintervals;
     HashT khash;
 };
