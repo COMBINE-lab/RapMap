@@ -27,7 +27,7 @@ public:
 
 
 
-   void operator()(std::string& read,
+   bool operator()(std::string& read,
                   std::vector<rapmap::utils::QuasiAlignment>& hits,
                   SASearcher<RapMapIndexT>& saSearcher,
                   rapmap::utils::MateStatus mateStatus,
@@ -35,6 +35,11 @@ public:
 
 	  //go through the lcp length of each SA Interval for each hit
 	  //figure out if it needs to be changed
+          //
+           if(hits.size() == 0){
+               return false ;
+           }
+
 	  auto& txpStarts = rmi_->txpOffsets ;
 	  auto& SA = rmi_->SA;
 	  auto& concatText = rmi_->seq;
@@ -43,7 +48,7 @@ public:
 
 
 
-	  auto& startHit = hits.front();
+	  auto startHit = hits.front();
 	  auto lcpLength = startHit.lcpLength ;
 	  auto readLen = read.length();
 
@@ -102,7 +107,7 @@ public:
                       //
 
                               if(globalPos > concatText.length()){
-                                  std::cout << "What is wrong ! global position " << globalPos << " bigger than " << concatText.length() << " for tid: " << txpID  << "\n" ;
+                                  std::cout << " What is wrong ! global position " << globalPos << " bigger than " << concatText.length() << " for tid: " << txpID  << "\n" ;
                                   std::cout << " transcript start position  "<< txpStarts[txpID] << " transcript Length: " << thisTxpLen << "\n" ;
                                   std::cout << " Number of transcripts " << txpLens.size() << "\n" ;
                               }
@@ -123,6 +128,8 @@ public:
 
             }
         }
+
+          return true ;
    }
 private:
   RapMapIndexT* rmi_ ;

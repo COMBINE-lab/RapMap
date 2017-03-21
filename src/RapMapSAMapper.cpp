@@ -322,7 +322,7 @@ void processReadsPairSA(paired_parser* parser,
                                    MateStatus::PAIRED_END_LEFT,
                                    mopts->consistentHits);
 
-            hitSECollector(rpair.first.seq, leftHits, saSearcher, MateStatus::PAIRED_END_LEFT);
+            bool lhs = hitSECollector(rpair.first.seq, leftHits, saSearcher, MateStatus::PAIRED_END_LEFT);
 
 
             bool rh = hitCollector(rpair.second.seq,
@@ -330,7 +330,7 @@ void processReadsPairSA(paired_parser* parser,
                                    MateStatus::PAIRED_END_RIGHT,
                                    mopts->consistentHits);
 
-            hitSECollector(rpair.second.seq, rightHits, saSearcher, MateStatus::PAIRED_END_RIGHT);
+            bool rhs = hitSECollector(rpair.second.seq, rightHits, saSearcher, MateStatus::PAIRED_END_RIGHT);
 
             if (mopts->fuzzy) {
                 rapmap::utils::mergeLeftRightHitsFuzzy(

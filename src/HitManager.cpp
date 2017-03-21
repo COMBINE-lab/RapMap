@@ -642,7 +642,7 @@ namespace rapmap {
                     auto tid = rmi.transcriptAtPosition(globalPos);
                     auto txpPos = globalPos - txpStarts[tid];
                     // @debug
-                    std::cout << "LCP length " << minHit->lcpLength << "\n" ;
+                    //std::cout << "LCP length " << (int)(minHit->lcpLength) << "\n" ;
 
                     outHits[tid].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->lcpLength, minHit->queryRC);
                 }
