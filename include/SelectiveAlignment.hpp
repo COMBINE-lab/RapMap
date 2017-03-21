@@ -67,8 +67,8 @@ public:
 		  auto thisTxpLen = txpLens[txpID];
 
                   //error checking
-                  if(thisTxpLen < pos){
-                      std::cout << "What is wrong ! " << thisTxpLen << " " << pos << "\n" ;
+                  if(globalPos > concatText.length()){
+                      std::cout << "What is wrong ! " << globalPos << " " << concatText.length() << "\n" ;
                   }
 
 		  auto thisTxpSeq = concatText.substr(globalPos,thisTxpLen-pos);
@@ -97,8 +97,8 @@ public:
 			  auto globalPos = pos + txpStarts[txpID];
 			  auto thisTxpLen = txpLens[txpID];
                   //error checking
-                          if(thisTxpLen < pos){
-                              std::cout << "What is wrong ! " << thisTxpLen << " " << pos << "\n" ;
+                          if(globalPos > concatText.length()){
+                              std::cout << "What is wrong ! " << globalPos << " " << concatText.length() << "\n" ;
                           }
 			  auto thisTxpSeq = concatText.substr(globalPos,thisTxpLen-pos);
 			  //compute edit distance
