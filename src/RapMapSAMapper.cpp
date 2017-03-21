@@ -82,6 +82,7 @@
 #include "IndexHeader.hpp"
 #include "SASearcher.hpp"
 #include "SACollector.hpp"
+#include "SelectiveAlignment.hpp"
 
 //#define __TRACK_CORRECT__
 
@@ -110,6 +111,7 @@ using MateStatus = rapmap::utils::MateStatus;
 using HitInfo = rapmap::utils::HitInfo;
 using ProcessedHit = rapmap::utils::ProcessedHit;
 using QuasiAlignment = rapmap::utils::QuasiAlignment;
+//using SelectiveAlignmentFormat = rapmap::utils::SelectiveAlignmentFormat;
 using FixedWriter = rapmap::utils::FixedWriter;
 
 struct MappingOpts {
@@ -140,6 +142,8 @@ void processReadsSingleSA(single_parser * parser,
     using OffsetT = typename RapMapIndexT::IndexType;
 
     SACollector<RapMapIndexT> hitCollector(&rmi);
+    SECollector<RapMapIndexT> hitSECollector(&rmi);
+
     if (mopts->sensitive) {
         hitCollector.disableNIP();
     }
@@ -156,7 +160,9 @@ void processReadsSingleSA(single_parser * parser,
 
     fmt::MemoryWriter sstream;
     size_t batchSize{2500};
+
     std::vector<QuasiAlignment> hits;
+    //std::vector<QuasiAlignment> selectedHits ;
 
     size_t readLen{0};
 	bool tooManyHits{false};
@@ -181,6 +187,13 @@ void processReadsSingleSA(single_parser * parser,
             ++hctr.numReads;
             hits.clear();
             hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, mopts->consistentHits);
+            // @hirak
+            // Here I collected all the QuasiALignments in
+            // QuasiAlignment Object vector hits
+            // which right now contains lcpLengths too
+            // time to call the new function
+            hitSECollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END);
+
             auto numHits = hits.size();
             hctr.totHits += numHits;
 
@@ -233,6 +246,7 @@ void processReadsSingleSA(single_parser * parser,
              iomutex->unlock();
              sstream.clear();
              */
+
         }
 
     } // processed all reads
@@ -253,6 +267,8 @@ void processReadsPairSA(paired_parser* parser,
     using OffsetT = typename RapMapIndexT::IndexType;
 
     SACollector<RapMapIndexT> hitCollector(&rmi);
+    SECollector<RapMapIndexT> hitSECollector(&rmi);
+
     if (mopts->sensitive) {
         hitCollector.disableNIP();
     }
@@ -306,10 +322,15 @@ void processReadsPairSA(paired_parser* parser,
                                    MateStatus::PAIRED_END_LEFT,
                                    mopts->consistentHits);
 
+            hitSECollector(rpair.first.seq, leftHits, saSearcher, MateStatus::PAIRED_END_LEFT);
+
+
             bool rh = hitCollector(rpair.second.seq,
                                    rightHits, saSearcher,
                                    MateStatus::PAIRED_END_RIGHT,
                                    mopts->consistentHits);
+
+            hitSECollector(rpair.second.seq, rightHits, saSearcher, MateStatus::PAIRED_END_RIGHT);
 
             if (mopts->fuzzy) {
                 rapmap::utils::mergeLeftRightHitsFuzzy(
@@ -474,7 +495,7 @@ bool mapReads(RapMapIndexT& rmi,
                 std::exit(1);
             }
 
-	    uint32_t nprod = (read1Vec.size() > 1) ? 2 : 1; 
+	    uint32_t nprod = (read1Vec.size() > 1) ? 2 : 1;
 	    pairParserPtr.reset(new paired_parser(read1Vec, read2Vec, nthread, nprod, chunkSize));
 	    pairParserPtr->start();
             spawnProcessReadsThreads(nthread, pairParserPtr.get(), rmi, iomutex,
@@ -483,7 +504,7 @@ bool mapReads(RapMapIndexT& rmi,
             std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(mopts->unmatedReads, ',');
 
 
-	    uint32_t nprod = (unmatedReadVec.size() > 1) ? 2 : 1; 
+	    uint32_t nprod = (unmatedReadVec.size() > 1) ? 2 : 1;
 	    singleParserPtr.reset(new single_parser(unmatedReadVec, nthread, nprod, chunkSize));
 	    singleParserPtr->start();
             /** Create the threads depending on the collector type **/
@@ -522,15 +543,15 @@ void displayOpts(MappingOpts& mopts, spdlog::logger* log) {
         } else {
             optWriter.write("unmated read(s): {}\n", mopts.unmatedReads);
         }
-        optWriter.write("output: {}\n", mopts.outname); 
-        optWriter.write("num. threads: {}\n", mopts.numThreads); 
-        optWriter.write("max num. hits: {}\n", mopts.maxNumHits); 
-        optWriter.write("quasi-coverage: {}\n", mopts.quasiCov); 
-        optWriter.write("no output: {}\n", mopts.noOutput); 
-        optWriter.write("sensitive: {}\n", mopts.sensitive); 
-        optWriter.write("strict check: {}\n", mopts.strictCheck); 
-        optWriter.write("fuzzy intersection: {}\n", mopts.fuzzy); 
-        optWriter.write("consistent hits: {}\n", mopts.consistentHits); 
+        optWriter.write("output: {}\n", mopts.outname);
+        optWriter.write("num. threads: {}\n", mopts.numThreads);
+        optWriter.write("max num. hits: {}\n", mopts.maxNumHits);
+        optWriter.write("quasi-coverage: {}\n", mopts.quasiCov);
+        optWriter.write("no output: {}\n", mopts.noOutput);
+        optWriter.write("sensitive: {}\n", mopts.sensitive);
+        optWriter.write("strict check: {}\n", mopts.strictCheck);
+        optWriter.write("fuzzy intersection: {}\n", mopts.fuzzy);
+        optWriter.write("consistent hits: {}\n", mopts.consistentHits);
         optWriter.write("====================");
         log->info(optWriter.str());
 }
@@ -573,12 +594,12 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(fuzzy);
   cmd.add(consistent);
   cmd.add(quiet);
-  
+
   auto rawConsoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
   auto consoleSink =
       std::make_shared<spdlog::sinks::ansicolor_sink>(rawConsoleSink);
   auto consoleLog = spdlog::create("stderrLog", {consoleSink});
-  
+
   try {
 
     cmd.parse(argc, argv);
@@ -617,7 +638,7 @@ int rapMapSAMap(int argc, char* argv[]) {
 			"doesn't exist", indexPrefix);
       std::exit(1);
     }
-    
+
     MappingOpts mopts;
     if (pairedEnd) {
         mopts.read1 = read1.getValue();

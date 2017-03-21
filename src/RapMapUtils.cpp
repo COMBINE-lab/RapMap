@@ -146,6 +146,7 @@ namespace rapmap {
 
                 auto& readTemp = formatter.readTemp;
                 //auto& qualTemp = formatter.qualTemp;
+
                 auto& cigarStr = formatter.cigarStr;
 
                 uint16_t flags;
@@ -170,6 +171,8 @@ namespace rapmap {
                 bool haveRev{false};
                 for (auto& qa : hits) {
                     auto& transcriptName = txpNames[qa.tid];
+
+                    auto currCigarStr = cigarStr.c_str();
                     // === SAM
                     rapmap::utils::getSamFlags(qa, flags);
                     if (alnCtr != 0) {
@@ -178,6 +181,11 @@ namespace rapmap {
 
                     std::string* readSeq = &(r.seq);
                     //std::string* qstr = &(r.qual);
+
+                    //this is quality score and edit score
+                    if(qa.toAlign){
+                    	currCigarStr = qa.cigar.c_str() ;
+                    }
 
                     if (!qa.fwd) {
                         if (!haveRev) {
@@ -195,7 +203,8 @@ namespace rapmap {
                         << transcriptName << '\t' // RNAME
                         << qa.pos + 1 << '\t' // POS (1-based)
                         << 255 << '\t' // MAPQ
-                        << cigarStr.c_str() << '\t' // CIGAR
+                        << "E" << qa.editD << '\t' // EditDistance @hirak
+                        << currCigarStr << '\t' // CIGAR
                         << '*' << '\t' // MATE NAME
                         << 0 << '\t' // MATE POS
                         << qa.fragLen << '\t' // TLEN
@@ -230,6 +239,9 @@ namespace rapmap {
                 //auto& qual2Temp = formatter.qual2Temp;
                 auto& cigarStr1 = formatter.cigarStr1;
                 auto& cigarStr2 = formatter.cigarStr2;
+
+
+
 
                 uint16_t flags1, flags2;
 
@@ -292,7 +304,7 @@ namespace rapmap {
                         rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
                             flags1 |= 0x100; flags2 |= 0x100;
-                        } 
+                        }
 
                         auto txpLen = txpLens[qa.tid];
                         rapmap::utils::adjustOverhang(qa, txpLens[qa.tid], cigarStr1, cigarStr2);
@@ -328,9 +340,14 @@ namespace rapmap {
                         const bool read1First{read1Pos < read2Pos};
                         const int32_t minPos = read1First ? read1Pos : read2Pos;
                         if (minPos + qa.fragLen > txpLen) { qa.fragLen = txpLen - minPos; }
-                        
+
                         // get the fragment length as a signed int
                         const int32_t fragLen = static_cast<int32_t>(qa.fragLen);
+
+
+                        //change the cigarstr accordingly
+                        auto currCigarStr1 = cigarStr1.c_str();
+                        auto currCigarStr2 = cigarStr2.c_str();
 
 
                         sstream << readName.c_str() << '\t' // QNAME

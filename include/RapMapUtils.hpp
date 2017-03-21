@@ -177,7 +177,7 @@ namespace rapmap {
         using index_type = IndexT;
         IndexT begin_;
         IndexT end_;
-        
+
         inline IndexT begin() { return begin_; }
         inline IndexT end() { return end_; }
 
@@ -384,6 +384,8 @@ namespace rapmap {
         LibraryFormat format;
 #endif // RAPMAP_SALMON_SUPPORT
 
+
+
         // Only 1 since the mate must have the same tid
         // we won't call *chimeric* alignments here.
         //input from @hirak
@@ -406,8 +408,18 @@ namespace rapmap {
         uint32_t mateLen;
         // Is this a paired *alignment* or not
         bool isPaired;
+
         //lcpLength has is added @hirak
         uint8_t lcpLength;
+        bool toAlign = false;
+        uint32_t editD = 255 ;
+        std::string cigar;
+
+        //same information for the matepair
+        //which needs to be updated occasionally
+        bool mateToAlign;
+        uint32_t mateEditD ;
+        std::string mateCigar;
 
         MateStatus mateStatus;
     };
@@ -494,7 +506,7 @@ namespace rapmap {
                     int32_t refPos = static_cast<int32_t>(tqvec[i].pos);
                     int32_t queryPos = static_cast<int32_t>(tqvec[i].queryPos);
                     if (refPos > lastRefPos) {
-                        int32_t distortion = 
+                        int32_t distortion =
                             firstHit ? 0 : ((refPos - lastRefPos) - (queryPos - lastQueryPos));
                         firstHit = false;
                         if (distortion < -10 or distortion > 10) {
@@ -869,6 +881,13 @@ namespace rapmap {
                                 qaln.mateLen = rightIt->readLen;
                                 qaln.matePos = startRead2;
                                 qaln.mateIsFwd = rightIt->fwd;
+
+                                // Fill in the mate info for alignment related information
+                                qaln.mateToAlign = rightIt->toAlign;
+                                qaln.mateEditD = rightIt->editD;
+                                qaln.mateCigar = rightIt->cigar;
+
+
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
 
                                 ++numHits;
