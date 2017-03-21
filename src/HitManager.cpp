@@ -600,7 +600,7 @@ namespace rapmap {
                 std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi,
                 size_t readLen,
-                bool strictFilter 
+                bool strictFilter
                 ) {
             using OffsetT = typename RapMapIndexT::IndexType;
             // Each inHit is a SAIntervalHit structure that contains
@@ -641,6 +641,9 @@ namespace rapmap {
                     //auto tid = txpIDs[globalPos];
                     auto tid = rmi.transcriptAtPosition(globalPos);
                     auto txpPos = globalPos - txpStarts[tid];
+                    // @debug
+                    std::cout << "LCP length " << minHit->lcpLength << "\n" ;
+
                     outHits[tid].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->lcpLength, minHit->queryRC);
                 }
             }
@@ -660,7 +663,7 @@ namespace rapmap {
             // Mark as active any transcripts with the required number of hits.
             for (auto it = outHits.begin(); it != outHits.end(); ++it) {
                 bool enoughHits = (it->second.numActive >= requiredNumHits);
-                it->second.active = (strictFilter) ? 
+                it->second.active = (strictFilter) ?
                     (enoughHits and it->second.checkConsistent(readLen, requiredNumHits)) :
                     (enoughHits);
             }
@@ -689,15 +692,15 @@ namespace rapmap {
 
       template
         void intersectSAIntervalWithOutput<SAIndex32BitDense>(SAIntervalHit<int32_t>& h,
-                                                              SAIndex32BitDense& rmi, 
-                                                              uint32_t intervalCounter, 
+                                                              SAIndex32BitDense& rmi,
+                                                              uint32_t intervalCounter,
                                                               SAHitMap& outHits);
 
         template
         void intersectSAIntervalWithOutput<SAIndex64BitDense>(SAIntervalHit<int64_t>& h,
-                                                              SAIndex64BitDense& rmi, 
-                                                              uint32_t intervalCounter, 
-                                                              SAHitMap& outHits); 
+                                                              SAIndex64BitDense& rmi,
+                                                              uint32_t intervalCounter,
+                                                              SAHitMap& outHits);
 
         template
         SAHitMap intersectSAHits<SAIndex32BitDense>(std::vector<SAIntervalHit<int32_t>>& inHits,
@@ -709,14 +712,14 @@ namespace rapmap {
 
         template
         void intersectSAIntervalWithOutput<SAIndex32BitPerfect>(SAIntervalHit<int32_t>& h,
-                                                                SAIndex32BitPerfect& rmi, 
-                                                                uint32_t intervalCounter, 
+                                                                SAIndex32BitPerfect& rmi,
+                                                                uint32_t intervalCounter,
                                                                 SAHitMap& outHits);
 
         template
         void intersectSAIntervalWithOutput<SAIndex64BitPerfect>(SAIntervalHit<int64_t>& h,
-                                                                SAIndex64BitPerfect& rmi, 
-                                                                uint32_t intervalCounter, 
+                                                                SAIndex64BitPerfect& rmi,
+                                                                uint32_t intervalCounter,
                                                                 SAHitMap& outHits);
 
         template

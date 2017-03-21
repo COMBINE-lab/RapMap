@@ -61,14 +61,14 @@ public:
 	  // sequence and read sequence
 	  // and position
 	  {
-		  auto& txpID = startHit.tid ;
-		  auto pos = startHit.pos;
-		  auto globalPos = pos + txpStarts[txpID];
-		  auto thisTxpLen = txpLens[txpID];
+                  uint32_t txpID = startHit.tid ;
+                  int32_t pos = startHit.pos;
+                  OffsetT globalPos = pos + txpStarts[txpID];
+                  OffsetT thisTxpLen = txpLens[txpID];
 
                   //error checking
                   if(globalPos > concatText.length()){
-                      std::cout << "What is wrong ! " << globalPos << " " << concatText.length() << "\n" ;
+                      std::cout << "What is wrong ! global position " << globalPos << " bigger than " << concatText.length() << " Length of transcript " << thisTxpLen  << "\n" ;
                   }
 
 		  auto thisTxpSeq = concatText.substr(globalPos,thisTxpLen-pos);
@@ -80,45 +80,50 @@ public:
 
 	  }
 
-	  if (lcpLength > readLen/2){
-	  	  if(startEditDistance < editThreshold){
-                      for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
-	  		  	  //selectedHits.emplace_back(hitsIt->tid,hitsIt->pos,hitsIt->fwd,hitsItreadLen->readLen,startEditDistance,"II");
-	  			  hitsIt->editD = startEditDistance;
-	  			  hitsIt->toAlign = true;
-	  			  hitsIt->cigar = "II";
-	  		  }
-	  	  }
-	  }else{
 
-              for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
-			  auto& txpID = hitsIt->tid ;
-			  auto pos = hitsIt->pos;
-			  auto globalPos = pos + txpStarts[txpID];
-			  auto thisTxpLen = txpLens[txpID];
-                  //error checking
-                          if(globalPos > concatText.length()){
-                              std::cout << "What is wrong ! " << globalPos << " " << concatText.length() << "\n" ;
-                          }
-			  auto thisTxpSeq = concatText.substr(globalPos,thisTxpLen-pos);
-			  //compute edit distance
+          if(hits.size() > 1){
+            if (lcpLength > readLen/2){
+                      if(startEditDistance < editThreshold){
+                          for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
+                                      //selectedHits.emplace_back(hitsIt->tid,hitsIt->pos,hitsIt->fwd,hitsItreadLen->readLen,startEditDistance,"II");
+                                      hitsIt->editD = startEditDistance;
+                                      hitsIt->toAlign = true;
+                                      hitsIt->cigar = "II";
+                              }
+                      }
+              }else{
 
+                  for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
+                              uint32_t txpID = hitsIt->tid ;
+                              int32_t pos = hitsIt->pos;
+                              OffsetT globalPos = pos + txpStarts[txpID];
+                              OffsetT thisTxpLen = txpLens[txpID];
+                      //error checkingo
+                      //
 
-			  auto thisEditDistance = edit_distance(read,thisTxpSeq,1000) ;
+                              if(globalPos > concatText.length()){
+                                  std::cout << "What is wrong ! global position " << globalPos << " bigger than " << concatText.length() << " for tid: " << txpID  << "\n" ;
+                                  std::cout << " transcript start position  "<< txpStarts[txpID] << " transcript Length: " << thisTxpLen << "\n" ;
+                                  std::cout << " Number of transcripts " << txpLens.size() << "\n" ;
+                              }
 
-			  if(thisEditDistance < editThreshold){
-				  //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
-	  			  hitsIt->editD = thisEditDistance;
-	  			  hitsIt->toAlign = true;
-	  			  hitsIt->cigar = "II";
-			  }
-			}
-
-	  }
+                              auto thisTxpSeq = concatText.substr(globalPos,thisTxpLen-pos);
+                              //compute edit distance
 
 
+                              auto thisEditDistance = edit_distance(read,thisTxpSeq,1000) ;
 
-  }
+                              if(thisEditDistance < editThreshold){
+                                      //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
+                                      hitsIt->editD = thisEditDistance;
+                                      hitsIt->toAlign = true;
+                                      hitsIt->cigar = "II";
+                              }
+                            }
+
+            }
+        }
+   }
 private:
   RapMapIndexT* rmi_ ;
 
