@@ -437,7 +437,8 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
     if (currentKmer.length() == k and
         currentKmer.find_first_of('$') != std::string::npos) {
       mer = currentKmer.c_str();
-      khash[mer.word(0)] = {start, stop};
+      auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop);
+      khash[mer.word(0)] = {start, stop, lcpLength};
       /*
       IndexT len = stop - start;
       bool overflow = (len >= std::numeric_limits<uint8_t>::max());

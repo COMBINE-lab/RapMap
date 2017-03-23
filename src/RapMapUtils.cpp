@@ -348,9 +348,15 @@ namespace rapmap {
                         //change the cigarstr accordingly
                         auto currCigarStr1 = cigarStr1.c_str();
                         auto currCigarStr2 = cigarStr2.c_str();
+                        if(qa.toAlign){
+                            currCigarStr1 = qa.cigar.c_str();
+                        }
+                        if(qa.mateToAlign){
+                            currCigarStr2 = qa.mateCigar.c_str();
+                        }
 
 
-                        sstream << readName.c_str() << '\t' // QNAME
+                        sstream << readName.c_str() << "|E" << qa.editD << '\t' // QNAME
                                 << flags1 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
@@ -363,7 +369,7 @@ namespace rapmap {
                                 << "*\t" // QUAL
                                 << numHitFlag << '\n';
 
-                        sstream << mateName.c_str() << '\t' // QNAME
+                        sstream << mateName.c_str() << "|E"<< qa.mateEditD <<'\t' // QNAME
                                 << flags2 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.matePos + 1 << '\t' // POS (1-based)
@@ -461,7 +467,7 @@ namespace rapmap {
                         */
 
                         rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
-                        sstream << alignedName->c_str() << '\t' // QNAME
+                        sstream << alignedName->c_str() << "|ORF" << '\t' // QNAME
                                 << flags << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
@@ -476,7 +482,7 @@ namespace rapmap {
 
 
                         // Output the info for the unaligned mate.
-                        sstream << unalignedName->c_str() << '\t' // QNAME
+                        sstream << unalignedName->c_str() << "|ORF" << '\t' // QNAME
                             << unalignedFlags << '\t' // FLAGS
                             << transcriptName << '\t' // RNAME (same as mate)
                             << qa.pos + 1 << '\t' // POS (same as mate)

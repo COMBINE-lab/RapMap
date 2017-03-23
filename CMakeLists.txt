@@ -143,7 +143,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${WARNING_IGNORE_FLAGS}")
 
 if (CMAKE_BUILD_TYPE MATCHES Debug)
     message ("Making Debug build")
-    set (CMAKE_CXX_FLAGS_DEBUG "-g ${CMAKE_CXX_FLAGS}")
+    set (CMAKE_CXX_FLAGS_DEBUG "-g -lprofiler ${CMAKE_CXX_FLAGS}")
 elseif (CMAKE_BUILD_TYPE MATCHES Release)
     message ("Making Release build")
     set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS}")

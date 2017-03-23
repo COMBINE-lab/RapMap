@@ -16,7 +16,7 @@ else
         execmd=""
         if [ -z "$bam_compress_threads" ]
         then
-            execmd="${new_cmd} -o | samtools view -Sb - > ${bam_out}"
+            execmd="${new_cmd} -o | samtools view -Sb -@ 4 > ${bam_out}"
         else
             execmd="${new_cmd} -o | samtools view -Sb -@ ${bam_compress_threads} > ${bam_out}"
         fi
