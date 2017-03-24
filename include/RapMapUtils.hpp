@@ -70,6 +70,7 @@ namespace rapmap {
     namespace utils {
 
     using my_mer = jellyfish::mer_dna_ns::mer_base_static<uint64_t, 1>;
+    using my_mer9 = jellyfish::mer_dna_ns::mer_base_static<uint64_t, 2>;
 
     constexpr uint32_t newTxpSetMask = 0x80000000;
     constexpr uint32_t rcSetMask = 0x40000000;

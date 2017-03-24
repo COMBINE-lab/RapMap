@@ -60,7 +60,7 @@ public:
 
   /** Construct an SACollector given an index **/
   SACollector(RapMapIndexT* rmi)
-      : rmi_(rmi), hashEnd_(rmi->khash.end()), disableNIP_(false), 
+      : rmi_(rmi), hashEnd_(rmi->khash.end()), disableNIP_(false),
         covReq_(0.0), maxInterval_(1000),
         strictCheck_(false) {}
 
@@ -94,6 +94,7 @@ public:
                   std::vector<rapmap::utils::QuasiAlignment>& hits,
                   SASearcher<RapMapIndexT>& saSearcher,
                   rapmap::utils::MateStatus mateStatus,
+                  bool remap = false,
                   bool consistentHits = false) {
 
     using QuasiAlignment = rapmap::utils::QuasiAlignment;
@@ -103,7 +104,7 @@ public:
     auto& rankDict = rmi_->rankDict;
     auto& txpStarts = rmi_->txpOffsets;
     auto& SA = rmi_->SA;
-    auto& khash = rmi_->khash;
+    auto& khash = (remap)?rmi_->khash9:rmi_->khash;
     auto& text = rmi_->seq;
     auto salen = SA.size();
     //auto hashEnd_ = khash.end();
@@ -529,9 +530,9 @@ private:
       kmerScores.emplace_back(mer, pos, fwdStatus, rcStatus);
     }
   }
-  /* 
-  // Attempts to find the next valid k-mer (a k-mer that doesn't contain an 'N' and is 
-  // not a homopolymer).  If no such k-mer exists within the read, then it returns false. 
+  /*
+  // Attempts to find the next valid k-mer (a k-mer that doesn't contain an 'N' and is
+  // not a homopolymer).  If no such k-mer exists within the read, then it returns false.
   inline bool getNextValidKmer_(std, size_t& pos, rapmap::utils::my_mer& mer) {
       bool validMer = mer.from_chars(read + pos);
       // if this kmer contains an 'N' then validMer is false, else true
@@ -620,7 +621,7 @@ private:
 
       // If this is a homopolymer, then skip it
       if (mer.is_homopolymer()) {
-        rb += homoPolymerSkip; 
+        rb += homoPolymerSkip;
         re += homoPolymerSkip;
         /*
         rb += homoPolymerSkip;
@@ -636,7 +637,7 @@ private:
         */
         continue;
       }
-      
+
       // If it's not a homopolymer, then get the complement
       // k-mer and query both in the hash.
       complementMer = mer.get_reverse_complement();
@@ -748,7 +749,7 @@ private:
         }
 
       } else { // If we couldn't match this k-mer, move on to the next.
-          
+
         // &merIt should point to the end of the k-mer hash,
         // complementMerItPtr is null because we want to spot-check the complement k-mer.
         spotCheck_(mer, pos, readLen, &merIt, nullItPtr, isRC, strandHits,

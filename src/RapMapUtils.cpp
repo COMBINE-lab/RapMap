@@ -356,6 +356,7 @@ namespace rapmap {
                         }
 
 
+
                         sstream << readName.c_str() << "|E" << qa.editD << '\t' // QNAME
                                 << flags1 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME

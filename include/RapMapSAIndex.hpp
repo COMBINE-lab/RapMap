@@ -79,6 +79,7 @@ class RapMapSAIndex {
     std::vector<IndexT> txpCompleteLens;
     std::vector<IndexT> positionIDs;
     std::vector<rapmap::utils::SAIntervalWithKey<IndexT>> kintervals;
+    HashT khash9 ;
     HashT khash;
 };
 

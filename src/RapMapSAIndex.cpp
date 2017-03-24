@@ -69,16 +69,25 @@ bool loadHashFromIndex(const std::string& indexDir,
                        RegHashT<uint64_t,
                        //rapmap::utils::kmerVal<IndexT>,
                        rapmap::utils::kmerVal<IndexT>,
-                       rapmap::utils::KmerKeyHasher>& khash) {
+                       rapmap::utils::KmerKeyHasher>& khash,
+                       RegHashT<uint64_t,
+                       //rapmap::utils::kmerVal<IndexT>,
+                       rapmap::utils::kmerVal<IndexT>,
+                       rapmap::utils::KmerKeyHasher>& khash9) {
       std::ifstream hashStream(indexDir + "hash.bin", std::ios::binary);
       khash.unserialize(typename spp_utils::pod_hash_serializer<uint64_t, rapmap::utils::kmerVal<IndexT>>(),
 			&hashStream);
+
+      std::ifstream hashStream9(indexDir + "hash9.bin", std::ios::binary);
+      khash9.unserialize(typename spp_utils::pod_hash_serializer<uint64_t, rapmap::utils::kmerVal<IndexT>>(),
+			&hashStream9);
       return true;
 }
 
 template <typename IndexT>
 bool loadHashFromIndex(const std::string& indexDir,
-		       PerfectHashT<uint64_t, rapmap::utils::kmerVal<IndexT>> & h) {
+		       PerfectHashT<uint64_t, rapmap::utils::kmerVal<IndexT>> & h,
+                       PerfectHashT<uint64_t, rapmap::utils::kmerVal<IndexT>> & h9) {
     std::string hashBase = indexDir + "hash_info";
     h.load(hashBase);
     return true;
@@ -109,10 +118,11 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
     indexStream.close();
     uint32_t idxK = h.kmerLen();
     rapmap::utils::my_mer::k(idxK);
+    rapmap::utils::my_mer9::k(9);
 
     // This part takes the longest, so do it in it's own asynchronous task
     std::future<bool> loadingHash = std::async(std::launch::async, [this, logger, indDir]() -> bool {
-	return loadHashFromIndex(indDir, khash);
+	return loadHashFromIndex(indDir, khash, khash9);
     });
 
     std::ifstream saStream(indDir + "sa.bin");
@@ -170,7 +180,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         }
         // The last length is just the length of the suffix array - the last offset
         txpLens[txpOffsets.size()-1] = (SA.size() - 1) - txpOffsets[txpOffsets.size() - 1];
-    } 
+    }
 
     logger->info("Waiting to finish loading hash");
     loadingHash.wait();
@@ -180,7 +190,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         std::exit(1);
     }
     // Set the SA and text pointer if this is a perfect hash
-    setPerfectHashPointers(khash, SA, seq); 
+    setPerfectHashPointers(khash, SA, seq);
     logger->info("Done loading index");
     return true;
 }
