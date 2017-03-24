@@ -831,12 +831,21 @@ namespace rapmap {
                                         leftIt->pos,
                                         leftIt->fwd,
                                         leftIt->readLen,
+                                        leftIt->lcpLength,
                                         fragLen, true);
                                 // Fill in the mate info
                                 auto& qaln = jointHits.back();
                                 qaln.mateLen = rightIt->readLen;
                                 qaln.matePos = rightIt->pos;
                                 qaln.mateIsFwd = rightIt->fwd;
+                                // Fill in the mate info for alignment related information
+                                qaln.toAlign = leftIt->toAlign;
+                                qaln.editD = leftIt->editD;
+                                qaln.cigar = leftIt->cigar;
+
+                                qaln.mateToAlign = rightIt->toAlign;
+                                qaln.mateEditD = rightIt->editD;
+                                qaln.mateCigar = rightIt->cigar;
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
 
                                 ++numHits;
