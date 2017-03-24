@@ -100,6 +100,25 @@ namespace rapmap {
             out->info(headerStr);
         }
 
+    template <typename readStructT>
+        std::string getReadName(readStructT r){
+                auto& readName = r.name;
+                // If the read name contains multiple space-separated parts,
+                // print only the first
+                size_t splitPos = readName.find(' ');
+                if (splitPos < readName.length()) {
+                    readName[splitPos] = '\0';
+                } else {
+                    splitPos = readName.length();
+                }
+
+                // trim /1 from the pe read
+                if (splitPos > 2 and readName[splitPos - 2] == '/') {
+                    readName[splitPos - 2] = '\0';
+                }
+            return readName ;
+    }
+
     template <typename IndexT>
         void writeSAMHeader(IndexT& rmi, std::ostream& outStream) {
             fmt::MemoryWriter hd;
@@ -417,8 +436,8 @@ namespace rapmap {
 
         //same information for the matepair
         //which needs to be updated occasionally
-        bool mateToAlign;
-        uint32_t mateEditD ;
+        bool mateToAlign = false;
+        uint32_t mateEditD = 255;
         std::string mateCigar;
 
         MateStatus mateStatus;
@@ -875,6 +894,7 @@ namespace rapmap {
                                         startRead1,
                                         leftIt->fwd,
                                         leftIt->readLen,
+                                        leftIt->lcpLength,
                                         fragLen, true);
                                 // Fill in the mate info
                                 auto& qaln = jointHits.back();
@@ -883,6 +903,10 @@ namespace rapmap {
                                 qaln.mateIsFwd = rightIt->fwd;
 
                                 // Fill in the mate info for alignment related information
+                                qaln.toAlign = leftIt->toAlign;
+                                qaln.editD = leftIt->editD;
+                                qaln.cigar = leftIt->cigar;
+
                                 qaln.mateToAlign = rightIt->toAlign;
                                 qaln.mateEditD = rightIt->editD;
                                 qaln.mateCigar = rightIt->cigar;

@@ -192,7 +192,7 @@ void processReadsSingleSA(single_parser * parser,
             // QuasiAlignment Object vector hits
             // which right now contains lcpLengths too
             // time to call the new function
-            hitSECollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END);
+            hitSECollector(read, hits);
 
             auto numHits = hits.size();
             hctr.totHits += numHits;
@@ -317,12 +317,22 @@ void processReadsPairSA(paired_parser* parser,
             leftHits.clear();
             rightHits.clear();
 
+
             bool lh = hitCollector(rpair.first.seq,
                                    leftHits, saSearcher,
                                    MateStatus::PAIRED_END_LEFT,
                                    mopts->consistentHits);
 
-            bool lhs = hitSECollector(rpair.first.seq, leftHits, saSearcher, MateStatus::PAIRED_END_LEFT);
+            bool lhs = hitSECollector(rpair.first, leftHits);
+
+            //@debug purpose
+            auto readName = rapmap::utils::getReadName(rpair.first) ;
+
+            if(readName == "SRR1265495.29995"){
+                for(auto leftHitsIt = leftHits.begin(); leftHitsIt != leftHits.end(); ++leftHitsIt)
+                    std::cout << "\nAfter one call to SECollector edit distance: "<< leftHitsIt->editD<<"\n" ;
+            }
+            //end @debug purpose
 
 
             bool rh = hitCollector(rpair.second.seq,
@@ -330,7 +340,7 @@ void processReadsPairSA(paired_parser* parser,
                                    MateStatus::PAIRED_END_RIGHT,
                                    mopts->consistentHits);
 
-            bool rhs = hitSECollector(rpair.second.seq, rightHits, saSearcher, MateStatus::PAIRED_END_RIGHT);
+            bool rhs = hitSECollector(rpair.second, rightHits);
 
             if (mopts->fuzzy) {
                 rapmap::utils::mergeLeftRightHitsFuzzy(
