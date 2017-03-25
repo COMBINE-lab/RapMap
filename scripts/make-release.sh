@@ -33,27 +33,27 @@ echo -e "Version = ${version}"
 echo -e "Host = ${host}"
 
 # create the binary directory 
-betaname=RapMap-${version}_${host}
+relname=RapMap-${version}_${host}
 mkdir -p ${DIR}/../RELEASES
-mkdir -p ${DIR}/../RELEASES/${betaname}
-mkdir -p ${DIR}/../RELEASES/${betaname}/bin
-mkdir -p ${DIR}/../RELEASES/${betaname}/lib
+mkdir -p ${DIR}/../RELEASES/${relname}
+mkdir -p ${DIR}/../RELEASES/${relname}/bin
+mkdir -p ${DIR}/../RELEASES/${relname}/lib
 
 echo -e "Copying over the binary\n"
-cp ${DIR}/../bin/rapmap ${DIR}/../RELEASES/${betaname}/bin/
+cp ${DIR}/../bin/rapmap ${DIR}/../RELEASES/${relname}/bin/
 
 # copy other dependencies (shared libraries)
 #echo -e "Copying over other shared library dependencies\n"
-#bash ${DIR}/../scripts/cpld.bash ${DIR}/../bin/salmon ${DIR}/../RELEASES/${betaname}/lib/
+#bash ${DIR}/../scripts/cpld.bash ${DIR}/../bin/salmon ${DIR}/../RELEASES/${relname}/lib/
 #echo -e "Removing dangerous dependencies\n"
-#rm ${DIR}/../RELEASES/${betaname}/lib/libc.so.6
-#rm ${DIR}/../RELEASES/${betaname}/lib/ld-linux-x86-64.so.2
-#rm ${DIR}/../RELEASES/${betaname}/lib/libdl.so.2
-#rm ${DIR}/../RELEASES/${betaname}/lib/libpthread*.so.*
+#rm ${DIR}/../RELEASES/${relname}/lib/libc.so.6
+#rm ${DIR}/../RELEASES/${relname}/lib/ld-linux-x86-64.so.2
+#rm ${DIR}/../RELEASES/${relname}/lib/libdl.so.2
+#rm ${DIR}/../RELEASES/${relname}/lib/libpthread*.so.*
 
 # now make the tarball
 echo -e "Making the tarball\n"
 cd ${DIR}/../RELEASES
-tar czvf ${betaname}.tar.gz ${betaname}
+tar czvf ${relname}.tar.gz ${relname}
 
 echo -e "Done making release!"
