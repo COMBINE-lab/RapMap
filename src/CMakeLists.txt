@@ -82,13 +82,14 @@ set (SUFFARRAY64_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort64.a)
 
 # Link the executable
 target_link_libraries(rapmap
-    ${PTHREAD_LIB}
+    ${CMAKE_THREAD_LIBS_INIT}
+    # ${PTHREAD_LIB}
     ${ZLIB_LIBRARY}
     ${SUFFARRAY_LIB}
     ${SUFFARRAY64_LIB}
     ${GAT_SOURCE_DIR}/external/install/lib/libjellyfish-2.0.a
     m
-    ${LIBLZMA_LIBRARIES}
+    #${LIBLZMA_LIBRARIES}
     ${NON_APPLECLANG_LIBS}
     ${FAST_MALLOC_LIB}
 )

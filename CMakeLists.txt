@@ -51,6 +51,9 @@ endif()
 
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM ${WALL} -std=c++11")
 
+set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+find_package(Threads REQUIRED)
+
 ##
 # OSX is strange (some might say, stupid in this regard).  Deal with it's quirkines here.
 ##
@@ -159,7 +162,7 @@ set (GAT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 # Have CMake tell us what it's doing
 set (CMAKE_VERBOSE_MAKEFILE true)
 
-find_package (ZLIB)
+find_package (ZLIB REQUIRED)
 if (NOT ZLIB_FOUND)
 	message (FATAL_ERROR "zlib must be installed before configuration & building can proceed")
 endif()

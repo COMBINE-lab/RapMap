@@ -12,7 +12,7 @@ cd build
 
 echo "[Drone build] cmake configuration"
 
-cmake -DDO_QUIET_MAKE=TRUE ..
+cmake -DNO_NATIVE_ARCH=TRUE -DDO_QUIET_MAKE=TRUE ..
 
 echo "[Drone build] making salmon and installing locally (this could take a while)"
 
