@@ -33,6 +33,7 @@
 #include "spdlog/spdlog.h"
 #include "spdlog/fmt/ostr.h"
 #include "spdlog/fmt/fmt.h"
+#include "RapMapConfig.hpp"
 #include "PairSequenceParser.hpp"
 
 #ifdef RAPMAP_SALMON_SUPPORT
@@ -93,7 +94,7 @@ namespace rapmap {
                 hd.write("@SQ\tSN:{}\tLN:{:d}\n", txpNames[i], txpLens[i]);
             }
             // Eventually output a @PG line
-            hd.write("@PG\tID:rapmap\tPN:rapmap\tVN:0.3.1\n");
+            hd.write("@PG\tID:rapmap\tPN:rapmap\tVN:{}\n", rapmap::version);
             std::string headerStr(hd.str());
             // Don't include the last '\n', since the logger will do it for us.
             headerStr.pop_back();
