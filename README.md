@@ -50,7 +50,7 @@ The index itself will record whether it was built with the aid of minimum perfec
 This will tell RapMap to map the paired-end reads using 8 threads, and to write the resulting `SAM` records to the file `mapped_reads.sam`.  The SAM format is rather verbose, and so such output files can be rather large (and slow to write) if you're mapping many reads.  For that reason, we recommend that you use [samtools](http://www.htslib.org/) to convert the `SAM` file to a `BAM` file on-the-fly.  Assuming `samtools` is installed an in your path, that can be accomplished with the following command:
 
 ```
-> rapmap quasimap -i ref_index -1 <(gunzip -c r1.fq.gz) -2 <(gunzip -c r2.fq.gz) -t 8 -o | samtools view -Sb -@ 4 - > mapped_reads.bam
+> rapmap quasimap -i ref_index -1 <(gunzip -c r1.fq.gz) -2 <(gunzip -c r2.fq.gz) -t 8 | samtools view -Sb -@ 4 - > mapped_reads.bam
 ```
 
 This will stream the output from RapMap to standard out, and then convert it into a `BAM` file (using up to an additional 4 threads for `BAM` compression) and write the resulting output to the file `mapped_reads.bam`.  To reduce the amount that needs to be typed in the common case, and to prevent the user from having to remember invocations like the above, we inclde a simple wrapper script that simplifies this process.  After installing RapMap, there should be a script called `RunRapMap.sh` in the `bin` directory of whereever you have chosen to install RapMap.  You can issue a command equivalent to the above using this scrpt as follows:
@@ -89,25 +89,3 @@ RapMap is experimental, and the code, at this point, is subject to me testing ou
 # License 
 
 Since RapMap uses Jellyfish, it must be released under the GPL.  However, this is currently the only GPL dependency.  If it can be replaced, I'd like to re-license RapMap under the BSD license.  I'd be happy to accept pull-requests that replace the Jellyfish components with a library released under a more liberal license (BSD-compatible), but note that I will *not* accept such pull requests if they reduce the speed or increase the memory consumption over the Jellyfish-based version.
-
-# Citation
-
-If you use RapMap, or wish to cite the quasi-mapping concept or our algorithm for computing quasi-mappings, please 
-use this bibtex entry. 
-
-```
-@article{Srivastava15062016,
-author = {Srivastava, Avi and Sarkar, Hirak and Gupta, Nitish and Patro, Rob}, 
-title = {RapMap: a rapid, sensitive and accurate tool for mapping RNA-seq reads to transcriptomes},
-volume = {32}, 
-number = {12}, 
-pages = {i192-i200}, 
-year = {2016}, 
-doi = {10.1093/bioinformatics/btw277},
-URL = {http://bioinformatics.oxfordjournals.org/content/32/12/i192.abstract}, 
-eprint = {http://bioinformatics.oxfordjournals.org/content/32/12/i192.full.pdf+html}, 
-journal = {Bioinformatics} 
-}
-```
-
-Other citation formats for the RapMap paper are available [here](http://bioinformatics.oxfordjournals.org/citmgr?gca=bioinfo%3B32%2F12%2Fi192).
