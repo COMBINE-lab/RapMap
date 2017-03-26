@@ -107,7 +107,8 @@ public:
     auto& rankDict = rmi_->rankDict;
     auto& txpStarts = rmi_->txpOffsets;
     auto& SA = rmi_->SA;
-    auto& khash = (remap)?rmi_->khash9:rmi_->khash;
+    //auto& khash = (remap)?rmi_->khash9:rmi_->khash;
+    auto& khash = rmi_->khash;
     auto& text = rmi_->seq;
     auto salen = SA.size();
     //auto hashEnd_ = khash.end();
@@ -117,7 +118,9 @@ public:
     auto k = rapmap::utils::my_mer::k();
     if(remap){
          k = rapmap::utils::my_mer9::k() ;
+
     }
+    std::cout << k << " " << int(remap) << "\n";
     //auto k = typename MerT::k() ;
     auto readStartIt = read.begin();
     auto readEndIt = read.end();
@@ -205,6 +208,11 @@ public:
       rcMer = mer.get_reverse_complement();
 
       // See if we can find this k-mer in the hash
+      //if (mer)
+      //  std::cout<<"mer null\n";
+      //if(mer.Word(0))
+        //  std::cout<<"mer.Word null\n";
+      //std::cout<<(int)mer.Word(0) <<" mer.Word(0)\n";
       merIt = khash.find(mer.word(0));//get_bits(0, 2 * k));
       rcMerIt = khash.find(rcMer.word(0));//rcMer.get_bits(0, 2 * k));
 
@@ -255,6 +263,7 @@ public:
     }
 
     bool didCheckFwd{false};
+    bool sigHit{false};
     // If we had a hit on the forward strand
     if (fwdHit) {
       didCheckFwd = true;
@@ -263,7 +272,7 @@ public:
                  rb,               // where to start the search
                  &(merIt->second.interval), // pointer to the search interval
 				 merIt->second.lcpLength, // starting lcpLength
-                 fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false);
+                 fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false, sigHit, remap);
     }
 
     bool checkRC = useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
@@ -275,7 +284,7 @@ public:
                  rcBuffer_.begin(), // where to start the search
                  nullptr,           // pointer to the search interval
 				 0, //starting lcpLength
-                 rcCov, rcHit, fwdHit, rcSAInts, kmerScores, true);
+                                 rcCov, rcHit, fwdHit, rcSAInts, kmerScores, true, sigHit, remap);
     }
 
     // Now, if we *didn't* check the forward strand at first, but we encountered
@@ -289,7 +298,13 @@ public:
                  read.begin(), // where to start the search
                  nullptr,      // pointer to the search interval
 				 0, //starting lcpLength
-                 fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false);
+                 fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false, sigHit, remap);
+    }
+
+    if(remap){
+        if(!sigHit){
+            return false;
+        }
     }
 
     if (strictCheck_) {
@@ -490,7 +505,7 @@ private:
              ) {
     IteratorT merIt = hashEnd_;
     IteratorT complementMerIt = hashEnd_;
-    auto& khash = rmi_->khash;
+    auto& khash =(remap)?rmi_->khash9:rmi_->khash;
     //auto hashEnd_ = khash.end();
     auto k = rapmap::utils::my_mer::k();
     if(remap){
@@ -564,10 +579,11 @@ private:
       std::vector<rapmap::utils::SAIntervalHit<OffsetT>>& saInts,
       std::vector<KmerDirScore>& kmerScores,
       bool isRC, // true if read is the reverse complement, false otherwise
+      bool& sigHit,
       bool remap=false
       ) {
     using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
-    auto& khash = rmi_->khash;
+    auto& khash = (remap)?rmi_->khash9:rmi_->khash;
 
     //auto hashEnd_ = khash.end();
     decltype(hashEnd_)* nullItPtr = nullptr;
@@ -684,7 +700,16 @@ private:
         if (ub > lb and diff < maxInterval_) {
           uint32_t queryStart =
               static_cast<uint32_t>(std::distance(readStartIt, rb));
-          saInts.emplace_back(lb, ub, matchedLen, queryStart, lcpLength,isRC);
+
+          auto bigk = rapmap::utils::my_mer::k() ;
+          if(remap){
+              if(matchedLen > bigk/2){
+                saInts.emplace_back(lb, ub, matchedLen, queryStart, lcpLength,isRC);
+              }
+          }else{
+                saInts.emplace_back(lb, ub, matchedLen, queryStart, lcpLength,isRC);
+
+          }
 
           size_t matchOffset = std::distance(readStartIt, rb);
           size_t correction = 0;
@@ -779,6 +804,9 @@ private:
         rb += sampFactor;
         re = rb + k;
       }
+    }
+    if(saInts.size() > 0){
+        sigHit=true;
     }
   }
 
