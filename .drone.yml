@@ -1,6 +1,6 @@
  pipeline:
   setup:
-   image: hbb:rapmap_build
+   image: hbb:salmon_build
    commands:
     - echo "Starting build"
     - ./.drone/build.sh
@@ -13,7 +13,7 @@
       #    - /mnt/scratch6/avi/data:/mnt/data
       #    - /mnt/scratch6/rapmap_ci:/mnt/ci_res
   copy_build:
-    image: hbb:rapmap_build
+    image: hbb:salmon_build
     commands:
      - echo "[Packaging binary]"
      - ./.drone/copy_build.sh
