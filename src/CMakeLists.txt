@@ -131,4 +131,5 @@ install(FILES ${GAT_SOURCE_DIR}/scripts/RunRapMap.sh
     #)
     #
     #include(InstallRequiredSystemLibraries)
-    #add_test( NAME salmon_read_test COMMAND ${CMAKE_COMMAND} -DTOPLEVEL_DIR=${GAT_SOURCE_DIR} -P ${GAT_SOURCE_DIR}/cmake/TestSalmon.cmake )
+    add_test( NAME quasi_map_test COMMAND ${CMAKE_COMMAND} -DTOPLEVEL_DIR=${GAT_SOURCE_DIR} -P ${GAT_SOURCE_DIR}/cmake/TestQuasiMap.cmake )
+    add_test( NAME quasi_map_test_ph COMMAND ${CMAKE_COMMAND} -DTOPLEVEL_DIR=${GAT_SOURCE_DIR} -P ${GAT_SOURCE_DIR}/cmake/TestQuasiMapPerfectHash.cmake )

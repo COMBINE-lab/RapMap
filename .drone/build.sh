@@ -17,3 +17,4 @@ cmake -DNO_NATIVE_ARCH=TRUE -DDO_QUIET_MAKE=TRUE ..
 echo "[Drone build] making salmon and installing locally (this could take a while)"
 
 make -s install
+make test
