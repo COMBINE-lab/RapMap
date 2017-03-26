@@ -141,7 +141,12 @@ void processReadsSingleSA(single_parser * parser,
                           MappingOpts* mopts) {
     using OffsetT = typename RapMapIndexT::IndexType;
 
-    SACollector<RapMapIndexT> hitCollector(&rmi);
+    //Normal Call to SACollector
+    SACollector<RapMapIndexT, rapmap::utils::my_mer> hitCollector(&rmi);
+    //Remap caqll to SACollector
+    SACollector<RapMapIndexT, rapmap::utils::my_mer9> hitCollector9(&rmi);
+
+
     SECollector<RapMapIndexT> hitSECollector(&rmi);
 
     if (mopts->sensitive) {
@@ -266,7 +271,11 @@ void processReadsPairSA(paired_parser* parser,
                         MappingOpts* mopts) {
     using OffsetT = typename RapMapIndexT::IndexType;
 
-    SACollector<RapMapIndexT> hitCollector(&rmi);
+    //Normal Call to SACollector
+    SACollector<RapMapIndexT, rapmap::utils::my_mer> hitCollector(&rmi);
+    //Remap caqll to SACollector
+    SACollector<RapMapIndexT, rapmap::utils::my_mer9> hitCollector9(&rmi);
+
     SECollector<RapMapIndexT> hitSECollector(&rmi);
 
     if (mopts->sensitive) {

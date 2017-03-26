@@ -30,7 +30,7 @@
 #include <iostream>
 #include <iterator>
 
-template <typename RapMapIndexT> class SACollector {
+template <typename RapMapIndexT, typename MerT> class SACollector {
 public:
   using OffsetT = typename RapMapIndexT::IndexType;
 
@@ -67,8 +67,9 @@ public:
   enum HitStatus { ABSENT = -1, UNTESTED = 0, PRESENT = 1 };
   // Record if k-mers are hits in the
   // fwd direction, rc direction or both
+  //template <typename MerT>
   struct KmerDirScore {
-    KmerDirScore(rapmap::utils::my_mer kmerIn, int32_t kposIn,
+    KmerDirScore(MerT kmerIn, int32_t kposIn,
                  HitStatus fwdScoreIn, HitStatus rcScoreIn)
         : kmer(kmerIn), kpos(kposIn), fwdScore(fwdScoreIn), rcScore(rcScoreIn) {
     }
@@ -84,12 +85,14 @@ public:
                 << ((fwdScore) ? "PRESENT" : "ABSENT") << ", "
                 << ((rcScore) ? "PRESENT" : "ABSENT") << "}\t";
     }
-    rapmap::utils::my_mer kmer;
+    //rapmap::utils::my_mer kmer;
+    MerT kmer ;
     int32_t kpos;
     HitStatus fwdScore;
     HitStatus rcScore;
   };
 
+  //template <typename MerT>
   bool operator()(std::string& read,
                   std::vector<rapmap::utils::QuasiAlignment>& hits,
                   SASearcher<RapMapIndexT>& saSearcher,
@@ -112,6 +115,10 @@ public:
     auto maxDist = 1.5 * readLen;
 
     auto k = rapmap::utils::my_mer::k();
+    if(remap){
+         k = rapmap::utils::my_mer9::k() ;
+    }
+    //auto k = typename MerT::k() ;
     auto readStartIt = read.begin();
     auto readEndIt = read.end();
 
@@ -127,8 +134,11 @@ public:
     bool foundHit = false;
     bool isRev = false;
 
-    rapmap::utils::my_mer mer;
-    rapmap::utils::my_mer rcMer;
+    //rapmap::utils::my_mer mer;
+    //rapmap::utils::my_mer rcMer;
+
+    MerT mer;
+    MerT rcMer;
 
     bool useCoverageCheck{disableNIP_ and strictCheck_};
 
@@ -174,7 +184,8 @@ public:
 
       // If the next k-bases are valid, get the k-mer and
       // reverse complement k-mer
-      mer = rapmap::utils::my_mer(read.c_str() + pos);
+      //mer = rapmap::utils::my_mer(read.c_str() + pos);
+      mer = MerT(read.c_str() + pos);
       if (mer.is_homopolymer()) {
         rb += homoPolymerSkip;
         re += homoPolymerSkip;
@@ -466,20 +477,25 @@ private:
   // spot-check k-mers to see if there are forward or rc hits
   template <typename IteratorT>
   inline void
-  spotCheck_(rapmap::utils::my_mer mer,
+  spotCheck_(//rapmap::utils::my_mer mer,
+             MerT mer,
              size_t pos, // the position of the k-mer on the read
              size_t readLen,
              IteratorT* merItPtr,           // nullptr if we haven't checked yet
              IteratorT* complementMerItPtr, // nullptr if we haven't checked yet
              bool isRC, // is this being called from the RC of the read
              uint32_t& strandHits, uint32_t& otherStrandHits,
-             std::vector<KmerDirScore>& kmerScores
+             std::vector<KmerDirScore>& kmerScores,
+             bool remap=false
              ) {
     IteratorT merIt = hashEnd_;
     IteratorT complementMerIt = hashEnd_;
     auto& khash = rmi_->khash;
     //auto hashEnd_ = khash.end();
     auto k = rapmap::utils::my_mer::k();
+    if(remap){
+        k = rapmap::utils::my_mer9::k();
+    }
 
     auto complementMer = mer.get_reverse_complement();
 
@@ -539,6 +555,7 @@ private:
   }
   */
 
+  //template <typename MerT>
   inline void getSAHits_(
       SASearcher<RapMapIndexT>& saSearcher, std::string& read,
       std::string::iterator startIt,
@@ -546,7 +563,8 @@ private:
       uint32_t& strandHits, uint32_t& otherStrandHits,
       std::vector<rapmap::utils::SAIntervalHit<OffsetT>>& saInts,
       std::vector<KmerDirScore>& kmerScores,
-      bool isRC // true if read is the reverse complement, false otherwise
+      bool isRC, // true if read is the reverse complement, false otherwise
+      bool remap=false
       ) {
     using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
     auto& khash = rmi_->khash;
@@ -560,6 +578,10 @@ private:
     OffsetT matchedLen{0};
 
     auto k = rapmap::utils::my_mer::k();
+    if(remap){
+        k = rapmap::utils::my_mer9::k() ;
+    }
+
     auto skipOverlapMMP = k - 1;
     auto skipOverlapNIP = k - 1;
     OffsetT homoPolymerSkip = 1;//k / 2;
@@ -570,7 +592,7 @@ private:
     uint8_t lcpLength = lcpLengthIn;
     size_t invalidPos{0};
 
-    rapmap::utils::my_mer mer, complementMer;
+    MerT mer, complementMer;
     auto merIt = hashEnd_;
     auto complementMerIt = hashEnd_;
     size_t pos{0};
