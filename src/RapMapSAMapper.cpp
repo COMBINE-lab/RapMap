@@ -130,6 +130,7 @@ struct MappingOpts {
     bool fuzzy{false};
     bool consistentHits{false};
     bool quiet{false};
+    bool remap{false};
 };
 
 template <typename RapMapIndexT, typename MutexT>
@@ -191,7 +192,10 @@ void processReadsSingleSA(single_parser * parser,
 	    readLen = read.seq.length();//j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
-            hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, mopts->consistentHits);
+            hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, false ,mopts->consistentHits);
+            if(hits.size() == 0 && mopts->remap){
+                hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, true, mopts->consistentHits);
+            }
             // @hirak
             // Here I collected all the QuasiALignments in
             // QuasiAlignment Object vector hits
@@ -330,7 +334,17 @@ void processReadsPairSA(paired_parser* parser,
             bool lh = hitCollector(rpair.first.seq,
                                    leftHits, saSearcher,
                                    MateStatus::PAIRED_END_LEFT,
+                                   false,
                                    mopts->consistentHits);
+
+            if(!lh && mopts->remap){
+
+                hitCollector9(rpair.first.seq,
+                                   leftHits, saSearcher,
+                                   MateStatus::PAIRED_END_LEFT,
+                                   true,
+                                   mopts->consistentHits);
+            }
 
             bool lhs = hitSECollector(rpair.first, leftHits);
 
@@ -347,7 +361,17 @@ void processReadsPairSA(paired_parser* parser,
             bool rh = hitCollector(rpair.second.seq,
                                    rightHits, saSearcher,
                                    MateStatus::PAIRED_END_RIGHT,
+                                   false,
                                    mopts->consistentHits);
+
+            if(!rh && mopts->remap){
+
+                hitCollector9(rpair.second.seq,
+                                   rightHits, saSearcher,
+                                   MateStatus::PAIRED_END_RIGHT,
+                                   true,
+                                   mopts->consistentHits);
+            }
 
             bool rhs = hitSECollector(rpair.second, rightHits);
 
@@ -598,6 +622,8 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
   TCLAP::SwitchArg consistent("c", "consistentHits", "Ensure that the hits collected are consistent (co-linear)", false);
   TCLAP::SwitchArg quiet("q", "quiet", "Disable all console output apart from warnings and errors", false);
+  //flag if you want remap
+  TCLAP::SwitchArg remap("g", "remap", "In case of unmapped reads/mates try again with 9 mer hash and recover", false);
   cmd.add(index);
   cmd.add(noout);
 
@@ -613,6 +639,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(fuzzy);
   cmd.add(consistent);
   cmd.add(quiet);
+  cmd.add(remap);
 
   auto rawConsoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
   auto consoleSink =
@@ -676,6 +703,7 @@ int rapMapSAMap(int argc, char* argv[]) {
     mopts.consistentHits = consistent.getValue();
     mopts.fuzzy = fuzzy.getValue();
     mopts.quiet = quiet.getValue();
+    mopts.remap = remap.getValue();
 
     if (quasiCov.isSet() and !sensitive.isSet()) {
         consoleLog->info("The --quasiCoverage option is set to {}, but the --sensitive flag was not set. The former implies the later. Enabling sensitive mode.", quasiCov.getValue());
