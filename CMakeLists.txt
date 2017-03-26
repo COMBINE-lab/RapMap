@@ -4,9 +4,9 @@ enable_testing()
 
 project (RapMap)
 
-set(CPACK_PACKAGE_VERSION "0.4.0")
+set(CPACK_PACKAGE_VERSION "0.5.0")
 SET(CPACK_PACKAGE_VERSION_MAJOR "0")
-set(CPACK_PACKAGE_VERSION_MINOR "4")
+set(CPACK_PACKAGE_VERSION_MINOR "5")
 set(CPACK_PACKAGE_VERSION_PATCH "0")
 set(PROJECT_VERSION ${CPACK_PACKAGE_VERSION})
 set(CPACK_GENERATOR "TGZ")
@@ -260,12 +260,12 @@ if (NOT HAVE_FAST_MALLOC)
     message("==================================================================")
     ExternalProject_Add(libjemalloc
         DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-        DOWNLOAD_COMMAND curl -k -L https://github.com/COMBINE-lab/jemalloc/archive/4.4.0.tar.gz -o jemalloc-4.4.0.tar.gz &&
-        tar -xzf jemalloc-4.4.0.tar.gz
-        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/jemalloc-4.4.0
+        DOWNLOAD_COMMAND curl -k -L https://github.com/COMBINE-lab/jemalloc/archive/4.5.0.tar.gz -o jemalloc-4.5.0.tar.gz &&
+                         tar -xzf jemalloc-4.5.0.tar.gz
+        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/jemalloc-4.5.0
         BUILD_IN_SOURCE TRUE
         INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
-        CONFIGURE_COMMAND sh -c "${JEMALLOC_FLAGS} ./autogen.sh --prefix=<INSTALL_DIR>"
+        CONFIGURE_COMMAND sh -c "${JEMALLOC_FLAGS} ./autogen.sh --disable-debug --prefix=<INSTALL_DIR>"
         INSTALL_COMMAND cp -r lib <INSTALL_DIR>/ && cp -r include <INSTALL_DIR>/
         )
 
