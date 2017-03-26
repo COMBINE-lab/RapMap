@@ -554,7 +554,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::ValueArg<double> quasiCov("z", "quasiCoverage", "Require that this fraction of a read is covered by MMPs before it is considered mappable.", false, 0.0, "double in [0,1]");
   TCLAP::SwitchArg noout("n", "noOutput", "Don't write out any alignments (for speed testing purposes)", false);
   TCLAP::SwitchArg sensitive("e", "sensitive", "Perform a more sensitive quasi-mapping by disabling NIP skipping", false);
-  TCLAP::SwitchArg strict("s", "strictCheck", "Perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
+  TCLAP::SwitchArg noStrict("", "noStrictCheck", "Don't perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
   TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
   TCLAP::SwitchArg consistent("c", "consistentHits", "Ensure that the hits collected are consistent (co-linear)", false);
   TCLAP::SwitchArg quiet("q", "quiet", "Disable all console output apart from warnings and errors", false);
@@ -569,7 +569,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(maxNumHits);
   cmd.add(quasiCov);
   cmd.add(sensitive);
-  cmd.add(strict);
+  cmd.add(noStrict);
   cmd.add(fuzzy);
   cmd.add(consistent);
   cmd.add(quiet);
@@ -632,7 +632,7 @@ int rapMapSAMap(int argc, char* argv[]) {
     mopts.quasiCov = quasiCov.getValue();
     mopts.noOutput = noout.getValue();
     mopts.sensitive = sensitive.getValue();
-    mopts.strictCheck = strict.getValue();
+    mopts.strictCheck = !noStrict.getValue();
     mopts.consistentHits = consistent.getValue();
     mopts.fuzzy = fuzzy.getValue();
     mopts.quiet = quiet.getValue();
