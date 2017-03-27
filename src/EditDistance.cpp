@@ -76,7 +76,9 @@ int edit_distance(std::string& seq1, std::string& seq2, const int max_cost){
             if (!delta_even  &&  (k-delta) >= -(D-1)  &&  (k-delta) <= (D-1)) {
                 int r1 = Vr[k];
                 int r2 = Vr[k]-k;
-                if ((j1-j2) == (r1-r2)  &&  j1 >= r1) return 2*D-1;
+                if ((j1-j2) == (r1-r2)  &&  j1 >= r1){ return 2*D-1;
+
+                }
             }
             while (j1 < L1  &&  j2 < L2  &&  (seq1[j1] == seq2[j2])) { ++j1;  ++j2; }
             Vf[k] = j1;
@@ -99,7 +101,7 @@ int edit_distance(std::string& seq1, std::string& seq2, const int max_cost){
         if (((delta_even) ? (2*D+2) : (2*D+1))>max_cost) {
         //std::cout<< "max_cost exceeded!\n";
         //std::cout<<((delta_even))<<" " << (2*D+2)<<" " << (2*D+1) << "\n";
-            //return 0;
+            return 255;
         }
         if (D >= R) expand(V_data, Vf, Vr, R, D, delta);
         ++D;

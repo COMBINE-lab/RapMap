@@ -107,8 +107,8 @@ public:
     auto& rankDict = rmi_->rankDict;
     auto& txpStarts = rmi_->txpOffsets;
     auto& SA = rmi_->SA;
-    //auto& khash = (remap)?rmi_->khash9:rmi_->khash;
-    auto& khash = rmi_->khash;
+    auto& khash = (remap)?rmi_->khash9:rmi_->khash;
+    //auto& khash = rmi_->khash;
     auto& text = rmi_->seq;
     auto salen = SA.size();
     //auto hashEnd_ = khash.end();
@@ -120,7 +120,7 @@ public:
          k = rapmap::utils::my_mer9::k() ;
 
     }
-    std::cout << k << " " << int(remap) << "\n";
+    //std::cout << k << " " << int(remap) << "\n";
     //auto k = typename MerT::k() ;
     auto readStartIt = read.begin();
     auto readEndIt = read.end();
@@ -301,6 +301,7 @@ public:
                  fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false, sigHit, remap);
     }
 
+
     if(remap){
         if(!sigHit){
             return false;
@@ -390,10 +391,16 @@ public:
     auto fwdHitsStart = hits.size();
     // If we had > 1 forward hit
     if (fwdSAInts.size() > 1) {
+
+      if(remap) std::cout << "\nfwd Hit size " << fwdSAInts.size() << "\n";
       auto processedHits = rapmap::hit_manager::intersectSAHits(
           fwdSAInts, *rmi_, readLen, consistentHits);
-      rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
-                                               hits, mateStatus);
+      if(remap) std::cout << "\nAfter intersectSAHits " << processedHits.size() << "\n";
+      if(remap) std::cout << "\n" << hits.size() << "\n";
+      rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,hits, mateStatus);
+
+      if(remap) std::cout << "\n" << hits.size() << "\n";
+
     } else if (fwdSAInts.size() == 1) { // only 1 hit!
       auto& saIntervalHit = fwdSAInts.front();
       auto initialSize = hits.size();
@@ -484,6 +491,9 @@ public:
           });
       hits.resize(std::distance(hits.begin(), newEnd));
     }
+
+
+    //if(remap) std::cout << "\n" << hits.size() << "\n";
     // Return true if we had any valid hits and false otherwise.
     return foundHit;
   }
@@ -586,6 +596,7 @@ private:
     auto& khash = (remap)?rmi_->khash9:rmi_->khash;
 
     //auto hashEnd_ = khash.end();
+    //
     decltype(hashEnd_)* nullItPtr = nullptr;
 
     auto readLen = read.length();
@@ -703,13 +714,20 @@ private:
 
           auto bigk = rapmap::utils::my_mer::k() ;
           if(remap){
-              if(matchedLen > bigk/2){
+              if(matchedLen > 14){
+                //std::cout << "k: " << k << " MMP Length: "<<matchedLen << "\n";
                 saInts.emplace_back(lb, ub, matchedLen, queryStart, lcpLength,isRC);
               }
           }else{
                 saInts.emplace_back(lb, ub, matchedLen, queryStart, lcpLength,isRC);
 
           }
+
+
+        if(saInts.size() > 0 && remap && !sigHit){
+            //std::cout << "\n remapped \n";
+            sigHit=true;
+        }
 
           size_t matchOffset = std::distance(readStartIt, rb);
           size_t correction = 0;
@@ -804,9 +822,6 @@ private:
         rb += sampFactor;
         re = rb + k;
       }
-    }
-    if(saInts.size() > 0){
-        sigHit=true;
     }
   }
 

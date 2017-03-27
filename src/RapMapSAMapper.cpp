@@ -338,12 +338,13 @@ void processReadsPairSA(paired_parser* parser,
                                    mopts->consistentHits);
 
             if(!lh && mopts->remap){
-
+                //std::cout <<"Before remap "  <<leftHits.size() << "\n";
                 hitCollector9(rpair.first.seq,
                                    leftHits, saSearcher,
                                    MateStatus::PAIRED_END_LEFT,
                                    true,
                                    mopts->consistentHits);
+                //std::cout << leftHits.size() << "\n";
             }
 
             bool lhs = hitSECollector(rpair.first, leftHits);
