@@ -660,9 +660,11 @@ namespace rapmap {
             }
 
             size_t requiredNumHits = inHits.size();
+            std::cout<<"req size" << requiredNumHits << "\n";
             // Mark as active any transcripts with the required number of hits.
             for (auto it = outHits.begin(); it != outHits.end(); ++it) {
                 bool enoughHits = (it->second.numActive >= requiredNumHits);
+                std::cout<<"hits " << it->second.numActive << "\n";
                 it->second.active = (strictFilter) ?
                     (enoughHits and it->second.checkConsistent(readLen, requiredNumHits)) :
                     (enoughHits);
