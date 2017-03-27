@@ -355,14 +355,14 @@ namespace rapmap {
                             currCigarStr2 = qa.mateCigar.c_str();
                         }
 
-
+                    if(qa.toAlign){
 
                         sstream << readName.c_str() << "|E" << qa.editD << '\t' // QNAME
                                 << flags1 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
                                 << 1 << '\t' // MAPQ
-                                << cigarStr1.c_str() << '\t' // CIGAR
+                                << qa.cigar.c_str() << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.matePos + 1 << '\t' // PNEXT
                                 << ((read1First) ? fragLen : -fragLen) << '\t' // TLEN
@@ -375,14 +375,15 @@ namespace rapmap {
                                 << transcriptName << '\t' // RNAME
                                 << qa.matePos + 1 << '\t' // POS (1-based)
                                 << 1 << '\t' // MAPQ
-                                << cigarStr2.c_str() << '\t' // CIGAR
+                                << qa.mateCigar.c_str() << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.pos + 1 << '\t' // PNEXT
                                 << ((read1First) ? -fragLen : fragLen) << '\t' // TLEN
                                 << *readSeq2 << '\t' // SEQ
                                 << "*\t" // QUAL
                                 << numHitFlag << '\n';
-                    } else {
+                        }
+                    }else {
                         rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
                             flags1 |= 0x100; flags2 |= 0x100;

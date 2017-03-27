@@ -1,3 +1,5 @@
+//jello
+
 #ifndef __SELECTIVE_ALIGNMENT_HPP__
 #define __SELECTIVE_ALIGNMENT_HPP__
 
@@ -5,6 +7,7 @@
 #include "RapMapUtils.hpp"
 #include "SASearcher.hpp"
 #include "EditDistance.hpp"
+#include "edlib.h"
 
 #include <algorithm>
 #include <iostream>
@@ -111,7 +114,14 @@ public:
 
                   auto thisTxpSeq = concatText.substr(globalPos, endOffset);
 		  //compute edit distance
-		  startEditDistance = edit_distance(read, thisTxpSeq, 50) ;
+		  //startEditDistance = edit_distance(read, thisTxpSeq, 50) ;
+                  EdlibAlignResult startEdlibResult;
+                  if(startHit.fwd){
+                    startEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(50, EDLIB_MODE_HW, EDLIB_TASK_PATH));
+                  }else{
+                    auto revRead = rapmap::utils::reverseComplement(read);
+                    startEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(50, EDLIB_MODE_HW, EDLIB_TASK_PATH));
+                  }
 
 
                   if(readName == "SRR1265495.29995"){
@@ -120,22 +130,35 @@ public:
                     std::cout << "\nI am at the beginning of hit list, the edit distance is: " << startEditDistance << "\n" ;
                   }
 
-                  startHit.editD = startEditDistance;
-                  startHit.toAlign = true;
-                  startHit.cigar = "II";
 
-	  }
+                  startHit.editD = startEdlibResult.editDistance;
+                  startEditDistance = startEdlibResult.editDistance;
+
+                  if(startEditDistance != -1){
+                    startHit.toAlign = true;
+                    char* cigar_ = edlibAlignmentToCigar(startEdlibResult.alignment, startEdlibResult.alignmentLength, EDLIB_CIGAR_STANDARD);
+                    std::string cigar(cigar_);
+                    startHit.cigar = cigar ;
+                 }else{
+                    startHit.toAlign = false ;
+
+                 }
+          }
 
 
           if(hits.size() > 1){
             if (lcpLength > readLen/2){
-                      if(startEditDistance < editThreshold){
+                      if(startEditDistance != -1){
                           for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
                                       //selectedHits.emplace_back(hitsIt->tid,hitsIt->pos,hitsIt->fwd,hitsItreadLen->readLen,startEditDistance,"II");
                                       hitsIt->editD = startEditDistance;
                                       hitsIt->toAlign = true;
-                                      hitsIt->cigar = "II";
+                                      hitsIt->cigar = startHit.cigar;
                               }
+                      }else{
+                          for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
+                                    hitsIt->toAlign = false ;
+                          }
                       }
               }else{
 
@@ -169,7 +192,17 @@ public:
                               //compute edit distance
 
 
-                              auto thisEditDistance = edit_distance(read, thisTxpSeq, 50) ;
+                              //auto thisEditDistance = edit_distance(read, thisTxpSeq, 50) ;
+                              EdlibAlignResult thisEdlibResult;
+
+                              if(hitsIt->fwd){
+
+                                thisEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(50, EDLIB_MODE_HW, EDLIB_TASK_PATH));
+                              }else{
+                                auto revRead = rapmap::utils::reverseComplement(read);
+                                thisEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(50, EDLIB_MODE_HW, EDLIB_TASK_PATH));
+                              }
+                              auto thisEditDistance = thisEdlibResult.editDistance ;
 
                              if(readName == "SRR1265495.29995"){
                                 std::cout << "\nRead Header: "<<readName ;
@@ -177,11 +210,13 @@ public:
                                 std::cout << "\nI am at the middle of hit list, the edit distance is: " << thisEditDistance << "\n" ;
                               }
 
-                              if(thisEditDistance < editThreshold){
+                              if(thisEditDistance != -1){
                                       //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
                                       hitsIt->editD = thisEditDistance;
+                                      char* cigar_ = edlibAlignmentToCigar(thisEdlibResult.alignment, thisEdlibResult.alignmentLength, EDLIB_CIGAR_STANDARD);
+                                      std::string cigar(cigar_);
                                       hitsIt->toAlign = true;
-                                      hitsIt->cigar = "II";
+                                      hitsIt->cigar = cigar;
                               }
                             }
 
