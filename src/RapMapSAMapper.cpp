@@ -131,6 +131,7 @@ struct MappingOpts {
     bool consistentHits{false};
     bool quiet{false};
     bool remap{false};
+    uint32_t mmpThreshold{15};
 };
 
 template <typename RapMapIndexT, typename MutexT>
@@ -192,9 +193,9 @@ void processReadsSingleSA(single_parser * parser,
 	    readLen = read.seq.length();//j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
-            hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, false ,mopts->consistentHits);
+            hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, false, mopts->mmpThreshold, mopts->consistentHits);
             if(hits.size() == 0 && mopts->remap){
-                hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, true, mopts->consistentHits);
+                hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, true, mopts->mmpThreshold, mopts->consistentHits);
             }
             // @hirak
             // Here I collected all the QuasiALignments in
@@ -335,6 +336,7 @@ void processReadsPairSA(paired_parser* parser,
                                    leftHits, saSearcher,
                                    MateStatus::PAIRED_END_LEFT,
                                    false,
+                                   mopts->mmpThreshold,
                                    mopts->consistentHits);
 
             if(!lh && mopts->remap){
@@ -343,6 +345,7 @@ void processReadsPairSA(paired_parser* parser,
                                    leftHits, saSearcher,
                                    MateStatus::PAIRED_END_LEFT,
                                    true,
+                                   mopts->mmpThreshold,
                                    mopts->consistentHits);
                 //std::cout << leftHits.size() << "\n";
             }
@@ -363,6 +366,7 @@ void processReadsPairSA(paired_parser* parser,
                                    rightHits, saSearcher,
                                    MateStatus::PAIRED_END_RIGHT,
                                    false,
+                                   mopts->mmpThreshold,
                                    mopts->consistentHits);
 
             if(!rh && mopts->remap){
@@ -371,6 +375,7 @@ void processReadsPairSA(paired_parser* parser,
                                    rightHits, saSearcher,
                                    MateStatus::PAIRED_END_RIGHT,
                                    true,
+                                   mopts->mmpThreshold,
                                    mopts->consistentHits);
             }
 
@@ -625,6 +630,8 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::SwitchArg quiet("q", "quiet", "Disable all console output apart from warnings and errors", false);
   //flag if you want remap
   TCLAP::SwitchArg remap("g", "remap", "In case of unmapped reads/mates try again with 9 mer hash and recover", false);
+  TCLAP::ValueArg<uint32_t> mmpThreshold("M", "mmpLen", "In case of unmapped reads/mates try again with 9 mer hash and recover", false, 15, "positive integer");
+
   cmd.add(index);
   cmd.add(noout);
 
@@ -641,6 +648,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(consistent);
   cmd.add(quiet);
   cmd.add(remap);
+  cmd.add(mmpThreshold);
 
   auto rawConsoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
   auto consoleSink =
@@ -705,6 +713,7 @@ int rapMapSAMap(int argc, char* argv[]) {
     mopts.fuzzy = fuzzy.getValue();
     mopts.quiet = quiet.getValue();
     mopts.remap = remap.getValue();
+    mopts.mmpThreshold = mmpThreshold.getValue();
 
     if (quasiCov.isSet() and !sensitive.isSet()) {
         consoleLog->info("The --quasiCoverage option is set to {}, but the --sensitive flag was not set. The former implies the later. Enabling sensitive mode.", quasiCov.getValue());

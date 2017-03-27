@@ -51,6 +51,8 @@ public:
    * it **/
   void setMaxInterval(OffsetT maxInterval) { maxInterval_ = maxInterval; }
 
+  void setMMPThreshold(uint32_t mmpThreshold) { mmpThreshold_ = mmpThreshold; }
+
   /** Get the maximum allowable suffix array interval **/
   OffsetT getMaxInterval(OffsetT maxInterval) const { return maxInterval_; }
 
@@ -98,6 +100,7 @@ public:
                   SASearcher<RapMapIndexT>& saSearcher,
                   rapmap::utils::MateStatus mateStatus,
                   bool remap = false,
+                  uint32_t mmpThreshold=15,
                   bool consistentHits = false) {
 
     using QuasiAlignment = rapmap::utils::QuasiAlignment;
@@ -120,6 +123,16 @@ public:
          k = rapmap::utils::my_mer9::k() ;
 
     }
+
+    //set mac interval
+    auto newMaxInterval = SA.size()/std::pow(4,k);
+    if(newMaxInterval > maxInterval_ && remap){
+        setMaxInterval(SA.size()/std::pow(4,k));
+    }else if(remap){
+        setMaxInterval(newMaxInterval*2);
+    }
+
+    if(remap) setMMPThreshold(mmpThreshold);
     //std::cout << k << " " << int(remap) << "\n";
     //auto k = typename MerT::k() ;
     auto readStartIt = read.begin();
@@ -714,7 +727,7 @@ private:
 
           auto bigk = rapmap::utils::my_mer::k() ;
           if(remap){
-              if(matchedLen > 14){
+              if(matchedLen > mmpThreshold_){
                 //std::cout << "k: " << k << " MMP Length: "<<matchedLen << "\n";
                 saInts.emplace_back(lb, ub, matchedLen, queryStart, lcpLength,isRC);
               }
@@ -764,8 +777,11 @@ private:
                          strandHits, otherStrandHits, kmerScores);
             }
           } // we didn't end the search by falling off the end
-        }   // This hit was worth recording --- occurred fewer then maxInterval_
+        // This hit was worth recording --- occurred fewer then maxInterval_
             // times
+        }else{
+            if(diff > maxInterval_ && remap) std::cout<<"\nI got chucked out for diff: " <<diff<<" maxInterval_: "<<maxInterval_<<"\n";
+        }
 
         // If we've previously declared that the search that just occurred was
         // our last, then we're done!
@@ -830,6 +846,7 @@ private:
   bool disableNIP_;
   double covReq_;
   OffsetT maxInterval_;
+  uint32_t mmpThreshold_ ;
   bool strictCheck_;
   std::string rcBuffer_;
 };
