@@ -431,14 +431,14 @@ namespace rapmap {
 
         //lcpLength has is added @hirak
         uint8_t lcpLength;
-        bool toAlign = false;
-        uint32_t editD = 255 ;
+        bool toAlign{false};
+        int32_t editD{-1} ;
         std::string cigar;
 
         //same information for the matepair
         //which needs to be updated occasionally
-        bool mateToAlign = false;
-        uint32_t mateEditD = 255;
+        bool mateToAlign{false};
+        int32_t mateEditD{-1};
         std::string mateCigar;
 
         MateStatus mateStatus;

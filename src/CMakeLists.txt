@@ -12,6 +12,7 @@ set (RAPMAP_MAIN_SRCS
     EditDistance.cpp
     FastxParser.cpp
     rank9b.cpp
+    edlib.cpp
     stringpiece.cc
     xxhash.c
     bit_array.c

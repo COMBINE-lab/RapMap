@@ -340,7 +340,7 @@ void processReadsPairSA(paired_parser* parser,
                                    mopts->mmpThreshold,
                                    mopts->consistentHits);
 
-            if(!lh && mopts->remap){
+            if(leftHits.size() > 0 && mopts->remap){
                 //std::cout <<"Before remap "  <<leftHits.size() << "\n";
                 hitCollector9(rpair.first.seq,
                                    leftHits, saSearcher,
@@ -351,7 +351,7 @@ void processReadsPairSA(paired_parser* parser,
                 //std::cout << leftHits.size() << "\n";
             }
 
-            bool lhs = hitSECollector(rpair.first, leftHits);
+            if(leftHits.size() > 0) hitSECollector(rpair.first, leftHits);
 
             //@debug purpose
             auto readName = rapmap::utils::getReadName(rpair.first) ;
@@ -370,7 +370,7 @@ void processReadsPairSA(paired_parser* parser,
                                    mopts->mmpThreshold,
                                    mopts->consistentHits);
 
-            if(!rh && mopts->remap){
+            if(rightHits.size() > 0 && mopts->remap){
 
                 hitCollector9(rpair.second.seq,
                                    rightHits, saSearcher,
@@ -380,7 +380,7 @@ void processReadsPairSA(paired_parser* parser,
                                    mopts->consistentHits);
             }
 
-            bool rhs = hitSECollector(rpair.second, rightHits);
+           if(rightHits.size() > 0) hitSECollector(rpair.second, rightHits);
 
             if (mopts->fuzzy) {
                 rapmap::utils::mergeLeftRightHitsFuzzy(
