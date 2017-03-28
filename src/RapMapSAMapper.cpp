@@ -196,7 +196,7 @@ void processReadsSingleSA(single_parser * parser,
             hits.clear();
             hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, false, mopts->mmpThreshold, mopts->consistentHits);
             if(hits.size() == 0 && mopts->remap){
-                hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, true, mopts->mmpThreshold, mopts->consistentHits);
+                hitCollector9(read.seq, hits, saSearcher, MateStatus::SINGLE_END, true, mopts->mmpThreshold, mopts->consistentHits);
             }
             // @hirak
             // Here I collected all the QuasiALignments in
