@@ -340,7 +340,7 @@ void processReadsPairSA(paired_parser* parser,
                                    mopts->mmpThreshold,
                                    mopts->consistentHits);
 
-            if(leftHits.size() > 0 && mopts->remap){
+            if(leftHits.size() == 0 && mopts->remap){
                 //std::cout <<"Before remap "  <<leftHits.size() << "\n";
                 hitCollector9(rpair.first.seq,
                                    leftHits, saSearcher,
@@ -356,10 +356,12 @@ void processReadsPairSA(paired_parser* parser,
             //@debug purpose
             auto readName = rapmap::utils::getReadName(rpair.first) ;
 
+            /*
             if(readName == "SRR1265495.29995"){
                 for(auto leftHitsIt = leftHits.begin(); leftHitsIt != leftHits.end(); ++leftHitsIt)
                     std::cout << "\nAfter one call to SECollector edit distance: "<< leftHitsIt->editD<<"\n" ;
             }
+            */
             //end @debug purpose
 
 
@@ -370,7 +372,7 @@ void processReadsPairSA(paired_parser* parser,
                                    mopts->mmpThreshold,
                                    mopts->consistentHits);
 
-            if(rightHits.size() > 0 && mopts->remap){
+            if(rightHits.size() == 0 && mopts->remap){
 
                 hitCollector9(rpair.second.seq,
                                    rightHits, saSearcher,

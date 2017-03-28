@@ -411,6 +411,9 @@ namespace rapmap {
                         std::string* alignedName{nullptr};
                         std::string* unalignedName{nullptr};
                         std::string* readTemp{nullptr};
+                        bool toAlign;
+                        std::string cigar;
+                        int32_t editD;
                         //std::string* qualTemp{nullptr};
 
                         rapmap::utils::FixedWriter* cigarStr;
@@ -432,6 +435,12 @@ namespace rapmap {
                             haveRev = &haveRev1;
                             readTemp = &read1Temp;
                             //qualTemp = &qual1Temp;
+                            //
+                            //if left is aligned then
+                            //toAlign is qa
+                            toAlign = qa.toAlign;
+                            cigar = qa.cigar;
+                            editD = qa.editD;
                         } else { // right read
                             alignedName = &mateName;
                             unalignedName = &readName;
@@ -449,6 +458,9 @@ namespace rapmap {
                             haveRev = &haveRev2;
                             readTemp = &read2Temp;
                             //qualTemp = &qual2Temp;
+                            toAlign = qa.mateToAlign;
+                            cigar = qa.mateCigar;
+                            editD = qa.mateEditD;
                         }
 
                         // Reverse complement the read and reverse
@@ -468,13 +480,14 @@ namespace rapmap {
                         }
                         */
 
+                   if(toAlign){
                         rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
-                        sstream << alignedName->c_str() << "|ORF" << '\t' // QNAME
+                        sstream << alignedName->c_str() << "|E" << editD << '\t' // QNAME
                                 << flags << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
                                 << 1 << '\t' // MAPQ
-                                << cigarStr->c_str() << '\t' // CIGAR
+                                << cigar << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.pos+1 << '\t' // PNEXT (only 1 read in templte)
                                 << 0 << '\t' // TLEN (spec says 0, not read len)
@@ -496,7 +509,9 @@ namespace rapmap {
                             << *unalignedSeq << '\t' // SEQ
                             << "*\t" // QUAL
                             << numHitFlag << '\n';
+                        }
                     }
+
                     ++alnCtr;
                     // == SAM
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
