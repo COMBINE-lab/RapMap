@@ -124,12 +124,13 @@ public:
                   }
 
 
+                /*
                   if(readName == "SRR1265495.29995"){
                     std::cout << "\nRead Header: "<<readName ;
                     std::cout << "\nLCP Length: "<< (int)lcpLength ;
                     std::cout << "\nI am at the beginning of hit list, the edit distance is: " << startEditDistance << "\n" ;
                   }
-
+                */
 
                   startHit.editD = startEdlibResult.editDistance;
                   startEditDistance = startEdlibResult.editDistance;
@@ -203,12 +204,13 @@ public:
                                 thisEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(50, EDLIB_MODE_HW, EDLIB_TASK_PATH));
                               }
                               auto thisEditDistance = thisEdlibResult.editDistance ;
-
+                            /*
                              if(readName == "SRR1265495.29995"){
                                 std::cout << "\nRead Header: "<<readName ;
                                 std::cout << "\nLCP Length: "<< (int)lcpLength ;
                                 std::cout << "\nI am at the middle of hit list, the edit distance is: " << thisEditDistance << "\n" ;
                               }
+                              */
 
                               if(thisEditDistance != -1){
                                       //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
