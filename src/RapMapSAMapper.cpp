@@ -133,6 +133,7 @@ struct MappingOpts {
     bool quiet{false};
     bool remap{false};
     uint32_t mmpThreshold{15};
+    int32_t editThreshold{10};
 };
 
 template <typename RapMapIndexT, typename MutexT>
@@ -203,7 +204,7 @@ void processReadsSingleSA(single_parser * parser,
             // QuasiAlignment Object vector hits
             // which right now contains lcpLengths too
             // time to call the new function
-            hitSECollector(read, hits);
+            hitSECollector(read, hits, mopts->editThreshold);
 
             auto numHits = hits.size();
             hctr.totHits += numHits;
@@ -351,7 +352,7 @@ void processReadsPairSA(paired_parser* parser,
                 //std::cout << leftHits.size() << "\n";
             }
 
-            if(leftHits.size() > 0) hitSECollector(rpair.first, leftHits);
+            if(leftHits.size() > 0) hitSECollector(rpair.first, leftHits, mopts->editThreshold);
 
             //@debug purpose
             auto readName = rapmap::utils::getReadName(rpair.first) ;
@@ -382,7 +383,7 @@ void processReadsPairSA(paired_parser* parser,
                                    mopts->consistentHits);
             }
 
-           if(rightHits.size() > 0) hitSECollector(rpair.second, rightHits);
+           if(rightHits.size() > 0) hitSECollector(rpair.second, rightHits, mopts->editThreshold);
 
             if (mopts->fuzzy) {
                 rapmap::utils::mergeLeftRightHitsFuzzy(
@@ -634,6 +635,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   //flag if you want remap
   TCLAP::SwitchArg remap("g", "remap", "In case of unmapped reads/mates try again with 9 mer hash and recover", false);
   TCLAP::ValueArg<uint32_t> mmpThreshold("M", "mmpLen", "In case of unmapped reads/mates try again with 9 mer hash and recover", false, 15, "positive integer");
+  TCLAP::ValueArg<int32_t> editThreshold("E", "editThreshold", "Edit score to allow", false, 10, "positive integer");
 
   cmd.add(index);
   cmd.add(noout);
@@ -652,6 +654,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(quiet);
   cmd.add(remap);
   cmd.add(mmpThreshold);
+  cmd.add(editThreshold);
 
   auto rawConsoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
   auto consoleSink =
@@ -717,6 +720,7 @@ int rapMapSAMap(int argc, char* argv[]) {
     mopts.quiet = quiet.getValue();
     mopts.remap = remap.getValue();
     mopts.mmpThreshold = mmpThreshold.getValue();
+    mopts.editThreshold = editThreshold.getValue();
 
     if (quasiCov.isSet() and !sensitive.isSet()) {
         consoleLog->info("The --quasiCoverage option is set to {}, but the --sensitive flag was not set. The former implies the later. Enabling sensitive mode.", quasiCov.getValue());

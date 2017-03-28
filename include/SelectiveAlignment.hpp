@@ -31,7 +31,8 @@ public:
 
    template <typename ReadStructT>
        bool operator()(ReadStructT& readT,
-                  std::vector<rapmap::utils::QuasiAlignment>& hits
+                  std::vector<rapmap::utils::QuasiAlignment>& hits,
+                  int32_t editThreshold
                   ) {
 
 	  //go through the lcp length of each SA Interval for each hit
@@ -117,10 +118,10 @@ public:
 		  //startEditDistance = edit_distance(read, thisTxpSeq, 50) ;
                   EdlibAlignResult startEdlibResult;
                   if(startHit.fwd){
-                    startEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(50, EDLIB_MODE_HW, EDLIB_TASK_PATH));
+                    startEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_HW, EDLIB_TASK_PATH));
                   }else{
                     auto revRead = rapmap::utils::reverseComplement(read);
-                    startEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(50, EDLIB_MODE_HW, EDLIB_TASK_PATH));
+                    startEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_HW, EDLIB_TASK_PATH));
                   }
 
 
@@ -198,10 +199,10 @@ public:
 
                               if(hitsIt->fwd){
 
-                                thisEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(50, EDLIB_MODE_HW, EDLIB_TASK_PATH));
+                                thisEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig( editThreshold, EDLIB_MODE_HW, EDLIB_TASK_PATH));
                               }else{
                                 auto revRead = rapmap::utils::reverseComplement(read);
-                                thisEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(50, EDLIB_MODE_HW, EDLIB_TASK_PATH));
+                                thisEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_HW, EDLIB_TASK_PATH));
                               }
                               auto thisEditDistance = thisEdlibResult.editDistance ;
                             /*
