@@ -405,14 +405,14 @@ public:
     // If we had > 1 forward hit
     if (fwdSAInts.size() > 1) {
 
-      if(remap) std::cout << "\nfwd Hit size " << fwdSAInts.size() << "\n";
+      //if(remap) std::cout << "\nfwd Hit size " << fwdSAInts.size() << "\n";
       auto processedHits = rapmap::hit_manager::intersectSAHits(
           fwdSAInts, *rmi_, readLen, consistentHits);
-      if(remap) std::cout << "\nAfter intersectSAHits " << processedHits.size() << "\n";
-      if(remap) std::cout << "\n" << hits.size() << "\n";
+      //if(remap) std::cout << "\nAfter intersectSAHits " << processedHits.size() << "\n";
+      //if(remap) std::cout << "\n" << hits.size() << "\n";
       rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,hits, mateStatus);
 
-      if(remap) std::cout << "\n" << hits.size() << "\n";
+      //if(remap) std::cout << "\n" << hits.size() << "\n";
 
     } else if (fwdSAInts.size() == 1) { // only 1 hit!
       auto& saIntervalHit = fwdSAInts.front();
@@ -780,7 +780,7 @@ private:
         // This hit was worth recording --- occurred fewer then maxInterval_
             // times
         }else{
-            if(diff > maxInterval_ && remap) std::cout<<"\nI got chucked out for diff: " <<diff<<" maxInterval_: "<<maxInterval_<<"\n";
+            //if(diff > maxInterval_ && remap) std::cout<<"\nI got chucked out for diff: " <<diff<<" maxInterval_: "<<maxInterval_<<"\n";
         }
 
         // If we've previously declared that the search that just occurred was
