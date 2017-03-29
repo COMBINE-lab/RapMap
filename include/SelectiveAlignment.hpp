@@ -55,7 +55,7 @@ public:
 	  auto lcpLength = startHit.lcpLength ;
 	  auto readLen = read.length();
 
-          uint8_t editThreshold = readLen/2 ;
+          //uint8_t editThreshold = readLen/2 ;
 	  int startEditDistance = 0;
 
             auto& readName = readT.name;
