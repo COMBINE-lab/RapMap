@@ -13,6 +13,8 @@
 #include <iostream>
 #include <iterator>
 
+#include "dtl/dtl.hpp"
+
 static constexpr int8_t rc_table[128] = {
       78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 15
       78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 31
@@ -158,10 +160,10 @@ public:
 
                   EdlibAlignResult startEdlibResult;
                   if(startHit.fwd){
-                    startEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_PATH));
+                    //startEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_PATH));
                   }else{
                     auto revRead = rapmap::utils::reverseComplement(read);
-                    startEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_PATH));
+                    //startEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_PATH));
                   }
 
 
@@ -189,7 +191,7 @@ public:
 
 
           if(hits.size() > 1){
-            if (lcpLength > readLen/2){
+            if (lcpLength >= readLen){
                       if(startEditDistance != -1){
                           for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
                                       //selectedHits.emplace_back(hitsIt->tid,hitsIt->pos,hitsIt->fwd,hitsItreadLen->readLen,startEditDistance,"II");
