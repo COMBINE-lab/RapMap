@@ -13,7 +13,7 @@
 #include <iostream>
 #include <iterator>
 
-#include "dtl/dtl.hpp"
+//#include "dtl/dtl.hpp"
 
 static constexpr int8_t rc_table[128] = {
       78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 15
@@ -191,7 +191,7 @@ public:
 
 
           if(hits.size() > 1){
-            if (lcpLength >= readLen){
+            if (lcpLength > readLen/2){
                       if(startEditDistance != -1){
                           for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
                                       //selectedHits.emplace_back(hitsIt->tid,hitsIt->pos,hitsIt->fwd,hitsItreadLen->readLen,startEditDistance,"II");
