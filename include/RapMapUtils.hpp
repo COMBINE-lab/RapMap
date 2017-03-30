@@ -431,6 +431,8 @@ namespace rapmap {
 
         //lcpLength has is added @hirak
         uint8_t lcpLength;
+
+        int32_t hamD{-1};
         bool toAlign{false};
         int32_t editD{-1} ;
         std::string cigar;

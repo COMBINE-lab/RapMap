@@ -13,8 +13,43 @@
 #include <iostream>
 #include <iterator>
 
+static constexpr int8_t rc_table[128] = {
+      78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 15
+      78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 31
+      78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 787
+      78, 78,  78, 78,  78,  78,  78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 63
+      78, 84, 78, 71, 78,  78,  78, 67, 78, 78, 78, 78,  78, 78, 78, 78, // 79
+      78, 78,  78, 78,  65, 65, 78, 78,  78, 78, 78, 78,  78, 78, 78, 78, // 95
+      78, 84, 78, 71, 78,  78,  78, 67, 78, 78, 78, 78,  78, 78, 78, 78, // 101
+      78, 78,  78, 78,  65, 65, 78, 78,  78, 78, 78, 78,  78, 78, 78, 78  // 127
+  };
 
+/*
+template <typename OffsetT>
+int32_t SECollector::hammingDist(QuasiAlignment& qa, std::string& read, std::string& txpSeq,  OffsetT maxOffset, int maxDist){
+       int32_t hamming = 0;
+       auto minOffset = (qa.pos < 0) ? -(qa.pos) : 0;
+       hamming += minOffset;
+       //int maxOffset = std::min(static_cast<int>(read.size()), static_cast<int>(transcript.RefLength - qa.pos));
+       hamming += (read.size() - maxOffset);
+       //const char* txpSeq = transcript.Sequence();
+       //const char* readSeq{nullptr};
+       auto readLen = read.length();
+       if (qa.fwd) {
+       for (int j=minOffset; j<maxOffset; ++j) {
+            hamming += (read[j]!=txpSeq[qa.pos+j]);
+                if (hamming > maxDist) { return hamming;  }
+            }
+        } else {
+            for (int j=minOffset; j<maxOffset; ++j) {
+             hamming += ((char)rc_table[(uint8_t)read[(readLen-j)-1]] != txpSeq[qa.pos+j]);
+                if (hamming > maxDist) { return hamming;  }
+            }
+        }
+        return hamming;
 
+}
+*/
 
 
 
@@ -26,7 +61,7 @@ public:
     SECollector(RapMapIndexT* rmi)
         : rmi_(rmi) {}
 
-
+    //int32_t hammingDist(QuasiAlignment& q, std::string& read, std::string& seq,  Offset trancriptLen, int maxDist);
 
 
    template <typename ReadStructT>
@@ -87,7 +122,7 @@ public:
                   uint32_t txpID = startHit.tid ;
                   int32_t pos = startHit.pos;
                   int32_t startOffset, endOffset ;
-                  OffsetT globalPos = pos + txpStarts[txpID];
+                  OffsetT globalPos = txpStarts[txpID];
                   OffsetT thisTxpLen = txpLens[txpID];
 
                   // start and end would
@@ -96,6 +131,7 @@ public:
 
                   // If the start is before start
                   // of transcript
+                  /*
                   if(pos >= 5){
                       globalPos = globalPos - 5;
                   }else{
@@ -107,21 +143,25 @@ public:
                   }else{
                       endOffset = thisTxpLen - pos ;
                   }
+                  */
 
-                  //error checking
-                  if(globalPos > concatText.length()){
-                      std::cout << "What is wrong ! global position " << globalPos << " bigger than " << concatText.length() << " Length of transcript " << thisTxpLen  << "\n" ;
-                  }
+                  auto overHangLeft = (pos < 0)?-(pos):0;
+                  auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
 
-                  auto thisTxpSeq = concatText.substr(globalPos, endOffset);
-		  //compute edit distance
-		  //startEditDistance = edit_distance(read, thisTxpSeq, 50) ;
+                  globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
+                  auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
+                  extend = (overHangRight > 0)?(extend-overHangRight):extend;
+
+                  auto thisTxpSeq = concatText.substr(globalPos, extend);
+
+
+
                   EdlibAlignResult startEdlibResult;
                   if(startHit.fwd){
-                    startEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_HW, EDLIB_TASK_PATH));
+                    startEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_PATH));
                   }else{
                     auto revRead = rapmap::utils::reverseComplement(read);
-                    startEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_HW, EDLIB_TASK_PATH));
+                    startEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_PATH));
                   }
 
 
@@ -168,10 +208,10 @@ public:
                               uint32_t txpID = hitsIt->tid ;
                               int32_t pos = hitsIt->pos;
                               int32_t startOffset, endOffset ;
-                              OffsetT globalPos = pos + txpStarts[txpID];
+                              OffsetT globalPos = txpStarts[txpID];
                               OffsetT thisTxpLen = txpLens[txpID];
-                      //error checkingo
-                      //
+
+                              /*
                               if(pos >= 5){
                                   globalPos = globalPos - 5;
                               }else{
@@ -183,35 +223,29 @@ public:
                               }else{
                                   endOffset = thisTxpLen - pos ;
                               }
+                              */
 
-                              if(globalPos > concatText.length()){
-                                  std::cout << " What is wrong ! global position " << globalPos << " bigger than " << concatText.length() << " for tid: " << txpID  << "\n" ;
-                                  std::cout << " transcript start position  "<< txpStarts[txpID] << " transcript Length: " << thisTxpLen << "\n" ;
-                                  std::cout << " Number of transcripts " << txpLens.size() << "\n" ;
-                              }
+                              auto overHangLeft = (pos < 0)?-(pos):0;
+                              auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
 
-                              auto thisTxpSeq = concatText.substr(globalPos, endOffset);
-                              //compute edit distance
+                              globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
+                              auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
+                              extend = (overHangRight > 0)?(extend-overHangRight):extend;
 
+                              auto thisTxpSeq = concatText.substr(globalPos, extend);
 
                               //auto thisEditDistance = edit_distance(read, thisTxpSeq, 50) ;
                               EdlibAlignResult thisEdlibResult;
 
                               if(hitsIt->fwd){
 
-                                thisEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig( editThreshold, EDLIB_MODE_HW, EDLIB_TASK_PATH));
+                                thisEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig( editThreshold, EDLIB_MODE_NW, EDLIB_TASK_PATH));
                               }else{
                                 auto revRead = rapmap::utils::reverseComplement(read);
-                                thisEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_HW, EDLIB_TASK_PATH));
+                                thisEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_PATH));
                               }
                               auto thisEditDistance = thisEdlibResult.editDistance ;
-                            /*
-                             if(readName == "SRR1265495.29995"){
-                                std::cout << "\nRead Header: "<<readName ;
-                                std::cout << "\nLCP Length: "<< (int)lcpLength ;
-                                std::cout << "\nI am at the middle of hit list, the edit distance is: " << thisEditDistance << "\n" ;
-                              }
-                              */
+
 
                               if(thisEditDistance != -1){
                                       //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
