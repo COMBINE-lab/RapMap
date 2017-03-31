@@ -408,11 +408,16 @@ public:
 
       //if(remap) std::cout << "\nfwd Hit size " << fwdSAInts.size() << "\n";
         if(!remap){
-          auto processedHits = rapmap::hit_manager::intersectSAHits(
-              fwdSAInts, *rmi_, readLen, consistentHits);
-          //if(remap) std::cout << "\nAfter intersectSAHits " << processedHits.size() << "\n";
-          //if(remap) std::cout << "\n" << hits.size() << "\n";
-          rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, false, mateStatus);
+
+            auto processedHits = rapmap::hit_manager::unionSAHits(
+           fwdSAInts, *rmi_, readLen, consistentHits);
+                 rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
+                                                                hits, false, mateStatus);
+
+
+          //auto processedHits = rapmap::hit_manager::intersectSAHits(
+              //fwdSAInts, *rmi_, readLen, consistentHits);
+          //rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, false, mateStatus);
         }else{
             auto processedHits = rapmap::hit_manager::intersectReSAHits(fwdSAInts, goldenTids,*rmi_, readLen, consistentHits);
             rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, true, mateStatus);
@@ -464,10 +469,14 @@ public:
     // If we had > 1 rc hit
     if (rcSAInts.size() > 1) {
         if(!remap){
-          auto processedHits = rapmap::hit_manager::intersectSAHits(
-              rcSAInts, *rmi_, readLen, consistentHits);
-          rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
-                                                   hits, false,  mateStatus);
+            auto processedHits = rapmap::hit_manager::unionSAHits(
+                      rcSAInts, *rmi_, readLen, consistentHits);
+            rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
+                                                                           hits, false, mateStatus);
+          //auto processedHits = rapmap::hit_manager::intersectSAHits(
+              //rcSAInts, *rmi_, readLen, consistentHits);
+          //rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
+                                                   //hits, false,  mateStatus);
         }else{
             auto processedHits = rapmap::hit_manager::intersectReSAHits(rcSAInts, goldenTids,*rmi_, readLen, consistentHits);
             rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, true, mateStatus);

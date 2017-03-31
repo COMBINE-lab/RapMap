@@ -104,6 +104,13 @@ namespace rapmap {
                 RapMapIndexT& rmi,
                 SAProcessedHitVec& outStructs);
 
+      template <typename RapMapIndexT>
+      void unionSAIntervalWithOutput(SAIntervalHit<typename RapMapIndexT::IndexType>& h,
+                                         RapMapIndexT& rmi,
+                                         uint32_t intervalCounter,
+                                         SAHitMap& outHits);
+
+
         /*
         void intersectSAIntervalWithOutput3(SAIntervalHit& h,
                 RapMapSAIndex& rmi,
@@ -133,6 +140,15 @@ namespace rapmap {
         std::vector<ProcessedSAHit> intersectSAHits2(
                 std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi);
+
+        template <typename RapMapIndexT>
+        SAHitMap unionSAHits(
+                           std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
+                           RapMapIndexT& rmi,
+                           size_t readLen,
+                           bool strictFilter
+                           );
+
     }
 }
 

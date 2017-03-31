@@ -405,7 +405,7 @@ void processReadsPairSA(paired_parser* parser,
                         readLen, mopts->maxNumHits, tooManyHits, hctr);
             }
 
-            if(mopts->fuzzy){
+            if(mopts->fuzzy && mopts->remap){
                 auto& startHit = jointHits.front();
                 if(startHit.mateStatus == rapmap::utils::MateStatus::PAIRED_END_LEFT){
                     std::vector<uint32_t> goldenTids ;
