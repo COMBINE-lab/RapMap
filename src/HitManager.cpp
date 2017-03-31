@@ -62,13 +62,14 @@ namespace rapmap {
                         uint32_t readLen,
                         uint32_t maxDist,
                         std::vector<QuasiAlignment>& hits,
+                        bool remapFlag,
                         MateStatus mateStatus){
                 //bool foundHit{false};
                 // One processed hit per transcript
 	            //auto startOffset = hits.size();
                 for (auto& ph : processedHits) {
                         // If this is an *active* position list
-                        if (ph.second.active) {
+                        if (ph.second.active || remapFlag) {
                                 auto tid = ph.first;
 				auto minPosIt = std::min_element(ph.second.tqvec.begin(),
 						ph.second.tqvec.end(),
@@ -596,6 +597,44 @@ namespace rapmap {
         }
 
         template <typename RapMapIndexT>
+            SAHitMap intersectReSAHits(
+                std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
+                std::vector<uint32_t>& goldenTids,
+                RapMapIndexT& rmi,
+                size_t readLen,
+                bool strictFilter
+                ){
+                using OffsetT = typename RapMapIndexT::IndexType;
+                // We iterate over the members
+                // of the SA intervals
+                // and find out if that intersects with golden
+                // transcripts.
+                // If yes then we are done and
+                // turn this to alignment
+                // otherwise we would toss the read
+
+
+                SAHitMap outHits ;
+                auto& SA = rmi.SA;
+                auto& txpStarts = rmi.txpOffsets ;
+
+                for(auto& h : inHits){
+                    for(OffsetT i = h.begin ; i < h.end ; ++i){
+                        auto globalPos = SA[i];
+                        auto tid = rmi.transcriptAtPosition(globalPos);
+                        if(std::find(std::begin(goldenTids),std::end(goldenTids),tid) != std::end(goldenTids)){
+                            auto txpPos = globalPos - txpStarts[tid] ;
+
+                            outHits[tid].tqvec.emplace_back(txpPos, h.queryPos, h.lcpLength, h.queryRC);
+                        }
+
+                    }
+                }
+                return outHits ;
+
+            }
+
+        template <typename RapMapIndexT>
         SAHitMap intersectSAHits(
                 std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi,
@@ -713,6 +752,14 @@ namespace rapmap {
                                                     SAIndex64BitDense& rmi, size_t readLen, bool strictFilter);
 
         template
+        SAHitMap intersectReSAHits<SAIndex32BitDense>(std::vector<SAIntervalHit<int32_t>>& inHits, std::vector<uint32_t>& goldenTids,
+                                                    SAIndex32BitDense& rmi, size_t readLen, bool strictFilter);
+
+        template
+        SAHitMap intersectReSAHits<SAIndex64BitDense>(std::vector<SAIntervalHit<int64_t>>& inHits, std::vector<uint32_t>& goldenTids,
+                                                    SAIndex64BitDense& rmi, size_t readLen, bool strictFilter);
+
+        template
         void intersectSAIntervalWithOutput<SAIndex32BitPerfect>(SAIntervalHit<int32_t>& h,
                                                                 SAIndex32BitPerfect& rmi,
                                                                 uint32_t intervalCounter,
@@ -730,6 +777,14 @@ namespace rapmap {
 
         template
         SAHitMap intersectSAHits<SAIndex64BitPerfect>(std::vector<SAIntervalHit<int64_t>>& inHits,
+                                                      SAIndex64BitPerfect& rmi, size_t readLen, bool strictFilter);
+
+        template
+            SAHitMap intersectReSAHits<SAIndex32BitPerfect>(std::vector<SAIntervalHit<int32_t>>& inHits, std::vector<uint32_t>& goldenTids,
+                                                      SAIndex32BitPerfect& rmi, size_t readLen, bool strictFilter);
+
+        template
+        SAHitMap intersectReSAHits<SAIndex64BitPerfect>(std::vector<SAIntervalHit<int64_t>>& inHits, std::vector<uint32_t>& goldenTids,
                                                       SAIndex64BitPerfect& rmi, size_t readLen, bool strictFilter);
     }
 }

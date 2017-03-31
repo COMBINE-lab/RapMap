@@ -181,6 +181,8 @@ void processReadsSingleSA(single_parser * parser,
 
     SASearcher<RapMapIndexT> saSearcher(&rmi);
 
+    std::vector<uint32_t> dummy ;
+
     uint32_t orphanStatus{0};
     // Get the read group by which this thread will
     // communicate with the parser (*once per-thread*)
@@ -195,9 +197,9 @@ void processReadsSingleSA(single_parser * parser,
 	    readLen = read.seq.length();//j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
-            hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, false, mopts->mmpThreshold, mopts->consistentHits);
+            hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, dummy, false, mopts->mmpThreshold, mopts->consistentHits);
             if(hits.size() == 0 && mopts->remap){
-                hitCollector9(read.seq, hits, saSearcher, MateStatus::SINGLE_END, true, mopts->mmpThreshold, mopts->consistentHits);
+                hitCollector9(read.seq, hits, saSearcher, MateStatus::SINGLE_END, dummy, true, mopts->mmpThreshold, mopts->consistentHits);
             }
             // @hirak
             // Here I collected all the QuasiALignments in
@@ -320,6 +322,8 @@ void processReadsPairSA(paired_parser* parser,
     // communicate with the parser (*once per-thread*)
     auto rg = parser->getReadGroup();
 
+    std::vector<uint32_t> dummy ;
+
     while (parser->refill(rg)) {
       //while(true) {
       //typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
@@ -337,10 +341,12 @@ void processReadsPairSA(paired_parser* parser,
             bool lh = hitCollector(rpair.first.seq,
                                    leftHits, saSearcher,
                                    MateStatus::PAIRED_END_LEFT,
+                                   dummy,
                                    false,
                                    mopts->mmpThreshold,
                                    mopts->consistentHits);
 
+            /*
             if(leftHits.size() == 0 && mopts->remap){
                 //std::cout <<"Before remap "  <<leftHits.size() << "\n";
                 hitCollector9(rpair.first.seq,
@@ -350,7 +356,7 @@ void processReadsPairSA(paired_parser* parser,
                                    mopts->mmpThreshold,
                                    mopts->consistentHits);
                 //std::cout << leftHits.size() << "\n";
-            }
+            }*/
 
             if(leftHits.size() > 0) hitSECollector(rpair.first, leftHits, mopts->editThreshold);
 
@@ -369,10 +375,12 @@ void processReadsPairSA(paired_parser* parser,
             bool rh = hitCollector(rpair.second.seq,
                                    rightHits, saSearcher,
                                    MateStatus::PAIRED_END_RIGHT,
+                                   dummy,
                                    false,
                                    mopts->mmpThreshold,
                                    mopts->consistentHits);
 
+            /*
             if(rightHits.size() == 0 && mopts->remap){
 
                 hitCollector9(rpair.second.seq,
@@ -381,7 +389,7 @@ void processReadsPairSA(paired_parser* parser,
                                    true,
                                    mopts->mmpThreshold,
                                    mopts->consistentHits);
-            }
+            }*/
 
            if(rightHits.size() > 0) hitSECollector(rpair.second, rightHits, mopts->editThreshold);
 
@@ -395,6 +403,51 @@ void processReadsPairSA(paired_parser* parser,
                 rapmap::utils::mergeLeftRightHits(
                         leftHits, rightHits, jointHits,
                         readLen, mopts->maxNumHits, tooManyHits, hctr);
+            }
+
+            if(mopts->fuzzy){
+                auto& startHit = jointHits.front();
+                if(startHit.mateStatus == rapmap::utils::MateStatus::PAIRED_END_LEFT){
+                    std::vector<uint32_t> goldenTids ;
+                    for(auto& qa : jointHits){
+                        goldenTids.push_back(qa.tid);
+                    }
+                rightHits.clear();
+                hitCollector9(rpair.second.seq,
+                                   rightHits, saSearcher,
+                                   MateStatus::PAIRED_END_RIGHT,
+                                   goldenTids,
+                                   true,
+                                   mopts->mmpThreshold,
+                                   mopts->consistentHits);
+                    if(rightHits.size() > 0){
+                        jointHits.clear();
+                        rapmap::utils::mergeLeftRightHitsFuzzy(
+                                lh, rh,
+                                leftHits, rightHits, jointHits,
+                                readLen, mopts->maxNumHits, tooManyHits, hctr);
+                    }
+                }else if(startHit.mateStatus == rapmap::utils::MateStatus::PAIRED_END_RIGHT){
+                    std::vector<uint32_t> goldenTids ;
+                    for(auto& qa : jointHits){
+                        goldenTids.push_back(qa.tid);
+                    }
+                    leftHits.clear();
+                hitCollector9(rpair.first.seq,
+                                   leftHits, saSearcher,
+                                   MateStatus::PAIRED_END_LEFT,
+                                   goldenTids,
+                                   true,
+                                   mopts->mmpThreshold,
+                                   mopts->consistentHits);
+                    if(leftHits.size() > 0){
+                        jointHits.clear();
+                        rapmap::utils::mergeLeftRightHitsFuzzy(
+                                lh, rh,
+                                leftHits, rightHits, jointHits,
+                                readLen, mopts->maxNumHits, tooManyHits, hctr);
+                    }
+                }
             }
 
             hctr.totHits += jointHits.size();

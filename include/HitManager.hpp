@@ -72,6 +72,7 @@ namespace rapmap {
                 uint32_t readLen,
                 uint32_t maxDist,
                 std::vector<QuasiAlignment>& hits,
+                bool remap,
                 MateStatus mateStatus);
 
         // Return hits from processedHits where position constraints
@@ -96,7 +97,7 @@ namespace rapmap {
                                            RapMapIndexT& rmi,
                                            uint32_t intervalCounter,
                                            SAHitMap& outHits);
-                                           
+
 
         template <typename RapMapIndexT>
         void intersectSAIntervalWithOutput2(SAIntervalHit<typename RapMapIndexT::IndexType>& h,
@@ -114,9 +115,17 @@ namespace rapmap {
                 RapMapIndex& rmi);
 
         template <typename RapMapIndexT>
+        SAHitMap intersectReSAHits(
+                                std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
+                                std::vector<uint32_t>& goldenTids,
+                                RapMapIndexT& rmi,
+                                size_t readLen,
+                                bool strictFilter = false);
+
+        template <typename RapMapIndexT>
         SAHitMap intersectSAHits(
                                  std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
-                                 RapMapIndexT& rmi, 
+                                 RapMapIndexT& rmi,
                                  size_t readLen,
                                  bool strictFilter=false);
 

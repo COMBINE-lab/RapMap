@@ -99,6 +99,7 @@ public:
                   std::vector<rapmap::utils::QuasiAlignment>& hits,
                   SASearcher<RapMapIndexT>& saSearcher,
                   rapmap::utils::MateStatus mateStatus,
+                  std::vector<uint32_t> goldenTids,
                   bool remap = false,
                   uint32_t mmpThreshold=15,
                   bool consistentHits = false) {
@@ -406,11 +407,16 @@ public:
     if (fwdSAInts.size() > 1) {
 
       //if(remap) std::cout << "\nfwd Hit size " << fwdSAInts.size() << "\n";
-      auto processedHits = rapmap::hit_manager::intersectSAHits(
-          fwdSAInts, *rmi_, readLen, consistentHits);
-      //if(remap) std::cout << "\nAfter intersectSAHits " << processedHits.size() << "\n";
-      //if(remap) std::cout << "\n" << hits.size() << "\n";
-      rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,hits, mateStatus);
+        if(!remap){
+          auto processedHits = rapmap::hit_manager::intersectSAHits(
+              fwdSAInts, *rmi_, readLen, consistentHits);
+          //if(remap) std::cout << "\nAfter intersectSAHits " << processedHits.size() << "\n";
+          //if(remap) std::cout << "\n" << hits.size() << "\n";
+          rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, false, mateStatus);
+        }else{
+            auto processedHits = rapmap::hit_manager::intersectReSAHits(fwdSAInts, goldenTids,*rmi_, readLen, consistentHits);
+            rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, true, mateStatus);
+        }
 
       //if(remap) std::cout << "\n" << hits.size() << "\n";
 
@@ -423,8 +429,15 @@ public:
         // the offset into this transcript
         auto pos = globalPos - txpStarts[txpID];
         int32_t hitPos = pos - saIntervalHit.queryPos;
-        hits.emplace_back(txpID, hitPos, true, readLen,saIntervalHit.lcpLength);
-        hits.back().mateStatus = mateStatus;
+        if(!remap){
+            hits.emplace_back(txpID, hitPos, true, readLen,saIntervalHit.lcpLength);
+            hits.back().mateStatus = mateStatus;
+        }else{
+            if(std::find(std::begin(goldenTids), std::end(goldenTids), txpID) != std::end(goldenTids)){
+                hits.emplace_back(txpID, hitPos, true, readLen,saIntervalHit.lcpLength);
+                hits.back().mateStatus = mateStatus;
+            }
+        }
       }
       // Now sort by transcript ID (then position) and eliminate
       // duplicates
@@ -450,10 +463,16 @@ public:
     auto rcHitsStart = fwdHitsEnd;
     // If we had > 1 rc hit
     if (rcSAInts.size() > 1) {
-      auto processedHits = rapmap::hit_manager::intersectSAHits(
-          rcSAInts, *rmi_, readLen, consistentHits);
-      rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
-                                               hits, mateStatus);
+        if(!remap){
+          auto processedHits = rapmap::hit_manager::intersectSAHits(
+              rcSAInts, *rmi_, readLen, consistentHits);
+          rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
+                                                   hits, false,  mateStatus);
+        }else{
+            auto processedHits = rapmap::hit_manager::intersectReSAHits(rcSAInts, goldenTids,*rmi_, readLen, consistentHits);
+            rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist, hits, true, mateStatus);
+
+        }
     } else if (rcSAInts.size() == 1) { // only 1 hit!
       auto& saIntervalHit = rcSAInts.front();
       auto initialSize = hits.size();
@@ -463,8 +482,17 @@ public:
         // the offset into this transcript
         auto pos = globalPos - txpStarts[txpID];
         int32_t hitPos = pos - saIntervalHit.queryPos;
-        hits.emplace_back(txpID, hitPos, false, readLen, saIntervalHit.lcpLength);
-        hits.back().mateStatus = mateStatus;
+        //hits.emplace_back(txpID, hitPos, false, readLen, saIntervalHit.lcpLength);
+        //hits.back().mateStatus = mateStatus;
+        if(!remap){
+            hits.emplace_back(txpID, hitPos, false, readLen,saIntervalHit.lcpLength);
+            hits.back().mateStatus = mateStatus;
+        }else{
+            if(std::find(std::begin(goldenTids), std::end(goldenTids), txpID) != std::end(goldenTids)){
+                hits.emplace_back(txpID, hitPos, false, readLen,saIntervalHit.lcpLength);
+                hits.back().mateStatus = mateStatus;
+            }
+        }
       }
       // Now sort by transcript ID (then position) and eliminate
       // duplicates
