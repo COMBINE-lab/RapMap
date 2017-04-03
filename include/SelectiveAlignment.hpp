@@ -191,7 +191,7 @@ public:
 
 
           if(hits.size() > 1){
-            if (lcpLength >= readLen){
+            if ( false &&  lcpLength >= readLen){
                       if(startEditDistance != -1){
                           for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
                                       //selectedHits.emplace_back(hitsIt->tid,hitsIt->pos,hitsIt->fwd,hitsItreadLen->readLen,startEditDistance,"II");
