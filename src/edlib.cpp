@@ -6,6 +6,7 @@
 #include <vector>
 #include <cstring>
 #include <cassert>
+#include <vector>
 
 using namespace std;
 
@@ -16,6 +17,13 @@ static const Word HIGH_BIT_MASK = WORD_1 << (WORD_SIZE - 1);  // 100..00
 
 // Data needed to find alignment.
 struct AlignmentData {
+  /*
+  std::vector<Word> Ps;
+  std::vector<Word> Ms;
+  std::vector<int> scores;
+  std::vector<int> firstBlocks;
+  std::vector<int> lastBlocks;
+  */
     Word* Ps;
     Word* Ms;
     int* scores;
@@ -42,20 +50,18 @@ struct AlignmentData {
     }
 };
 
-struct Block {
-    Word P;  // Pvin
-    Word M;  // Mvin
-    int score; // score of last cell in block;
-
-    Block() {}
-    Block(Word P, Word M, int score) :P(P), M(M), score(score) {}
-};
-
 static int myersCalcEditDistanceSemiGlobal(const Word* Peq, int W, int maxNumBlocks,
                                            const unsigned char* query,  int queryLength,
                                            const unsigned char* target, int targetLength,
                                            int alphabetLength, int k, EdlibAlignMode mode,
                                            int* bestScore_, int** positions_, int* numPositions_);
+
+static int myersCalcEditDistanceNWCustom(const Word* Peq, int W, int maxNumBlocks,
+                                   const unsigned char* query, int queryLength,
+                                   const unsigned char* target, int targetLength,
+                                   int alphabetLength, int k, int* bestScore_,
+                                   int* position_, bool findAlignment,
+                                   AlignmentData** alignData, int targetStopPosition, std::vector<Block>& blocks);
 
 static int myersCalcEditDistanceNW(const Word* Peq, int W, int maxNumBlocks,
                                    const unsigned char* query, int queryLength,
@@ -63,7 +69,6 @@ static int myersCalcEditDistanceNW(const Word* Peq, int W, int maxNumBlocks,
                                    int alphabetLength, int k, int* bestScore_,
                                    int* position_, bool findAlignment,
                                    AlignmentData** alignData, int targetStopPosition);
-
 
 static int obtainAlignment(
         const unsigned char* query, const unsigned char* rQuery, int queryLength,
@@ -86,6 +91,11 @@ static int transformSequences(const char* queryOriginal, int queryLength,
                               unsigned char** queryTransformed,
                               unsigned char** targetTransformed);
 
+static int transformSequencesDNA(const char* const queryOriginal, const int queryLength,
+                                 const char* const targetOriginal, const int targetLength,
+                                 std::vector<unsigned char>& queryTransformed,
+                                 std::vector<unsigned char>& targetTransformed);
+
 static inline int ceilDiv(int x, int y);
 
 static inline unsigned char* createReverseCopy(const unsigned char* seq, int length);
@@ -94,6 +104,174 @@ static inline Word* buildPeq(int alphabetLength, const unsigned char* query,
                              int queryLength);
 
 
+AlignerEngine::AlignerEngine() {
+  query_.clear();
+  target_.clear();
+  blocks_.clear();
+}
+
+PeqTable::PeqTable() : prevQueryLength_(-1) {
+}
+
+void PeqTable::reset(int alphabetLength, std::vector<unsigned char>& query) {
+  int queryLength = static_cast<int>(query.size());
+  int maxNumBlocks = ceilDiv(queryLength, WORD_SIZE);
+  // table of dimensions alphabetLength+1 x maxNumBlocks. Last symbol is wildcard.
+  if (prevQueryLength_ != queryLength) {
+    peq_.resize((alphabetLength + 1) * maxNumBlocks, 0);
+    prevQueryLength_ = queryLength;
+  }
+
+    // Build peq_ (1 is match, 0 is mismatch). NOTE: last column is wildcard(symbol that matches anything) with just 1s
+    for (int symbol = 0; symbol <= alphabetLength; symbol++) {
+        for (int b = 0; b < maxNumBlocks; b++) {
+            if (symbol < alphabetLength) {
+                peq_[symbol * maxNumBlocks + b] = 0;
+                for (int r = (b+1) * WORD_SIZE - 1; r >= b * WORD_SIZE; r--) {
+                    peq_[symbol * maxNumBlocks + b] <<= 1;
+                    // NOTE: We pretend like query is padded at the end with W wildcard symbols
+                    if (r >= queryLength || query[r] == symbol)
+                        peq_[symbol * maxNumBlocks + b] += 1;
+                }
+            } else { // Last symbol is wildcard, so it is all 1s
+                peq_[symbol * maxNumBlocks + b] = (Word)-1;
+            }
+        }
+    }
+}
+
+/**
+ * Main edlib method.
+ */
+void AlignerEngine::operator()(const char* const queryOriginal, const int queryLength,
+                               const char* const targetOriginal, const int targetLength,
+                               const EdlibAlignConfig config) {
+    // reset the result
+    result_.editDistance = -1;
+    result_.endLocations.clear();
+    result_.startLocations.clear();
+    result_.numLocations = 0;
+    result_.alignment.clear();//= NULL;
+    result_.alignmentLength = 0;
+    result_.alphabetLength = 0;
+
+
+    /*------------ TRANSFORM SEQUENCES AND RECOGNIZE ALPHABET -----------*/
+    //unsigned char* query, * target;
+    int alphabetLength = transformSequencesDNA(queryOriginal, queryLength, targetOriginal, targetLength, query_, target_);
+    result_.alphabetLength = alphabetLength;
+    /*-------------------------------------------------------*/
+
+
+    /*--------------------- INITIALIZATION ------------------*/
+    int maxNumBlocks = ceilDiv(queryLength, WORD_SIZE); // bmax in Myers
+    int W = maxNumBlocks * WORD_SIZE - queryLength; // number of redundant cells in last level blocks
+
+    peq_.reset(alphabetLength, query_);
+    /*-------------------------------------------------------*/
+
+
+    /*------------------ MAIN CALCULATION -------------------*/
+    // TODO: Store alignment data only after k is determined? That could make things faster.
+    int positionNW; // Used only when mode is NW.
+    AlignmentData* alignData = NULL;
+    bool dynamicK = false;
+    int k = config.k;
+    if (k < 0) { // If valid k is not given, auto-adjust k until solution is found.
+        dynamicK = true;
+        k = WORD_SIZE; // Gives better results than smaller k.
+    }
+
+    do {
+        if (config.mode == EDLIB_MODE_HW || config.mode == EDLIB_MODE_SHW) {
+          /* ROB: not supported yet
+            myersCalcEditDistanceSemiGlobal(Peq, W, maxNumBlocks,
+                                            query, queryLength, target, targetLength,
+                                            alphabetLength, k, config.mode, &(result.editDistance),
+                                            &(result.endLocations), &(result.numLocations));
+          */
+        } else {  // mode == EDLIB_MODE_NW
+          myersCalcEditDistanceNWCustom(peq_.getTable(), W, maxNumBlocks,
+                                        query_.data(), queryLength, target_.data(), targetLength,
+                                        alphabetLength, k, &(result_.editDistance), &positionNW,
+                                        false, &alignData, -1, blocks_);
+        }
+        k *= 2;
+    } while(dynamicK && result_.editDistance == -1);
+
+    if (result_.editDistance >= 0) {  // If there is solution.
+        // If NW mode, set end location explicitly.
+        if (config.mode == EDLIB_MODE_NW) {
+            //result_.endLocations = (int *) malloc(sizeof(int) * 1);
+            //result_.endLocations[0] = targetLength - 1;
+            result_.endLocations.clear();
+            result_.endLocations.push_back(targetLength - 1);
+            result_.numLocations = 1;
+        }
+
+        /* ROB: not supported yet
+        // Find starting locations.
+        if (config.task == EDLIB_TASK_LOC || config.task == EDLIB_TASK_PATH) {
+            result.startLocations = (int*) malloc(result.numLocations * sizeof(int));
+            if (config.mode == EDLIB_MODE_HW) {  // If HW, I need to calculate start locations.
+                const unsigned char* rTarget = createReverseCopy(target, targetLength);
+                const unsigned char* rQuery  = createReverseCopy(query, queryLength);
+                Word* rPeq = buildPeq(alphabetLength, rQuery, queryLength); // Peq for reversed query
+                for (int i = 0; i < result.numLocations; i++) {
+                    int endLocation = result.endLocations[i];
+                    int bestScoreSHW, numPositionsSHW;
+                    int* positionsSHW;
+                    myersCalcEditDistanceSemiGlobal(
+                            rPeq, W, maxNumBlocks,
+                            rQuery, queryLength, rTarget + targetLength - endLocation - 1, endLocation + 1,
+                            alphabetLength, result.editDistance, EDLIB_MODE_SHW,
+                            &bestScoreSHW, &positionsSHW, &numPositionsSHW);
+                    // Taking last location as start ensures that alignment will not start with insertions
+                    // if it can start with mismatches instead.
+                    result.startLocations[i] = endLocation - positionsSHW[numPositionsSHW - 1];
+                    free(positionsSHW);
+                }
+                delete[] rTarget;
+                delete[] rQuery;
+                delete[] rPeq;
+            } else {  // If mode is SHW or NW
+                for (int i = 0; i < result.numLocations; i++) {
+                    result.startLocations[i] = 0;
+                }
+            }
+        }
+        END: not supported yet */
+
+        /* ROB: not supported yet
+        // Find alignment -> all comes down to finding alignment for NW.
+        // Currently we return alignment only for first pair of locations.
+        if (config.task == EDLIB_TASK_PATH) {
+            int alnStartLocation = result.startLocations[0];
+            int alnEndLocation = result.endLocations[0];
+            const unsigned char* alnTarget = target + alnStartLocation;
+            const int alnTargetLength = alnEndLocation - alnStartLocation + 1;
+            const unsigned char* rAlnTarget = createReverseCopy(alnTarget, alnTargetLength);
+            const unsigned char* rQuery  = createReverseCopy(query, queryLength);
+            obtainAlignment(query, rQuery, queryLength,
+                            alnTarget, rAlnTarget, alnTargetLength,
+                            alphabetLength, result.editDistance,
+                            &(result.alignment), &(result.alignmentLength));
+            delete[] rAlnTarget;
+            delete[] rQuery;
+        }
+        END: not supported yet */
+    }
+    /*-------------------------------------------------------*/
+
+    //--- Free memory ---//
+    //delete[] Peq;
+    //free(query);
+    //free(target);
+    //if (alignData) delete alignData;
+    //-------------------//
+
+    //return result;
+}
 
 /**
  * Main edlib method.
@@ -628,6 +806,237 @@ static int myersCalcEditDistanceSemiGlobal(
     return EDLIB_STATUS_OK;
 }
 
+
+/**
+ * Uses Myers' bit-vector algorithm to find edit distance for global(NW) alignment method.
+ * @param [in] Peq  Query profile.
+ * @param [in] W  Size of padding in last block.
+ *                TODO: Calculate this directly from query, instead of passing it.
+ * @param [in] maxNumBlocks  Number of blocks needed to cover the whole query.
+ *                           TODO: Calculate this directly from query, instead of passing it.
+ * @param [in] query
+ * @param [in] queryLength
+ * @param [in] target
+ * @param [in] targetLength
+ * @param [in] alphabetLength
+ * @param [in] k
+ * @param [out] bestScore_  Edit distance.
+ * @param [out] position_  0-indexed position in target at which best score was found.
+ * @param [in] findAlignment  If true, whole matrix is remembered and alignment data is returned.
+ *                            Quadratic amount of memory is consumed.
+ * @param [out] alignData  Data needed for alignment traceback (for reconstruction of alignment).
+ *                         Set only if findAlignment is set to true, otherwise it is NULL.
+ *                         Make sure to free this array using delete[].
+ * @param [out] targetStopPosition  If set to -1, whole calculation is performed normally, as expected.
+ *         If set to p, calculation is performed up to position p in target (inclusive)
+ *         and column p is returned as the only column in alignData.
+ * @return Status.
+ */
+ static int myersCalcEditDistanceNWCustom(const Word* const Peq, const int W, const int maxNumBlocks,
+                                          const unsigned char* const query, const int queryLength,
+                                          const unsigned char* const target, const int targetLength,
+                                          const int alphabetLength, int k, int* const bestScore_,
+                                          int* const position_, const bool findAlignment,
+                                          AlignmentData** const alignData, const int targetStopPosition, vector<Block>& blocks) {
+    if (targetStopPosition > -1 && findAlignment) {
+        // They can not be both set at the same time!
+        return EDLIB_STATUS_ERROR;
+    }
+
+    // Each STRONG_REDUCE_NUM column is reduced in more expensive way.
+    const int STRONG_REDUCE_NUM = 2048; // TODO: Choose this number dinamically (based on query and target lengths?), so it does not affect speed of computation
+
+    if (k < abs(targetLength - queryLength)) {
+        *bestScore_ = *position_ = -1;
+        return EDLIB_STATUS_OK;
+    }
+
+    k = min(k, max(queryLength, targetLength));  // Upper bound for k
+
+    // firstBlock is 0-based index of first block in Ukkonen band.
+    // lastBlock is 0-based index of last block in Ukkonen band.
+    int firstBlock = 0;
+    // This is optimal now, by my formula.
+    int lastBlock = min(maxNumBlocks, ceilDiv(min(k, (k + queryLength - targetLength) / 2) + 1, WORD_SIZE)) - 1;
+    decltype(blocks.begin()) bl; // Current block
+
+    if (maxNumBlocks != blocks.size()) {
+      blocks.resize(maxNumBlocks);
+    }
+    //Block* blocks = new Block[maxNumBlocks];
+
+    // Initialize P, M and score
+    bl = blocks.begin();
+    for (int b = 0; b <= lastBlock; b++) {
+        bl->score = (b + 1) * WORD_SIZE;
+        bl->P = (Word)-1; // All 1s
+        bl->M = (Word)0;
+        bl++;
+    }
+
+    // If we want to find alignment, we have to store needed data.
+    if (findAlignment)
+        *alignData = new AlignmentData(maxNumBlocks, targetLength);
+    else if (targetStopPosition > -1)
+        *alignData = new AlignmentData(maxNumBlocks, 1);
+    else
+        *alignData = NULL;
+
+    const unsigned char* targetChar = target;
+    for (int c = 0; c < targetLength; c++) { // for each column
+        const Word* Peq_c = Peq + *targetChar * maxNumBlocks;
+
+        //----------------------- Calculate column -------------------------//
+        int hout = 1;
+        bl = blocks.begin() + firstBlock;
+        for (int b = firstBlock; b <= lastBlock; b++) {
+            hout = calculateBlock(bl->P, bl->M, Peq_c[b], hout, bl->P, bl->M);
+            bl->score += hout;
+            bl++;
+        }
+        bl--;
+        //------------------------------------------------------------------//
+        // bl now points to last block
+
+        // Update k. I do it only on end of column because it would slow calculation too much otherwise.
+        // NOTICE: I add W when in last block because it is actually result from W cells to the left and W cells up.
+        k = min(k, bl->score
+                + max(targetLength - c - 1, queryLength - ((1 + lastBlock) * WORD_SIZE - 1) - 1)
+                + (lastBlock == maxNumBlocks - 1 ? W : 0));
+
+        //---------- Adjust number of blocks according to Ukkonen ----------//
+        //--- Adjust last block ---//
+        // If block is not beneath band, calculate next block. Only next because others are certainly beneath band.
+        if (lastBlock + 1 < maxNumBlocks
+            && !(//score[lastBlock] >= k + WORD_SIZE ||  // NOTICE: this condition could be satisfied if above block also!
+                 ((lastBlock + 1) * WORD_SIZE - 1
+                  > k - bl->score + 2 * WORD_SIZE - 2 - targetLength + c + queryLength))) {
+            lastBlock++; bl++;
+            bl->P = (Word)-1; // All 1s
+            bl->M = (Word)0;
+            int newHout = calculateBlock(bl->P, bl->M, Peq_c[lastBlock], hout, bl->P, bl->M);
+            bl->score = (bl - 1)->score - hout + WORD_SIZE + newHout;
+            hout = newHout;
+        }
+
+        // While block is out of band, move one block up.
+        // NOTE: Condition used here is more loose than the one from the article, since I simplified the max() part of it.
+        // I could consider adding that max part, for optimal performance.
+        while (lastBlock >= firstBlock
+               && (bl->score >= k + WORD_SIZE
+                   || ((lastBlock + 1) * WORD_SIZE - 1 >
+                       // TODO: Does not work if do not put +1! Why???
+                       k - bl->score + 2 * WORD_SIZE - 2 - targetLength + c + queryLength + 1))) {
+            lastBlock--; bl--;
+        }
+        //-------------------------//
+
+        //--- Adjust first block ---//
+        // While outside of band, advance block
+        while (firstBlock <= lastBlock
+               && (blocks[firstBlock].score >= k + WORD_SIZE
+                   || ((firstBlock + 1) * WORD_SIZE - 1 <
+                       blocks[firstBlock].score - k - targetLength + queryLength + c))) {
+            firstBlock++;
+        }
+        //--------------------------/
+
+
+        // TODO: consider if this part is useful, it does not seem to help much
+        if (c % STRONG_REDUCE_NUM == 0) { // Every some columns do more expensive but more efficient reduction
+            while (lastBlock >= firstBlock) {
+                // If all cells outside of band, remove block
+                vector<int> scores = getBlockCellValues(*bl);
+                int numCells = lastBlock == maxNumBlocks - 1 ? WORD_SIZE - W : WORD_SIZE;
+                int r = lastBlock * WORD_SIZE + numCells - 1;
+                bool reduce = true;
+                for (int i = WORD_SIZE - numCells; i < WORD_SIZE; i++) {
+                    // TODO: Does not work if do not put +1! Why???
+                    if (scores[i] <= k && r <= k - scores[i] - targetLength + c + queryLength + 1) {
+                        reduce = false;
+                        break;
+                    }
+                    r--;
+                }
+                if (!reduce) break;
+                lastBlock--; bl--;
+            }
+
+            while (firstBlock <= lastBlock) {
+                // If all cells outside of band, remove block
+                vector<int> scores = getBlockCellValues(blocks[firstBlock]);
+                int numCells = firstBlock == maxNumBlocks - 1 ? WORD_SIZE - W : WORD_SIZE;
+                int r = firstBlock * WORD_SIZE + numCells - 1;
+                bool reduce = true;
+                for (int i = WORD_SIZE - numCells; i < WORD_SIZE; i++) {
+                    if (scores[i] <= k && r >= scores[i] - k - targetLength + c + queryLength) {
+                        reduce = false;
+                        break;
+                    }
+                    r--;
+                }
+                if (!reduce) break;
+                firstBlock++;
+            }
+        }
+
+
+        // If band stops to exist finish
+        if (lastBlock < firstBlock) {
+            *bestScore_ = *position_ = -1;
+            //delete[] blocks;
+            return EDLIB_STATUS_OK;
+        }
+        //------------------------------------------------------------------//
+
+
+        //---- Save column so it can be used for reconstruction ----//
+        if (findAlignment && c < targetLength) {
+            bl = blocks.begin() + firstBlock;
+            for (int b = firstBlock; b <= lastBlock; b++) {
+                (*alignData)->Ps[maxNumBlocks * c + b] = bl->P;
+                (*alignData)->Ms[maxNumBlocks * c + b] = bl->M;
+                (*alignData)->scores[maxNumBlocks * c + b] = bl->score;
+                (*alignData)->firstBlocks[c] = firstBlock;
+                (*alignData)->lastBlocks[c] = lastBlock;
+                bl++;
+            }
+        }
+        //----------------------------------------------------------//
+        //---- If this is stop column, save it and finish ----//
+        if (c == targetStopPosition) {
+            for (int b = firstBlock; b <= lastBlock; b++) {
+              (*alignData)->Ps[b] = (blocks.begin() + b)->P;
+              (*alignData)->Ms[b] = (blocks.begin() + b)->M;
+              (*alignData)->scores[b] = (blocks.begin() + b)->score;
+                (*alignData)->firstBlocks[0] = firstBlock;
+                (*alignData)->lastBlocks[0] = lastBlock;
+            }
+            *bestScore_ = -1;
+            *position_ = targetStopPosition;
+            //delete[] blocks;
+            return EDLIB_STATUS_OK;
+        }
+        //----------------------------------------------------//
+
+        targetChar++;
+    }
+
+    if (lastBlock == maxNumBlocks - 1) { // If last block of last column was calculated
+        // Obtain best score from block -> it is complicated because query is padded with W cells
+        int bestScore = getBlockCellValues(blocks[lastBlock])[W];
+        if (bestScore <= k) {
+            *bestScore_ = bestScore;
+            *position_ = targetLength - 1;
+            //delete[] blocks;
+            return EDLIB_STATUS_OK;
+        }
+    }
+
+    *bestScore_ = *position_ = -1;
+    //delete[] blocks;
+    return EDLIB_STATUS_OK;
+}
 
 /**
  * Uses Myers' bit-vector algorithm to find edit distance for global(NW) alignment method.
@@ -1384,6 +1793,77 @@ static int transformSequences(const char* const queryOriginal, const int queryLe
     }
 
     return alphabetLength;
+}
+
+ static const int edlibDNATable[256] = {
+   255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255,   0, 255,   1, 255, 255, 255,   2, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255,   3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255,   0, 255,   1, 255, 255, 255,   2, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255,   3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+   255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
+ };
+
+/**
+ * Takes char query and char target, recognizes alphabet and transforms them into unsigned char sequences
+ * where elements in sequences are not any more letters of alphabet, but their index in alphabet.
+ * Most of internal edlib functions expect such transformed sequences.
+ * This function will allocate queryTransformed and targetTransformed, so make sure to free them when done.
+ * Example:
+ *   Original sequences: "ACT" and "CGT".
+ *   Alphabet would be recognized as ['A', 'C', 'T', 'G']. Alphabet length = 4.
+ *   Transformed sequences: [0, 1, 2] and [1, 3, 2].
+ * @param [in] queryOriginal
+ * @param [in] queryLength
+ * @param [in] targetOriginal
+ * @param [in] targetLength
+ * @param [out] queryTransformed  It will contain values in range [0, alphabet length - 1].
+ * @param [out] targetTransformed  It will contain values in range [0, alphabet length - 1].
+ * @return  Alphabet length - number of letters in recognized alphabet.
+ */
+static int transformSequencesDNA(const char* const queryOriginal, const int queryLength,
+                                 const char* const targetOriginal, const int targetLength,
+                                 std::vector<unsigned char>& queryTransformed,
+                                 std::vector<unsigned char>& targetTransformed) {
+  // Alphabet is constructed from letters that are present in sequences.
+  // Each letter is assigned an ordinal number, starting from 0 up to alphabetLength - 1,
+  // and new query and target are created in which letters are replaced with their ordinal numbers.
+  // This query and target are used in all the calculations later.
+  queryTransformed.resize(queryLength, 0);
+  targetTransformed.resize(targetLength, 0);
+
+  int i = 0;
+  int lengthDiff = targetLength - queryLength;
+  int m = queryLength < targetLength ? queryLength : targetLength;
+  int M = lengthDiff >= 0 ? (m + lengthDiff) : (m - lengthDiff);
+  for (; i < m; i++) {
+        unsigned char c = static_cast<unsigned char>(queryOriginal[i]);
+        unsigned char c2 = static_cast<unsigned char>(targetOriginal[i]);
+        queryTransformed[i] = edlibDNATable[c];
+        targetTransformed[i] = edlibDNATable[c2];
+  }
+  if (lengthDiff > 0) {
+    for (; i < M; i++) {
+      unsigned char c = static_cast<unsigned char>(targetOriginal[i]);
+      targetTransformed[i] = edlibDNATable[c];
+    }
+  } else if (lengthDiff < 0) {
+    for (; i < M; i++) {
+      unsigned char c = static_cast<unsigned char>(queryOriginal[i]);
+      queryTransformed[i] = edlibDNATable[c];
+    }
+  }
+  return 4;
 }
 
 

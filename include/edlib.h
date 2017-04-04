@@ -1,15 +1,17 @@
 #ifndef EDLIB_H
 #define EDLIB_H
 
+#include <vector>
+
 /**
  * @file
  * @author Martin Sosic
  * @brief Main header file, containing all public functions and structures.
  */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+//#ifdef __cplusplus
+//extern "C" {
+//#endif
 
 // Status codes
 #define EDLIB_STATUS_OK 0
@@ -129,7 +131,7 @@ typedef enum {
          * Set to NULL if edit distance is larger than k.
          * If you do not free whole result object using edlibFreeAlignResult(), do not forget to use free().
          */
-        int* endLocations;
+         int* endLocations;
         /**
          * Array of zero-based positions in target where optimal alignment paths start,
          * they correspond to endLocations.
@@ -164,6 +166,60 @@ typedef enum {
          */
         int alphabetLength;
     } EdlibAlignResult;
+
+
+    /**
+     * Container for results of alignment done by edlibAlign() function.
+     */
+    typedef struct {
+        /**
+         * -1 if k is non-negative and edit distance is larger than k.
+         */
+        int editDistance;
+        /**
+         * Array of zero-based positions in target where optimal alignment paths end.
+         * If gap after query is penalized, gap counts as part of query (NW), otherwise not.
+         * Set to NULL if edit distance is larger than k.
+         * If you do not free whole result object using edlibFreeAlignResult(), do not forget to use free().
+         */
+        std::vector<int> endLocations;
+      //int* endLocations;
+        /**
+         * Array of zero-based positions in target where optimal alignment paths start,
+         * they correspond to endLocations.
+         * If gap before query is penalized, gap counts as part of query (NW), otherwise not.
+         * Set to NULL if not calculated or if edit distance is larger than k.
+         * If you do not free whole result object using edlibFreeAlignResult(), do not forget to use free().
+         */
+        std::vector<int> startLocations;
+        //int* startLocations;
+        /**
+         * Number of end (and start) locations.
+         */
+        int numLocations;
+        /**
+         * Alignment is found for first pair of start and end locations.
+         * Set to NULL if not calculated.
+         * Alignment is sequence of numbers: 0, 1, 2, 3.
+         * 0 stands for match.
+         * 1 stands for insertion to target.
+         * 2 stands for insertion to query.
+         * 3 stands for mismatch.
+         * Alignment aligns query to target from begining of query till end of query.
+         * If gaps are not penalized, they are not in alignment.
+         * If you do not free whole result object using edlibFreeAlignResult(), do not forget to use free().
+         */
+        std::vector<unsigned char> alignment;
+        //unsigned char* alignment;
+        /**
+         * Length of alignment.
+         */
+        int alignmentLength;
+        /**
+         * Number of different characters in query and target together.
+         */
+        int alphabetLength;
+    } EdlibAlignResultCustom;
 
     /**
      * Frees memory in EdlibAlignResult that was allocated by edlib.
@@ -214,10 +270,44 @@ typedef enum {
     char* edlibAlignmentToCigar(const unsigned char* alignment, int alignmentLength,
                                 EdlibCigarFormat cigarFormat);
 
+typedef uint64_t Word;
+struct Block {
+  Word P;  // Pvin
+  Word M;  // Mvin
+  int score; // score of last cell in block;
+
+  Block() {}
+Block(Word P, Word M, int score) :P(P), M(M), score(score) {}
+};
 
 
-#ifdef __cplusplus
-}
-#endif
+class PeqTable {
+ public:
+  PeqTable();
+  void reset(int alphabetLength, std::vector<unsigned char>& query);
+  Word* getTable() { return peq_.data(); }
+ private:
+  int prevQueryLength_;
+  std::vector<Word> peq_;
+};
+
+class AlignerEngine {
+ public:
+  AlignerEngine();
+  void operator()(const char* const queryOriginal, const int queryLength,
+                const char* const targetOriginal, const int targetLength,
+                const EdlibAlignConfig config);
+  const EdlibAlignResultCustom& result() { return result_; }
+ private:
+  std::vector<unsigned char> query_;
+  std::vector<unsigned char> target_;
+  EdlibAlignResultCustom result_;
+  std::vector<Block> blocks_;
+  PeqTable peq_;
+};
+
+//#ifdef __cplusplus
+//}
+//#endif
 
 #endif // EDLIB_H

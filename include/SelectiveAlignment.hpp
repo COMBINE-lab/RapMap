@@ -95,6 +95,7 @@ public:
           //uint8_t editThreshold = readLen/2 ;
 	  int startEditDistance = 0;
 
+    /*
             auto& readName = readT.name;
             // If the read name contains multiple space-separated parts,
             // print only the first
@@ -109,6 +110,7 @@ public:
             if (splitPos > 2 and readName[splitPos - 2] == '/') {
                 readName[splitPos - 2] = '\0';
             }
+    */
 
 	  // There are two possible ways to go
 	  // from here
@@ -154,35 +156,33 @@ public:
                   auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
                   extend = (overHangRight > 0)?(extend-overHangRight):extend;
 
-                  auto thisTxpSeq = concatText.substr(globalPos, extend);
+                  /* ROB: get rid of the copy */
+                  //auto thisTxpSeq = concatText.substr(globalPos, extend);
+                  const char* thisTxpSeq = concatText.data() + globalPos;
+                  int thisTargetLen = extend;
 
 
-
-                  EdlibAlignResult startEdlibResult;
+                  /* ROB : slight interface change */
+                  //EdlibAlignResult startEdlibResult;
                   if(startHit.fwd){
-                    startEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_PATH));
+                    ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                   }else{
                     auto revRead = rapmap::utils::reverseComplement(read);
-                    startEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_PATH));
+                    ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                   }
-
-
-                /*
-                  if(readName == "SRR1265495.29995"){
-                    std::cout << "\nRead Header: "<<readName ;
-                    std::cout << "\nLCP Length: "<< (int)lcpLength ;
-                    std::cout << "\nI am at the beginning of hit list, the edit distance is: " << startEditDistance << "\n" ;
-                  }
-                */
+                  auto& startEdlibResult = ae_.result();
 
                   startHit.editD = startEdlibResult.editDistance;
                   startEditDistance = startEdlibResult.editDistance;
 
                   if(startEditDistance != -1){
                     startHit.toAlign = true;
+                    /* ROB: No CIGAR right now */
+                    /*
                     char* cigar_ = edlibAlignmentToCigar(startEdlibResult.alignment, startEdlibResult.alignmentLength, EDLIB_CIGAR_STANDARD);
                     std::string cigar(cigar_);
                     startHit.cigar = cigar ;
+                    */
                  }else{
                     startHit.toAlign = false ;
 
@@ -197,7 +197,8 @@ public:
                                       //selectedHits.emplace_back(hitsIt->tid,hitsIt->pos,hitsIt->fwd,hitsItreadLen->readLen,startEditDistance,"II");
                                       hitsIt->editD = startEditDistance;
                                       hitsIt->toAlign = true;
-                                      hitsIt->cigar = startHit.cigar;
+                                      /* ROB: No CIGAR right now */
+                                      //hitsIt->cigar = startHit.cigar;
                               }
                       }else{
                           for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
@@ -234,28 +235,36 @@ public:
                               auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
                               extend = (overHangRight > 0)?(extend-overHangRight):extend;
 
-                              auto thisTxpSeq = concatText.substr(globalPos, extend);
+                              /* ROB: get rid of the copy */
+                              //auto thisTxpSeq = concatText.substr(globalPos, extend);
+                              const char* thisTxpSeq = concatText.data() + globalPos;
+                              int thisTargetLen = extend;
 
                               //auto thisEditDistance = edit_distance(read, thisTxpSeq, 50) ;
-                              EdlibAlignResult thisEdlibResult;
-
+                              /* ROB : slight interface change */
+                              //EdlibAlignResult thisEdlibResult;
                               if(hitsIt->fwd){
-
-                                thisEdlibResult = edlibAlign(read.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig( editThreshold, EDLIB_MODE_NW, EDLIB_TASK_PATH));
+                                ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig( editThreshold, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                               }else{
                                 auto revRead = rapmap::utils::reverseComplement(read);
-                                thisEdlibResult = edlibAlign(revRead.c_str(), read.length(), thisTxpSeq.c_str(), thisTxpSeq.length(), edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_PATH));
+                                ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                               }
+                              auto& thisEdlibResult = ae_.result();
                               auto thisEditDistance = thisEdlibResult.editDistance ;
 
 
                               if(thisEditDistance != -1){
                                       //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
                                       hitsIt->editD = thisEditDistance;
+                                      hitsIt->toAlign = true;
+                                      /* ROB: No CIGAR right now */
+                                      /*
                                       char* cigar_ = edlibAlignmentToCigar(thisEdlibResult.alignment, thisEdlibResult.alignmentLength, EDLIB_CIGAR_STANDARD);
                                       std::string cigar(cigar_);
-                                      hitsIt->toAlign = true;
                                       hitsIt->cigar = cigar;
+                                      */
+                              } else {
+                                hitsIt->toAlign = false;
                               }
                             }
 
@@ -266,6 +275,7 @@ public:
    }
 private:
   RapMapIndexT* rmi_ ;
+  AlignerEngine ae_;
 
 };
 
