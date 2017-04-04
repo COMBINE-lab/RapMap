@@ -1,6 +1,7 @@
 #ifndef EDLIB_H
 #define EDLIB_H
 
+#include <cstdint>
 #include <vector>
 
 /**
