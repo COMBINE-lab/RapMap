@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <iostream>
 #include <iterator>
+#include <set>
 
 //#include "dtl/dtl.hpp"
 
@@ -71,23 +72,41 @@ public:
                   std::vector<rapmap::utils::QuasiAlignment>& hits,
                   int32_t editThreshold
                   ) {
-
+           using QuasiAlignment = rapmap::utils::QuasiAlignment;
+           using MateStatus = rapmap::utils::MateStatus;
+           using kmerVal = rapmap::utils::kmerVal<OffsetT>;
 	  //go through the lcp length of each SA Interval for each hit
 	  //figure out if it needs to be changed
-          //
+
+
            if(hits.size() == 0){
                return false ;
            }
 
-          auto& read = readT.seq;
+          //Mapping information
+          //Loaed
+          //std::cout << "\n HERE \n" ;
+          std::set<int32_t> tidset ;
+
 	  auto& txpStarts = rmi_->txpOffsets ;
 	  auto& SA = rmi_->SA;
 	  auto& concatText = rmi_->seq;
 	  auto& txpLens = rmi_->txpLens ;
+          auto& khash = rmi_->khash ;
+
+          auto k = rapmap::utils::my_mer::k();
 
 
+          auto& read = readT.seq;
+
+          rapmap::utils::my_mer mer;
+
+          //std::vector<SAIntervalHit> fwdSAInts ;
+          //std::vector<SAIntervalHit> rcSAInts ;
+          kmerVal tSAInt ;
 
 
+          //start hit information
 	  auto& startHit = hits.front();
 	  auto lcpLength = startHit.lcpLength ;
 	  auto readLen = read.length();
@@ -95,6 +114,9 @@ public:
           //uint8_t editThreshold = readLen/2 ;
 	  int startEditDistance = 0;
 
+          bool skipLCPOpt{false};
+          bool currentValid{false};
+          std::string currentKmer;
     /*
             auto& readName = readT.name;
             // If the read name contains multiple space-separated parts,
@@ -128,26 +150,6 @@ public:
                   int32_t startOffset, endOffset ;
                   OffsetT globalPos = txpStarts[txpID];
                   OffsetT thisTxpLen = txpLens[txpID];
-
-                  // start and end would
-                  // ideally be -5 and +5
-                  // of the start position
-
-                  // If the start is before start
-                  // of transcript
-                  /*
-                  if(pos >= 5){
-                      globalPos = globalPos - 5;
-                  }else{
-                      globalPos = txpStarts[txpID];
-                  }
-
-                  if(pos + readLen + 5 <= thisTxpLen){
-                      endOffset = readLen + 5;
-                  }else{
-                      endOffset = thisTxpLen - pos ;
-                  }
-                  */
 
                   auto overHangLeft = (pos < 0)?-(pos):0;
                   auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
@@ -187,90 +189,118 @@ public:
                     startHit.toAlign = false ;
 
                  }
+
+                /* Take the kmer from the transcript */
+                currentKmer = concatText.substr(globalPos, k);
+                if(currentKmer.length() == k and currentKmer.find_first_of('$') == std::string::npos){
+                    mer = currentKmer;
+                    currentValid= true ;
+                }else{
+                    currentValid = false ;
+                }
+          }
+
+          if(currentValid){
+              auto bits = mer.word(0);
+              auto hashIt = khash.find(bits);
+              if(hashIt != khash.end()){
+                  //std::cout << "\n Found \n";
+                  tSAInt = hashIt->second;
+                  lcpLength = hashIt->second.lcpLength ;
+                  for(OffsetT i = tSAInt.interval.begin() ; i != tSAInt.interval.end(); ++i ){
+                      auto iGlobalPos = SA[i];
+                      auto txpID = rmi_->transcriptAtPosition(iGlobalPos);
+                      tidset.insert(txpID);
+                }
+              }else{
+                  skipLCPOpt = true ;
+              }
+
+          }else{
+              skipLCPOpt = true ;
           }
 
 
+
+
           if(hits.size() > 1){
-            if ( false &&  lcpLength >= readLen){
-                      if(startEditDistance != -1){
-                          for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
-                                      //selectedHits.emplace_back(hitsIt->tid,hitsIt->pos,hitsIt->fwd,hitsItreadLen->readLen,startEditDistance,"II");
-                                      hitsIt->editD = startEditDistance;
-                                      hitsIt->toAlign = true;
-                                      /* ROB: No CIGAR right now */
-                                      //hitsIt->cigar = startHit.cigar;
-                              }
-                      }else{
-                          for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
-                                    hitsIt->toAlign = false ;
+            for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
+                uint32_t txpID = hitsIt->tid ;
+                auto search = tidset.find(txpID);
+                if ( (!skipLCPOpt) && (search != tidset.end()) &&  lcpLength >= readLen){
+                          if(startEditDistance != -1){
+                                hitsIt->editD = startEditDistance;
+                                hitsIt->toAlign = true;
+                                /* ROB: No CIGAR right now */
+                                //hitsIt->cigar = startHit.cigar;
+                          }else{
+                                hitsIt->toAlign = false ;
                           }
-                      }
-              }else{
+                  }else{
 
-                  for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
-                              uint32_t txpID = hitsIt->tid ;
-                              int32_t pos = hitsIt->pos;
-                              int32_t startOffset, endOffset ;
-                              OffsetT globalPos = txpStarts[txpID];
-                              OffsetT thisTxpLen = txpLens[txpID];
+                          int32_t pos = hitsIt->pos;
+                          int32_t startOffset, endOffset ;
+                          OffsetT globalPos = txpStarts[txpID];
+                          OffsetT thisTxpLen = txpLens[txpID];
 
-                              /*
-                              if(pos >= 5){
-                                  globalPos = globalPos - 5;
-                              }else{
-                                  globalPos = txpStarts[txpID];
-                              }
+                          /*
+                          if(pos >= 5){
+                              globalPos = globalPos - 5;
+                          }else{
+                              globalPos = txpStarts[txpID];
+                          }
 
-                              if(pos + readLen + 5 <= thisTxpLen){
-                                  endOffset = readLen + 5;
-                              }else{
-                                  endOffset = thisTxpLen - pos ;
-                              }
-                              */
+                          if(pos + readLen + 5 <= thisTxpLen){
+                              endOffset = readLen + 5;
+                          }else{
+                              endOffset = thisTxpLen - pos ;
+                          }
+                          */
 
-                              auto overHangLeft = (pos < 0)?-(pos):0;
-                              auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
+                          auto overHangLeft = (pos < 0)?-(pos):0;
+                          auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
 
-                              globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
-                              auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
-                              extend = (overHangRight > 0)?(extend-overHangRight):extend;
+                          globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
+                          auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
+                          extend = (overHangRight > 0)?(extend-overHangRight):extend;
 
-                              /* ROB: get rid of the copy */
-                              //auto thisTxpSeq = concatText.substr(globalPos, extend);
-                              const char* thisTxpSeq = concatText.data() + globalPos;
-                              int thisTargetLen = extend;
+                          /* ROB: get rid of the copy */
+                          //auto thisTxpSeq = concatText.substr(globalPos, extend);
+                          const char* thisTxpSeq = concatText.data() + globalPos;
+                          int thisTargetLen = extend;
 
-                              //auto thisEditDistance = edit_distance(read, thisTxpSeq, 50) ;
-                              /* ROB : slight interface change */
-                              //EdlibAlignResult thisEdlibResult;
-                              if(hitsIt->fwd){
-                                ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig( editThreshold, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
-                              }else{
-                                auto revRead = rapmap::utils::reverseComplement(read);
-                                ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
-                              }
-                              auto& thisEdlibResult = ae_.result();
-                              auto thisEditDistance = thisEdlibResult.editDistance ;
+                          //auto thisEditDistance = edit_distance(read, thisTxpSeq, 50) ;
+                          /* ROB : slight interface change */
+                          //EdlibAlignResult thisEdlibResult;
+                          if(hitsIt->fwd){
+                            ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig( editThreshold, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                          }else{
+                            auto revRead = rapmap::utils::reverseComplement(read);
+                            ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                          }
+                          auto& thisEdlibResult = ae_.result();
+                          auto thisEditDistance = thisEdlibResult.editDistance ;
 
 
-                              if(thisEditDistance != -1){
-                                      //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
-                                      hitsIt->editD = thisEditDistance;
-                                      hitsIt->toAlign = true;
-                                      /* ROB: No CIGAR right now */
-                                      /*
-                                      char* cigar_ = edlibAlignmentToCigar(thisEdlibResult.alignment, thisEdlibResult.alignmentLength, EDLIB_CIGAR_STANDARD);
-                                      std::string cigar(cigar_);
-                                      hitsIt->cigar = cigar;
-                                      */
-                              } else {
-                                hitsIt->toAlign = false;
-                              }
-                            }
+                          if(thisEditDistance != -1){
+                                  //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
+                                  hitsIt->editD = thisEditDistance;
+                                  hitsIt->toAlign = true;
+                                  /* ROB: No CIGAR right now */
+                                  /*
+                                  char* cigar_ = edlibAlignmentToCigar(thisEdlibResult.alignment, thisEdlibResult.alignmentLength, EDLIB_CIGAR_STANDARD);
+                                  std::string cigar(cigar_);
+                                  hitsIt->cigar = cigar;
+                                  */
+                          } else {
+                            hitsIt->toAlign = false;
+                          }
+                    }
 
             }
         }
 
+          //std::cout << "\n DONE \n" ;
           return true ;
    }
 private:
