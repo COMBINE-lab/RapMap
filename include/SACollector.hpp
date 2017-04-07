@@ -115,7 +115,7 @@ public:
     //auto& khash = rmi_->khash;
     auto& text = rmi_->seq;
     auto salen = SA.size();
-    //auto hashEnd_ = khash.end();
+    if(remap) hashEnd_ = khash.end();
     auto readLen = read.length();
     auto maxDist = 1.5 * readLen;
 
@@ -572,6 +572,8 @@ private:
         k = rapmap::utils::my_mer9::k();
     }
 
+    //if(remap) std::cout << "k"
+
     auto complementMer = mer.get_reverse_complement();
 
     if (merItPtr == nullptr) {
@@ -745,7 +747,7 @@ private:
       // If we found the k-mer
       if (merIt != hashEnd_) {
         spotCheck_(mer, pos, readLen, &merIt, nullItPtr, isRC, strandHits,
-                   otherStrandHits, kmerScores);
+                   otherStrandHits, kmerScores, remap);
 
         lb = merIt->second.interval.begin();
         ub = merIt->second.interval.end();
@@ -811,7 +813,7 @@ private:
               // going to check the mismatching k-mer in both directions to ensure that
               // it doesn't appear somewhere else in the forward direction
               spotCheck_(mer, kmerPos, readLen, nullItPtr, nullItPtr, isRC,
-                         strandHits, otherStrandHits, kmerScores);
+                         strandHits, otherStrandHits, kmerScores, remap);
             }
           } // we didn't end the search by falling off the end
         // This hit was worth recording --- occurred fewer then maxInterval_
@@ -871,7 +873,7 @@ private:
         // &merIt should point to the end of the k-mer hash,
         // complementMerItPtr is null because we want to spot-check the complement k-mer.
         spotCheck_(mer, pos, readLen, &merIt, nullItPtr, isRC, strandHits,
-                   otherStrandHits, kmerScores);
+                   otherStrandHits, kmerScores, remap);
         rb += sampFactor;
         re = rb + k;
       }
