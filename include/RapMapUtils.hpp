@@ -214,7 +214,7 @@ namespace rapmap {
     struct kmerVal{
     	using index_type = IndexT;
     	SAInterval<IndexT> interval ;
-    	uint8_t lcpLength ;
+        uint32_t  lcpLength ;
     };
 
 
@@ -357,7 +357,7 @@ namespace rapmap {
 
         QuasiAlignment(uint32_t tidIn, int32_t posIn,
                 bool fwdIn, uint32_t readLenIn,
-				uint8_t lcpLengthIn = 0,
+				uint32_t lcpLengthIn = 0,
                 uint32_t fragLenIn = 0,
                 bool isPairedIn = false) :
             tid(tidIn), pos(posIn), fwd(fwdIn),
@@ -380,7 +380,7 @@ namespace rapmap {
         inline uint32_t transcriptID() const { return tid; }
         inline double score() { return 1.0; }
         inline uint32_t fragLength() const { return fragLen; }
-        inline uint8_t getlcpLength() const { return lcpLength; }
+        inline uint32_t getlcpLength() const { return lcpLength; }
 
         inline uint32_t fragLengthPedantic(uint32_t txpLen) const {
             if (mateStatus != rapmap::utils::MateStatus::PAIRED_END_PAIRED
@@ -430,18 +430,18 @@ namespace rapmap {
         bool isPaired;
 
         //lcpLength has is added @hirak
-        uint8_t lcpLength;
+        uint32_t lcpLength;
 
         int32_t hamD{-1};
         bool toAlign{false};
         int32_t editD{-1} ;
-        std::string cigar;
+        std::string cigar{"100M"};
 
         //same information for the matepair
         //which needs to be updated occasionally
         bool mateToAlign{false};
         int32_t mateEditD{-1};
-        std::string mateCigar;
+        std::string mateCigar{"100M"};
 
         MateStatus mateStatus;
     };
@@ -460,28 +460,28 @@ namespace rapmap {
 
     template <typename OffsetT>
     struct SAIntervalHit {
-        SAIntervalHit(OffsetT beginIn, OffsetT endIn, uint32_t lenIn, uint32_t queryPosIn, uint8_t lcpLengthIn, bool queryRCIn) :
+        SAIntervalHit(OffsetT beginIn, OffsetT endIn, uint32_t lenIn, uint32_t queryPosIn, uint32_t lcpLengthIn, bool queryRCIn) :
             begin(beginIn), end(endIn), len(lenIn), queryPos(queryPosIn), lcpLength(lcpLengthIn), queryRC(queryRCIn) {}
 
 	      OffsetT span() { return end - begin; }
         OffsetT begin, end;
         uint32_t len, queryPos;
-        uint8_t lcpLength;
+        uint32_t lcpLength;
         bool queryRC;
     };
 
     struct SATxpQueryPos {
-	SATxpQueryPos(uint32_t posIn, uint32_t qposIn, uint8_t lcpLengthIn, bool queryRCIn, bool activeIn = false) :
+	SATxpQueryPos(uint32_t posIn, uint32_t qposIn, uint32_t lcpLengthIn, bool queryRCIn, bool activeIn = false) :
 		pos(posIn), queryPos(qposIn), lcpLength(lcpLengthIn), queryRC(queryRCIn), active(activeIn) {}
 	uint32_t pos, queryPos;
-	uint8_t lcpLength;
+	uint32_t lcpLength;
 	bool queryRC, active;
     };
 
     struct ProcessedSAHit {
 	    ProcessedSAHit() : tid(std::numeric_limits<uint32_t>::max()), active(false), numActive(1) {}
 
-	    ProcessedSAHit(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t queryPosIn, uint8_t lcpLengthIn, bool queryRCIn) :
+	    ProcessedSAHit(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t queryPosIn, uint32_t lcpLengthIn, bool queryRCIn) :
 		    tid(txpIDIn), active(false), numActive(1)
 	    {
 		tqvec.emplace_back(txpPosIn, queryPosIn, lcpLengthIn, queryRCIn);

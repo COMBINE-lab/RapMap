@@ -108,6 +108,7 @@ public:
     using MateStatus = rapmap::utils::MateStatus;
     using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
 
+    auto& txpNames = rmi_->txpNames ;
     auto& rankDict = rmi_->rankDict;
     auto& txpStarts = rmi_->txpOffsets;
     auto& SA = rmi_->SA;
@@ -290,6 +291,7 @@ public:
     }
 
     bool checkRC = useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
+    //bool checkRC = true;//useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
     // If we had a hit on the reverse complement strand
     if (checkRC) {
       rapmap::utils::reverseRead(read, rcBuffer_);
@@ -305,6 +307,7 @@ public:
     // fwd hits
     // while looking at the RC strand, then check the fwd strand now
     bool checkFwd = useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
+    //bool checkFwd = !fwdHit;//useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
     if (!didCheckFwd and checkFwd) {
       didCheckFwd = true;
       getSAHits_(saSearcher,
@@ -411,7 +414,7 @@ public:
 
             auto processedHits = rapmap::hit_manager::unionSAHits(
            fwdSAInts, *rmi_, readLen, consistentHits);
-                 rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
+                 rapmap::hit_manager::collectHitsSimpleSAGreedy(processedHits, readLen, maxDist,
                                                                 hits, false, mateStatus);
 
 
@@ -636,7 +639,7 @@ private:
   inline void getSAHits_(
       SASearcher<RapMapIndexT>& saSearcher, std::string& read,
       std::string::iterator startIt,
-      rapmap::utils::SAInterval<OffsetT>* startInterval, uint8_t lcpLengthIn, size_t& cov,
+      rapmap::utils::SAInterval<OffsetT>* startInterval, uint32_t lcpLengthIn, size_t& cov,
       uint32_t& strandHits, uint32_t& otherStrandHits,
       std::vector<rapmap::utils::SAIntervalHit<OffsetT>>& saInts,
       std::vector<KmerDirScore>& kmerScores,
@@ -668,7 +671,7 @@ private:
     auto rb = readStartIt;
     auto re = rb + k;
     OffsetT lb, ub;
-    uint8_t lcpLength = lcpLengthIn;
+    uint32_t lcpLength = lcpLengthIn;
     size_t invalidPos{0};
 
     MerT mer, complementMer;
@@ -744,6 +747,13 @@ private:
       complementMer = mer.get_reverse_complement();
       merIt = khash.find(mer.word(0));//get_bits(0, 2 * k));
 
+
+      //@debug HIRAK check a falsely read
+      //finds the true list in its transcript or not
+     //auto& SA = rmi_->SA ;
+     //auto& txpNames = rmi_->txpNames;
+
+
       // If we found the k-mer
       if (merIt != hashEnd_) {
         spotCheck_(mer, pos, readLen, &merIt, nullItPtr, isRC, strandHits,
@@ -753,6 +763,20 @@ private:
         ub = merIt->second.interval.end();
         lcpLength = merIt->second.lcpLength ;
       skipSetup:
+
+
+        if(read == "GTGCAGTGGTGCAATCTCAGCACACTGCAACCTCTGCCGCCCGGGTTCAAGCAATTCTCCTGCCTCAGCCTCCCA" or read == "TGGGAGGCTGAGGCAGGAGAATTGCTTGAACCCGGGCGGCAGAGGTTGCAGTGTGCTGAGATTGCACCACTGCAC"){
+          if(merIt != khash.end()){
+              std::cout << "\n We are looking at the read \n" ;
+              auto tSAInt = merIt->second ;
+              for(auto i = tSAInt.interval.begin(); i != tSAInt.interval.end(); ++i){
+                  auto iGlobalPos = rmi_->SA[i] ;
+                  auto txpID = rmi_->transcriptAtPosition(iGlobalPos);
+                  std::cout << rmi_->txpNames[txpID] << "\n";
+              }
+          }
+          std::cout << "\n";
+      }
         // lb must be 1 *less* then the current lb
         // We can't move any further in the reverse complement direction
         lb = std::max(static_cast<OffsetT>(0), lb - 1);

@@ -75,6 +75,13 @@ namespace rapmap {
                 bool remap,
                 MateStatus mateStatus);
 
+        bool collectHitsSimpleSAGreedy(SAHitMap& processedHits,
+                uint32_t readLen,
+                uint32_t maxDist,
+                std::vector<QuasiAlignment>& hits,
+                bool remap,
+                MateStatus mateStatus);
+
         // Return hits from processedHits where position constraints
         // match maxDist
         bool collectHitsSimpleSA2(std::vector<ProcessedSAHit>& processedHits,

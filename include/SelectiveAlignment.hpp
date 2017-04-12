@@ -175,7 +175,16 @@ public:
                   auto& startEdlibResult = ae_.result();
 
                   startHit.editD = startEdlibResult.editDistance;
+
+
                   startEditDistance = startEdlibResult.editDistance;
+
+                  //@debug purpose
+                  auto readName = rapmap::utils::getReadName(readT) ;
+
+                  if(readName == "15006_1_6022_314_181"){
+                      std::cout << "\nIn selective Alignment start  edit distance: "<< startEditDistance << " length: "<< thisTxpLen << " pos " << pos << " fwd "<<  startHit.fwd << "\n";
+                  }
 
                   if(startEditDistance != -1){
                     startHit.toAlign = true;
@@ -227,10 +236,13 @@ public:
             for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
                 uint32_t txpID = hitsIt->tid ;
                 auto search = tidset.find(txpID);
-                if ( (!skipLCPOpt) && (search != tidset.end()) &&  lcpLength >= readLen){
+                if ( (!skipLCPOpt) && (search != tidset.end()) && (lcpLength >= readLen)){
+                          //std::cout << " \n LCP length " << lcpLength <<" readLen " << readLen << "\n";
                           if(startEditDistance != -1){
                                 hitsIt->editD = startEditDistance;
                                 hitsIt->toAlign = true;
+                                //std::cout << " LCP Length " << lcpLength << "\n";
+
                                 /* ROB: No CIGAR right now */
                                 //hitsIt->cigar = startHit.cigar;
                           }else{

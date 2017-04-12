@@ -323,6 +323,7 @@ void processReadsPairSA(paired_parser* parser,
     auto rg = parser->getReadGroup();
 
     std::vector<uint32_t> dummy ;
+    //auto txpNames = formatter.index->txpNames ;
 
     while (parser->refill(rg)) {
       //while(true) {
@@ -330,13 +331,15 @@ void processReadsPairSA(paired_parser* parser,
       //if(j.is_empty()) break;                 // If we got nothing, quit
       //  for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
       for (auto& rpair : rg) {
-	tooManyHits = false;
+	    tooManyHits = false;
 	    readLen = rpair.first.seq.length();
             ++hctr.numReads;
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
 
+            int32_t minLDist{mopts->editThreshold};
+            int32_t minRDist{mopts->editThreshold};
 
             bool lh = hitCollector(rpair.first.seq,
                                    leftHits, saSearcher,
@@ -358,18 +361,45 @@ void processReadsPairSA(paired_parser* parser,
                 //std::cout << leftHits.size() << "\n";
             }*/
 
-            if(leftHits.size() > 0) hitSECollector(rpair.first, leftHits, mopts->editThreshold);
+
+             if(leftHits.size() > 0) {
+                  hitSECollector(rpair.first, leftHits, mopts->editThreshold);
 
             //@debug purpose
             auto readName = rapmap::utils::getReadName(rpair.first) ;
 
-            /*
-            if(readName == "SRR1265495.29995"){
+
+            if(readName == "read272375/ENST00000373816.4;mate1:2693-2792;mate2:2873-2972"){
                 for(auto leftHitsIt = leftHits.begin(); leftHitsIt != leftHits.end(); ++leftHitsIt)
-                    std::cout << "\nAfter one call to SECollector edit distance: "<< leftHitsIt->editD<<"\n" ;
+                    std::cout << "\nLeft After one call to SECollector "<< txpNames[leftHitsIt->tid] <<" edit distance: "<< leftHitsIt->editD<<" pos: "<< leftHitsIt->pos <<" Length: " << txpLens[leftHitsIt->tid] << "\n" ;
             }
-            */
+
             //end @debug purpose
+
+
+                  leftHits.erase(std::remove_if(leftHits.begin(), leftHits.end(),
+                              [](QuasiAlignment& a) {
+                              return !a.toAlign;
+                              }), leftHits.end());
+
+
+                  auto old_size = leftHits.size() ;
+                  if(leftHits.size() > 0){
+                        std::for_each(leftHits.begin(), leftHits.end(),
+                                [&minLDist](QuasiAlignment& a) {
+                                               if (a.editD < minLDist) { minLDist = a.editD; }
+                                              });
+                  leftHits.erase(std::remove_if(leftHits.begin(), leftHits.end(),
+                              [&minLDist](QuasiAlignment& a) {
+                              return a.editD > minLDist;
+                              }), leftHits.end());
+                  }
+
+                  auto new_size = leftHits.size() ;
+                  if(old_size != 0 and new_size == 0) std::cout << "WTF \n" ;
+
+             }
+
 
 
             bool rh = hitCollector(rpair.second.seq,
@@ -391,7 +421,45 @@ void processReadsPairSA(paired_parser* parser,
                                    mopts->consistentHits);
             }*/
 
-           if(rightHits.size() > 0) hitSECollector(rpair.second, rightHits, mopts->editThreshold);
+
+
+
+           if(rightHits.size() > 0){
+
+              hitSECollector(rpair.second, rightHits, mopts->editThreshold);
+
+
+            //@debug purpose
+            auto readName = rapmap::utils::getReadName(rpair.first) ;
+
+
+            /*if(readName == "read272375/ENST00000373816.4;mate1:2693-2792;mate2:2873-2972"){
+                for(auto leftHitsIt = rightHits.begin(); leftHitsIt != rightHits.end(); ++leftHitsIt)
+                    std::cout << "\nRight After one call to SECollector "<< txpNames[leftHitsIt->tid] <<" edit distance: "<< leftHitsIt->editD<<" pos: "<< leftHitsIt->pos <<" Length: " << txpLens[leftHitsIt->tid] << "\n" ;
+            }*/
+
+              rightHits.erase(std::remove_if(rightHits.begin(), rightHits.end(),
+                          [](QuasiAlignment& a) {
+                          return !a.toAlign;
+                          }), rightHits.end());
+
+              auto old_size = rightHits.size();
+
+              if(rightHits.size() > 0){
+                  std::for_each(rightHits.begin(), rightHits.end(),
+                            [&minRDist](QuasiAlignment& a) {
+                                           if (a.editD < minRDist) { minRDist = a.editD; }
+                                          });
+
+                  rightHits.erase(std::remove_if(rightHits.begin(), rightHits.end(),
+                          [&minRDist](QuasiAlignment& a) {
+                          return a.editD > minRDist;
+                          }), rightHits.end());
+              }
+              auto new_size = rightHits.size() ;
+
+              if(old_size != 0 and new_size == 0) std::cout <<minRDist <<" WTF\n" ;
+            }
 
             if (mopts->fuzzy) {
                 rapmap::utils::mergeLeftRightHitsFuzzy(
@@ -405,7 +473,9 @@ void processReadsPairSA(paired_parser* parser,
                         readLen, mopts->maxNumHits, tooManyHits, hctr);
             }
 
-            if(mopts->fuzzy && mopts->remap && jointHits.size() > 0){
+
+
+            if(mopts->remap && jointHits.size() > 0){
                 auto& startHit = jointHits.front();
                 if(startHit.mateStatus == rapmap::utils::MateStatus::PAIRED_END_LEFT){
                     std::vector<uint32_t> goldenTids ;
@@ -508,6 +578,16 @@ bool spawnProcessReadsThreads(
                               MappingOpts* mopts) {
 
             std::vector<std::thread> threads;
+            /*
+            std::ofstream lcpLengthDumpFile;
+            lcpLengthDumpFile.open("~/Projects/RapMap/build/lcpLength.list");
+            //@debug with khash
+            auto& khash = rmi.khash ;
+            for(auto const &el : khash){
+                lcpLengthDumpFile<<el.second.lcpLength << "\n";
+            }
+            lcpLengthDumpFile.close();
+            */
 
             for (size_t i = 0; i < nthread; ++i) {
                 threads.emplace_back(processReadsPairSA<RapMapIndexT, MutexT>,

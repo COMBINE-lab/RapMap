@@ -253,15 +253,15 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
 
 
 template <typename IndexT>
-uint8_t findLCPLength(std::string &concatText,size_t tlen, std::vector<IndexT>& SA,
+uint32_t findLCPLength(std::string &concatText,size_t tlen, std::vector<IndexT>& SA,
 		IndexT start,IndexT stop){
-		uint8_t lcplen = 0 ;
+		uint32_t lcplen = 0 ;
 		auto o1 = SA[start] + lcplen ;
 		auto o2 = SA[stop] + lcplen ;
 		auto maxIndex = std::max(o1,o2) ;
 		while(maxIndex + lcplen < tlen and concatText[o1+lcplen] == concatText[o2+lcplen]){
 			if(concatText[o1+lcplen] == '$') { break; }
-			if(lcplen >= 255) { return 0; }
+			if(lcplen >= 255) { return 255; }
 			++lcplen ;
 		}
 		return lcplen ;
@@ -526,7 +526,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
                         << ") = (stop =  " << stop << ")\n";
             }
 
-            auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop);
+            auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop-1);
             khash[bits] = {start, stop, lcpLength};
             /*
             IndexT len = stop - start;
@@ -587,7 +587,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
               std::exit(1);
             }
           }
-          auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop);
+          auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop-1);
           khash[bits] = {start, stop, lcpLength};
           //khash[bits] = {start, stop};
           /*
@@ -629,7 +629,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
     if (currentKmer.length() == k and
         currentKmer.find_first_of('$') != std::string::npos) {
       mer = currentKmer.c_str();
-      auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop);
+      auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop-1);
       khash[mer.word(0)] = {start, stop, lcpLength};
       /*
       IndexT len = stop - start;
@@ -713,6 +713,11 @@ void indexTranscriptsSA(ParserT* parser,
   std::vector<uint32_t> completeLengths;
   // the stream of transcript sequence
   fmt::MemoryWriter txpSeqStream;
+
+  std::string nonpolyAFile = outputDir + "/tra.fa" ;
+  std::ofstream nonpolyAFileHandle(nonpolyAFile, std::ofstream::out | std::ofstream::app) ;
+
+
   {
     ScopedTimer timer;
     // Get the read group by which this thread will
@@ -797,6 +802,11 @@ void indexTranscriptsSA(ParserT* parser,
           txpSeqStream << '$';
           currIndex += readLen + 1;
           onePos.push_back(currIndex - 1);
+
+          //write transcript after polyA clipping
+          nonpolyAFileHandle << ">" << processedName << "\n";
+          nonpolyAFileHandle << readStr << "\n" ;
+
         } else {
             log->warn("Discarding entry with header [{}], since it had length 0 "
                       "(perhaps after poly-A clipping)",
@@ -808,6 +818,8 @@ void indexTranscriptsSA(ParserT* parser,
       }
     }
   }
+
+  nonpolyAFileHandle.close() ;
   std::cerr << "\n";
 
   std::cerr << "Replaced " << numNucleotidesReplaced

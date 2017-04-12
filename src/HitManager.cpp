@@ -58,6 +58,73 @@ namespace rapmap {
 
         // Return hits from processedHits where position constraints
         // match maxDist
+        bool collectHitsSimpleSAGreedy(SAHitMap& processedHits,
+                        uint32_t readLen,
+                        uint32_t maxDist,
+                        std::vector<QuasiAlignment>& hits,
+                        bool remapFlag,
+                        MateStatus mateStatus){
+                //bool foundHit{false};
+                // One processed hit per transcript
+	            //auto startOffset = hits.size();
+                for (auto& ph : processedHits) {
+                        // If this is an *active* position list
+                        if (ph.second.active || remapFlag) {
+                                auto tid = ph.first;
+                                //sort transcripts with respect to
+                                //positions
+                                std::sort(ph.second.tqvec.begin(),
+                                        ph.second.tqvec.end(),
+                                        [](const SATxpQueryPos& a, const SATxpQueryPos& b)-> bool {
+                                                return a.pos < b.pos;
+                                        } );
+
+                                std::map<int32_t , int> hitCov ;
+                                //std::map<int32_t , bool> hitDir ;
+                                auto it = ph.second.tqvec.begin();
+                                while(it != ph.second.tqvec.end()){
+                                    int numOfCov = 0;
+                                    int32_t hitKey = it->pos - it->queryPos ;
+                                    hitCov[hitKey] = 25;
+                                    while((it+1) != ph.second.tqvec.end()  and it->pos + 25 > ((it+1)->pos)) {
+                                        hitCov[hitKey] += (it+1)->pos - it->pos;
+                                        ++it ;
+                                    }
+                                    ++it;
+                                }
+                                //std::cout << "\n outside while \n";
+
+				auto minPosIt = std::min_element(ph.second.tqvec.begin(),
+						ph.second.tqvec.end(),
+						[](const SATxpQueryPos& a, const SATxpQueryPos& b) -> bool {
+						    return a.pos < b.pos;
+						});
+
+                                using pair_type = decltype(hitCov)::value_type;
+                                auto maxCov = std::max_element(hitCov.begin(),hitCov.end(),
+                                        [](const pair_type& p1, const pair_type& p2) -> bool {
+                                                return p1.second < p2.second ;
+                                        });
+
+                                bool hitRC = ph.second.tqvec[0].queryRC;
+                                int32_t hitPos = maxCov->second;
+                                bool isFwd = !hitRC;
+                                hits.emplace_back(tid, hitPos, isFwd, readLen, minPosIt->lcpLength);
+                                hits.back().mateStatus = mateStatus;
+                        }
+                }
+                // if SAHitMap is sorted, no need to sort here
+                /*
+                std::sort(hits.begin() + startOffset, hits.end(),
+                                [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                                return a.tid < b.tid;
+                                });
+                                */
+                return true;
+        }
+
+        // Return hits from processedHits where position constraints
+        // match maxDist
         bool collectHitsSimpleSA(SAHitMap& processedHits,
                         uint32_t readLen,
                         uint32_t maxDist,
@@ -71,6 +138,7 @@ namespace rapmap {
                         // If this is an *active* position list
                         if (ph.second.active || remapFlag) {
                                 auto tid = ph.first;
+
 				auto minPosIt = std::min_element(ph.second.tqvec.begin(),
 						ph.second.tqvec.end(),
 						[](const SATxpQueryPos& a, const SATxpQueryPos& b) -> bool {

@@ -355,14 +355,14 @@ namespace rapmap {
                             currCigarStr2 = qa.mateCigar.c_str();
                         }
 
-                    if(qa.toAlign){
+                    //if(qa.toAlign){
 
-                        sstream << readName.c_str() << "|E" << qa.editD << '\t' // QNAME
+                        sstream << readName.c_str() << '\t' // QNAME
                                 << flags1 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
                                 << 1 << '\t' // MAPQ
-                                << qa.cigar.c_str() << '\t' // CIGAR
+                                << cigarStr1.c_str() << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.matePos + 1 << '\t' // PNEXT
                                 << ((read1First) ? fragLen : -fragLen) << '\t' // TLEN
@@ -370,19 +370,19 @@ namespace rapmap {
                                 << "*\t" // QUAL
                                 << numHitFlag << '\n';
 
-                        sstream << mateName.c_str() << "|E"<< qa.mateEditD <<'\t' // QNAME
+                        sstream << mateName.c_str() <<'\t' // QNAME
                                 << flags2 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.matePos + 1 << '\t' // POS (1-based)
                                 << 1 << '\t' // MAPQ
-                                << qa.mateCigar.c_str() << '\t' // CIGAR
+                                << cigarStr2.c_str() << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.pos + 1 << '\t' // PNEXT
                                 << ((read1First) ? -fragLen : fragLen) << '\t' // TLEN
                                 << *readSeq2 << '\t' // SEQ
                                 << "*\t" // QUAL
                                 << numHitFlag << '\n';
-                        }
+                      //  }
                     }else {
                         rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
@@ -480,14 +480,14 @@ namespace rapmap {
                         }
                         */
 
-                   if(toAlign){
+                   //if(toAlign){
                         rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
-                        sstream << alignedName->c_str() << "|E" << editD << '\t' // QNAME
+                        sstream << alignedName->c_str() << '\t' // QNAME
                                 << flags << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
                                 << 1 << '\t' // MAPQ
-                                << cigar << '\t' // CIGAR
+                                << cigarStr->c_str() << '\t' // CIGAR
                                 << '=' << '\t' // RNEXT
                                 << qa.pos+1 << '\t' // PNEXT (only 1 read in templte)
                                 << 0 << '\t' // TLEN (spec says 0, not read len)
@@ -497,7 +497,7 @@ namespace rapmap {
 
 
                         // Output the info for the unaligned mate.
-                        sstream << unalignedName->c_str() << "|ORF" << '\t' // QNAME
+                        sstream << unalignedName->c_str() << '\t' // QNAME
                             << unalignedFlags << '\t' // FLAGS
                             << transcriptName << '\t' // RNAME (same as mate)
                             << qa.pos + 1 << '\t' // POS (same as mate)
@@ -509,7 +509,7 @@ namespace rapmap {
                             << *unalignedSeq << '\t' // SEQ
                             << "*\t" // QUAL
                             << numHitFlag << '\n';
-                        }
+                     //   }
                     }
 
                     ++alnCtr;
