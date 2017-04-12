@@ -869,10 +869,15 @@ private:
         // if (skipMatch + k )
         // Where we would jump if we used the LCE
         auto skipLCE = rb + lce - skipOverlapNIP;
+        // TODO: GIANT HACK TO TEST SENSITIVITY!!!!
+        auto neverSkipMoreThan = rb + 10;
         // Pick the maximum of the two
         auto maxSkip = std::max(skipMatch, skipLCE);
         // And that's where our new search will start
         rb = maxSkip;
+        if (rb > neverSkipMoreThan) {
+            rb = neverSkipMoreThan;
+        }
 
         // If NIP skipping is *enabled*, and we got to the current position
         // by doing an LCE query, then we allow ourselves to *double check*
