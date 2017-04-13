@@ -474,7 +474,7 @@ public:
         if(!remap){
             auto processedHits = rapmap::hit_manager::unionSAHits(
                       rcSAInts, *rmi_, readLen, consistentHits);
-            rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
+            rapmap::hit_manager::collectHitsSimpleSAGreedy(processedHits, readLen, maxDist,
                                                                            hits, false, mateStatus);
           //auto processedHits = rapmap::hit_manager::intersectSAHits(
               //rcSAInts, *rmi_, readLen, consistentHits);

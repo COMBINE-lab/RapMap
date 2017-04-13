@@ -107,7 +107,7 @@ namespace rapmap {
                                         });
 
                                 bool hitRC = ph.second.tqvec[0].queryRC;
-                                int32_t hitPos = maxCov->second;
+                                int32_t hitPos = maxCov->first;
                                 bool isFwd = !hitRC;
                                 hits.emplace_back(tid, hitPos, isFwd, readLen, minPosIt->lcpLength);
                                 hits.back().mateStatus = mateStatus;
