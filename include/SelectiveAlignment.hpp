@@ -117,6 +117,10 @@ public:
           bool skipLCPOpt{false};
           bool currentValid{false};
           std::string currentKmer;
+
+        //TODO check if lcp is really returning same sequences
+          std::string firsttidString ;
+
     /*
             auto& readName = readT.name;
             // If the read name contains multiple space-separated parts,
@@ -182,9 +186,10 @@ public:
                   //@debug purpose
                   auto readName = rapmap::utils::getReadName(readT) ;
 
+                  /*
                   if(readName == "15006_1_6022_314_181"){
                       std::cout << "\nIn selective Alignment start  edit distance: "<< startEditDistance << " length: "<< thisTxpLen << " pos " << pos << " fwd "<<  startHit.fwd << "\n";
-                  }
+                  }*/
 
                   if(startEditDistance != -1){
                     startHit.toAlign = true;
@@ -201,6 +206,9 @@ public:
 
                 /* Take the kmer from the transcript */
                 currentKmer = concatText.substr(globalPos, k);
+                firsttidString = concatText.substr(globalPos, 75);
+
+
                 if(currentKmer.length() == k and currentKmer.find_first_of('$') == std::string::npos){
                     mer = currentKmer;
                     currentValid= true ;
@@ -209,6 +217,7 @@ public:
                 }
           }
 
+          std::map<int,OffsetT> tidPos ;
           if(currentValid){
               auto bits = mer.word(0);
               auto hashIt = khash.find(bits);
@@ -220,6 +229,7 @@ public:
                       auto iGlobalPos = SA[i];
                       auto txpID = rmi_->transcriptAtPosition(iGlobalPos);
                       tidset.insert(txpID);
+                      tidPos[txpID] = iGlobalPos;
                 }
               }else{
                   skipLCPOpt = true ;
@@ -236,8 +246,22 @@ public:
             for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
                 uint32_t txpID = hitsIt->tid ;
                 auto search = tidset.find(txpID);
-                if ( (!skipLCPOpt) && (search != tidset.end()) && (lcpLength >= readLen)){
+                int32_t pos = hitsIt->pos;
+                int32_t startOffset, endOffset ;
+                OffsetT globalPos = txpStarts[txpID];
+                OffsetT thisTxpLen = txpLens[txpID];
+                auto overHangLeft = (pos < 0)?-(pos):0;
+                auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
+
+                globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
+
+                if ( (!skipLCPOpt) && (search != tidset.end()) && (lcpLength >= readLen) && (tidPos[txpID] == globalPos)){
                           //std::cout << " \n LCP length " << lcpLength <<" readLen " << readLen << "\n";
+                          //std::cout << "\nStart transcript sequence: "<<firsttidString<<"\n";
+                          //std::cout << "This  transcript sequence: " <<concatText.substr(globalPos,75)<<"\n";
+                    if(firsttidString == concatText.substr(globalPos,75)){
+                        //std::cout << "all good";
+                    }
                           if(startEditDistance != -1){
                                 hitsIt->editD = startEditDistance;
                                 hitsIt->toAlign = true;
@@ -250,29 +274,9 @@ public:
                           }
                   }else{
 
-                          int32_t pos = hitsIt->pos;
-                          int32_t startOffset, endOffset ;
-                          OffsetT globalPos = txpStarts[txpID];
-                          OffsetT thisTxpLen = txpLens[txpID];
 
-                          /*
-                          if(pos >= 5){
-                              globalPos = globalPos - 5;
-                          }else{
-                              globalPos = txpStarts[txpID];
-                          }
 
-                          if(pos + readLen + 5 <= thisTxpLen){
-                              endOffset = readLen + 5;
-                          }else{
-                              endOffset = thisTxpLen - pos ;
-                          }
-                          */
 
-                          auto overHangLeft = (pos < 0)?-(pos):0;
-                          auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
-
-                          globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
                           auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
                           extend = (overHangRight > 0)?(extend-overHangRight):extend;
 
