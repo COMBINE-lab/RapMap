@@ -431,6 +431,7 @@ namespace rapmap {
 
         //lcpLength has is added @hirak
         uint32_t lcpLength;
+        size_t coverage{0};
 
         int32_t hamD{-1};
         bool toAlign{false};
@@ -476,6 +477,7 @@ namespace rapmap {
 	uint32_t pos, queryPos;
 	uint32_t lcpLength;
 	bool queryRC, active;
+        uint32_t matchedLen ;
     };
 
     struct ProcessedSAHit {

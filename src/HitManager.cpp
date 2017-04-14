@@ -67,6 +67,7 @@ namespace rapmap {
                 //bool foundHit{false};
                 // One processed hit per transcript
 	            //auto startOffset = hits.size();
+                auto k = rapmap::utils::my_mer::k() ;
                 for (auto& ph : processedHits) {
                         // If this is an *active* position list
                         if (ph.second.active || remapFlag) {
@@ -80,17 +81,25 @@ namespace rapmap {
                                         } );
 
                                 std::map<int32_t , int> hitCov ;
-                                //std::map<int32_t , bool> hitDir ;
+                                std::map<int32_t , int> hitEndPos ;
                                 auto it = ph.second.tqvec.begin();
                                 while(it != ph.second.tqvec.end()){
                                     int numOfCov = 0;
                                     int32_t hitKey = it->pos - it->queryPos ;
-                                    hitCov[hitKey] = 25;
-                                    while((it+1) != ph.second.tqvec.end()  and it->pos + 25 > ((it+1)->pos)) {
-                                        hitCov[hitKey] += (it+1)->pos - it->pos;
-                                        ++it ;
+                                    if(hitCov.count(hitKey) == 0){
+                                        hitCov[hitKey] = it->matchedLen;
+                                        hitEndPos[hitKey] = it->pos + it->matchedLen;
                                     }
-                                    ++it;
+                                    else{
+                                        if(hitEndPos[hitKey] > it->pos){
+                                            hitCov[hitKey] += ( it->pos + it->matchedLen - hitEndPos[hitKey] );
+                                            hitEndPos[hitKey] = it->pos + it->matchedLen ;
+                                        }else{
+                                            hitCov[hitKey] += it->matchedLen;
+                                            hitEndPos[hitKey] = it->pos + it->matchedLen ;
+                                        }
+                                    }
+                                    ++it ;
                                 }
                                 //std::cout << "\n outside while \n";
 
@@ -111,6 +120,7 @@ namespace rapmap {
                                 bool isFwd = !hitRC;
                                 hits.emplace_back(tid, hitPos, isFwd, readLen, minPosIt->lcpLength);
                                 hits.back().mateStatus = mateStatus;
+                                hits.back().coverage = maxCov->second ;
                         }
                 }
                 // if SAHitMap is sorted, no need to sort here
@@ -492,11 +502,13 @@ namespace rapmap {
                 auto localPos = globalPos - txpStarts[txpID];
                 txpListIt->second.tqvec.emplace_back(localPos, h.queryPos, h.lcpLength, h.queryRC);
                 txpListIt->second.active = true;
+                txpListIt->second.tqvec.back().matchedLen = h.len ;
               } else {
                 auto globalPos = SA[i];
                 auto localPos = globalPos - txpStarts[txpID];
                 outHits[txpID].tqvec.emplace_back(localPos, h.queryPos, h.lcpLength, h.queryRC);
                 outHits[txpID].active = true;
+                outHits[txpID].tqvec.back().matchedLen = h.len ;
               }
             }
           }
@@ -784,6 +796,7 @@ namespace rapmap {
                     auto txpPos = globalPos - txpStarts[tid];
                     outHits[tid].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->lcpLength, minHit->queryRC);
                     outHits[tid].active = true;
+                    outHits[tid].tqvec.back().matchedLen = minHit->len ;
                 }
             }
             // =========

@@ -290,8 +290,9 @@ public:
                  fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false, sigHit, remap);
     }
 
-    bool checkRC = useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
-    //bool checkRC = true;//useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
+    //bool checkRC = useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
+    //TODO RC checked enabled
+    bool checkRC = true;//useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
     // If we had a hit on the reverse complement strand
     if (checkRC) {
       rapmap::utils::reverseRead(read, rcBuffer_);
@@ -306,8 +307,9 @@ public:
     // Now, if we *didn't* check the forward strand at first, but we encountered
     // fwd hits
     // while looking at the RC strand, then check the fwd strand now
-    bool checkFwd = useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
-    //bool checkFwd = !fwdHit;//useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
+    //bool checkFwd = useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
+    //TODO make check forward false
+    bool checkFwd = !fwdHit;//useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
     if (!didCheckFwd and checkFwd) {
       didCheckFwd = true;
       getSAHits_(saSearcher,
@@ -536,6 +538,10 @@ public:
           [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
             return a.tid < b.tid;
           });
+       std::sort(hits.begin(),hits.end(),
+                 [](const QuasiAlignment& a, const QuasiAlignment& b)->bool {
+                    return ((a.tid<b.tid) || (a.tid==b.tid && a.coverage>b.coverage));
+            });
       // And get rid of duplicate transcript IDs
       auto newEnd = std::unique(
           hits.begin() + fwdHitsStart, hits.begin() + rcHitsEnd,
@@ -764,7 +770,7 @@ private:
         lcpLength = merIt->second.lcpLength ;
       skipSetup:
 
-
+        /*
         if(read == "GTGCAGTGGTGCAATCTCAGCACACTGCAACCTCTGCCGCCCGGGTTCAAGCAATTCTCCTGCCTCAGCCTCCCA" or read == "TGGGAGGCTGAGGCAGGAGAATTGCTTGAACCCGGGCGGCAGAGGTTGCAGTGTGCTGAGATTGCACCACTGCAC"){
           if(merIt != khash.end()){
               std::cout << "\n We are looking at the read \n" ;
@@ -777,11 +783,23 @@ private:
           }
           std::cout << "\n";
       }
+      */
+
+        auto oldlb = lb;
+        auto oldub = ub;
+
+
         // lb must be 1 *less* then the current lb
         // We can't move any further in the reverse complement direction
         lb = std::max(static_cast<OffsetT>(0), lb - 1);
         std::tie(lb, ub, matchedLen) =
             saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
+
+        if(matchedLen < k+5){
+            matchedLen = k;
+            lb = oldlb;
+            ub = oldub;
+        }
 
         OffsetT diff = ub - lb;
         if (ub > lb and diff < maxInterval_) {
@@ -870,14 +888,16 @@ private:
         // Where we would jump if we used the LCE
         auto skipLCE = rb + lce - skipOverlapNIP;
         // TODO: GIANT HACK TO TEST SENSITIVITY!!!!
-        auto neverSkipMoreThan = rb + 10;
+        //auto neverSkipMoreThan = rb + 10;
         // Pick the maximum of the two
         auto maxSkip = std::max(skipMatch, skipLCE);
         // And that's where our new search will start
         rb = maxSkip;
+        /*
         if (rb > neverSkipMoreThan) {
             rb = neverSkipMoreThan;
-        }
+        }*/
+
 
         // If NIP skipping is *enabled*, and we got to the current position
         // by doing an LCE query, then we allow ourselves to *double check*
