@@ -256,12 +256,9 @@ public:
                 globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
 
                 if ( (!skipLCPOpt) && (search != tidset.end()) && (lcpLength >= readLen) && (tidPos[txpID] == globalPos)){
-                          //std::cout << " \n LCP length " << lcpLength <<" readLen " << readLen << "\n";
+                          std::cout << " \n LCP length " << lcpLength <<" readLen " << readLen << "\n";
                           //std::cout << "\nStart transcript sequence: "<<firsttidString<<"\n";
                           //std::cout << "This  transcript sequence: " <<concatText.substr(globalPos,75)<<"\n";
-                    if(firsttidString == concatText.substr(globalPos,75)){
-                        //std::cout << "all good";
-                    }
                           if(startEditDistance != -1){
                                 hitsIt->editD = startEditDistance;
                                 hitsIt->toAlign = true;

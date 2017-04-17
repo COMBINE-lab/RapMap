@@ -309,7 +309,8 @@ public:
     // while looking at the RC strand, then check the fwd strand now
     //bool checkFwd = useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
     //TODO make check forward false
-    bool checkFwd = !fwdHit;//useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
+    //bool checkFwd = !fwdHit;//useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
+    bool checkFwd = true ;
     if (!didCheckFwd and checkFwd) {
       didCheckFwd = true;
       getSAHits_(saSearcher,
@@ -791,15 +792,21 @@ private:
 
         // lb must be 1 *less* then the current lb
         // We can't move any further in the reverse complement direction
+        //comment these lines to disable MMP check
         lb = std::max(static_cast<OffsetT>(0), lb - 1);
         std::tie(lb, ub, matchedLen) =
             saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
+
+
 
         if(matchedLen < k+5){
             matchedLen = k;
             lb = oldlb;
             ub = oldub;
         }
+        //until this
+        //add this
+        matchedLen = k;
 
         OffsetT diff = ub - lb;
         if (ub > lb and diff < maxInterval_) {
