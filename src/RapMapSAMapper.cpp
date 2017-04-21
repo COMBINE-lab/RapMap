@@ -84,6 +84,8 @@
 #include "SASearcher.hpp"
 #include "SACollector.hpp"
 #include "SelectiveAlignment.hpp"
+#include "SACollectorPair.hpp"
+#include "HitManagerSA.hpp"
 
 //#define __TRACK_CORRECT__
 
@@ -149,7 +151,6 @@ void processReadsSingleSA(single_parser * parser,
     SACollector<RapMapIndexT, rapmap::utils::my_mer> hitCollector(&rmi);
     //Remap caqll to SACollector
     SACollector<RapMapIndexT, rapmap::utils::my_mer9> hitCollector9(&rmi);
-
 
     SECollector<RapMapIndexT> hitSECollector(&rmi);
 
@@ -279,11 +280,14 @@ void processReadsPairSA(paired_parser* parser,
                         HitCounters& hctr,
                         MappingOpts* mopts) {
     using OffsetT = typename RapMapIndexT::IndexType;
+    using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT> ;
 
     //Normal Call to SACollector
     SACollector<RapMapIndexT, rapmap::utils::my_mer> hitCollector(&rmi);
     //Remap caqll to SACollector
     SACollector<RapMapIndexT, rapmap::utils::my_mer9> hitCollector9(&rmi);
+    //Rammap call to SACollectorPair
+    SACollectorPair<RapMapIndexT, rapmap::utils::my_mer> hitCollectorPair(&rmi);
 
     SECollector<RapMapIndexT> hitSECollector(&rmi);
 
@@ -306,6 +310,14 @@ void processReadsPairSA(paired_parser* parser,
     std::vector<QuasiAlignment> leftHits;
     std::vector<QuasiAlignment> rightHits;
     std::vector<QuasiAlignment> jointHits;
+
+    //create things for SAIntervalHit s
+    std::vector<SAIntervalHit> leftFwdSAInts ;
+    std::vector<SAIntervalHit> leftRcSAInts ;
+    std::vector<SAIntervalHit> rightFwdSAInts ;
+    std::vector<SAIntervalHit> rightRcSAInts ;
+
+
 
     size_t readLen{0};
 	bool tooManyHits{false};
@@ -338,9 +350,26 @@ void processReadsPairSA(paired_parser* parser,
             leftHits.clear();
             rightHits.clear();
 
+            leftFwdSAInts.clear();
+            leftRcSAInts.clear();
+            rightFwdSAInts.clear();
+            rightRcSAInts.clear();
+
+
+
             int32_t minLDist{mopts->editThreshold};
             int32_t minRDist{mopts->editThreshold};
 
+            bool lhp = hitCollectorPair(rpair.first.seq,
+                                   leftFwdSAInts, leftRcSAInts, saSearcher,
+                                   MateStatus::PAIRED_END_LEFT,
+                                   dummy,
+                                   false,
+                                   mopts->mmpThreshold,
+                                   mopts->consistentHits);
+
+            //comment out the stuff for now
+            /*
             bool lh = hitCollector(rpair.first.seq,
                                    leftHits, saSearcher,
                                    MateStatus::PAIRED_END_LEFT,
@@ -349,7 +378,9 @@ void processReadsPairSA(paired_parser* parser,
                                    mopts->mmpThreshold,
                                    mopts->consistentHits);
 
-            /*
+
+            //call to hitCollectorPair
+
             if(leftHits.size() == 0 && mopts->remap){
                 //std::cout <<"Before remap "  <<leftHits.size() << "\n";
                 hitCollector9(rpair.first.seq,
@@ -359,7 +390,7 @@ void processReadsPairSA(paired_parser* parser,
                                    mopts->mmpThreshold,
                                    mopts->consistentHits);
                 //std::cout << leftHits.size() << "\n";
-            }*/
+            }
 
 
              if(leftHits.size() > 0) {
@@ -399,9 +430,18 @@ void processReadsPairSA(paired_parser* parser,
                   if(old_size != 0 and new_size == 0) std::cout << "WTF \n" ;
 
              }
+             */
+            //comment out the right hits old mechanism
+            bool rhp = hitCollectorPair(rpair.second.seq,
+                                   rightFwdSAInts, rightRcSAInts, saSearcher,
+                                   MateStatus::PAIRED_END_RIGHT,
+                                   dummy,
+                                   false,
+                                   mopts->mmpThreshold,
+                                   mopts->consistentHits);
 
 
-
+            /*
             bool rh = hitCollector(rpair.second.seq,
                                    rightHits, saSearcher,
                                    MateStatus::PAIRED_END_RIGHT,
@@ -410,7 +450,7 @@ void processReadsPairSA(paired_parser* parser,
                                    mopts->mmpThreshold,
                                    mopts->consistentHits);
 
-            /*
+
             if(rightHits.size() == 0 && mopts->remap){
 
                 hitCollector9(rpair.second.seq,
@@ -419,7 +459,7 @@ void processReadsPairSA(paired_parser* parser,
                                    true,
                                    mopts->mmpThreshold,
                                    mopts->consistentHits);
-            }*/
+            }
 
 
 
@@ -433,10 +473,10 @@ void processReadsPairSA(paired_parser* parser,
             auto readName = rapmap::utils::getReadName(rpair.first) ;
 
 
-            /*if(readName == "read272375/ENST00000373816.4;mate1:2693-2792;mate2:2873-2972"){
+            if(readName == "read272375/ENST00000373816.4;mate1:2693-2792;mate2:2873-2972"){
                 for(auto leftHitsIt = rightHits.begin(); leftHitsIt != rightHits.end(); ++leftHitsIt)
                     std::cout << "\nRight After one call to SECollector "<< txpNames[leftHitsIt->tid] <<" edit distance: "<< leftHitsIt->editD<<" pos: "<< leftHitsIt->pos <<" Length: " << txpLens[leftHitsIt->tid] << "\n" ;
-            }*/
+            }
 
               rightHits.erase(std::remove_if(rightHits.begin(), rightHits.end(),
                           [](QuasiAlignment& a) {
@@ -460,7 +500,25 @@ void processReadsPairSA(paired_parser* parser,
 
               if(old_size != 0 and new_size == 0) std::cout <<minRDist <<" WTF\n" ;
             }
+           */
 
+            //Now I have both forward and reverse checks from both the
+            //ends, we can call some function from here which merges
+            //them with respect to
+            bool res = rapmap::hit_manager_sa::mergeLeftRightSAInts(
+                    rpair,
+                    lhp, rhp,
+                    leftFwdSAInts, leftRcSAInts,
+                    rightFwdSAInts, rightRcSAInts,
+                    jointHits,
+                    rmi,
+                    mopts->maxNumHits,
+                    mopts->consistentHits,
+                    hctr);
+
+
+
+            /*
             if (mopts->fuzzy) {
                 rapmap::utils::mergeLeftRightHitsFuzzy(
                         lh, rh,
@@ -471,10 +529,10 @@ void processReadsPairSA(paired_parser* parser,
                 rapmap::utils::mergeLeftRightHits(
                         leftHits, rightHits, jointHits,
                         readLen, mopts->maxNumHits, tooManyHits, hctr);
-            }
+            }*/
 
 
-
+            /*
             if(mopts->remap && jointHits.size() > 0){
                 auto& startHit = jointHits.front();
                 if(startHit.mateStatus == rapmap::utils::MateStatus::PAIRED_END_LEFT){
@@ -518,11 +576,12 @@ void processReadsPairSA(paired_parser* parser,
                                 readLen, mopts->maxNumHits, tooManyHits, hctr);
                     }
                 }
-            }
+            }*/
 
             hctr.totHits += jointHits.size();
 
             // If we have reads to output, and we're writing output.
+            //if (jointHits.size() > 0 and !mopts->noOutput and jointHits.size() <= mopts->maxNumHits) {
             if (jointHits.size() > 0 and !mopts->noOutput and jointHits.size() <= mopts->maxNumHits) {
                 rapmap::utils::writeAlignmentsToStream(rpair, formatter,
                                                        hctr, jointHits, sstream);

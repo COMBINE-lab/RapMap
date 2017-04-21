@@ -19,8 +19,8 @@
 // along with RapMap.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-#ifndef SA_COLLECTOR_HPP
-#define SA_COLLECTOR_HPP
+#ifndef SA_COLLECTOR_PAIR_HPP
+#define SA_COLLECTOR_PAIR_HPP
 
 #include "RapMapSAIndex.hpp"
 #include "RapMapUtils.hpp"
@@ -30,7 +30,7 @@
 #include <iostream>
 #include <iterator>
 
-template <typename RapMapIndexT, typename MerT> class SACollector {
+template <typename RapMapIndexT, typename MerT> class SACollectorPair {
 public:
   using OffsetT = typename RapMapIndexT::IndexType;
 
@@ -61,7 +61,7 @@ public:
   void setStrictCheck(bool sc) { strictCheck_ = sc; }
 
   /** Construct an SACollector given an index **/
-  SACollector(RapMapIndexT* rmi)
+  SACollectorPair(RapMapIndexT* rmi)
       : rmi_(rmi), hashEnd_(rmi->khash.end()), disableNIP_(false),
         covReq_(0.0), maxInterval_(1000),
         strictCheck_(false) {}
@@ -96,7 +96,8 @@ public:
 
   //template <typename MerT>
   bool operator()(std::string& read,
-                  std::vector<rapmap::utils::QuasiAlignment>& hits,
+                  std::vector<rapmap::utils::SAIntervalHit<OffsetT>>& fwdSAInts,
+                  std::vector<rapmap::utils::SAIntervalHit<OffsetT>>& rcSAInts,
                   SASearcher<RapMapIndexT>& saSearcher,
                   rapmap::utils::MateStatus mateStatus,
                   std::vector<uint32_t> goldenTids,
@@ -165,8 +166,8 @@ public:
     std::vector<KmerDirScore> kmerScores;
 
     // Where we store the SA intervals for forward and rc hits
-    std::vector<SAIntervalHit> fwdSAInts;
-    std::vector<SAIntervalHit> rcSAInts;
+    //std::vector<SAIntervalHit> fwdSAInts;
+    //std::vector<SAIntervalHit> rcSAInts;
 
     // Number of nucleotides to skip when encountering a homopolymer k-mer.
     OffsetT homoPolymerSkip = 1; // k / 2;
@@ -328,6 +329,8 @@ public:
         }
     }
 
+    /*
+
     if (strictCheck_) {
       // If we're computing coverage, then we can make use of that info here
       //useCoverageCheck = false;
@@ -415,7 +418,7 @@ public:
       //if(remap) std::cout << "\nfwd Hit size " << fwdSAInts.size() << "\n";
         if(!remap){
 
-        /*
+
         if(read == "GTGCAGTGGTGCAATCTCAGCACACTGCAACCTCTGCCGCCCGGGTTCAAGCAATTCTCCTGCCTCAGCCTCCCA" or read == "TGGGAGGCTGAGGCAGGAGAATTGCTTGAACCCGGGCGGCAGAGGTTGCAGTGTGCTGAGATTGCACCACTGCAC"){
           if(merIt != khash.end()){
               std::cout << "\n We are looking at the read \n" ;
@@ -428,7 +431,7 @@ public:
           }
           std::cout << "\n";
       }
-      */
+
             auto processedHits = rapmap::hit_manager::unionSAHits(
            fwdSAInts, *rmi_, readLen, consistentHits);
                  rapmap::hit_manager::collectHitsSimpleSAGreedy(processedHits, readLen, maxDist,
@@ -569,6 +572,8 @@ public:
 
     //if(remap) std::cout << "\n" << hits.size() << "\n";
     // Return true if we had any valid hits and false otherwise.
+
+    */
     return foundHit;
   }
 
@@ -961,4 +966,4 @@ private:
   std::string rcBuffer_;
 };
 
-#endif // SA_COLLECTOR_HPP
+#endif // SA_COLLECTOR_PAIR_HPP

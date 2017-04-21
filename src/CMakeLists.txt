@@ -9,6 +9,7 @@ set (RAPMAP_MAIN_SRCS
     RapMapSAIndex.cpp
     RapMapIndex.cpp
     HitManager.cpp
+    HitManagerSA.cpp
     EditDistance.cpp
     FastxParser.cpp
     rank9b.cpp
