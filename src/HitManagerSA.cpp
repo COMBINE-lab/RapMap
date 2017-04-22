@@ -150,6 +150,26 @@ namespace rapmap {
 							foundHit = true;
 						}
 
+						/*
+						auto maxCovPair = std::max_element(validPairs.begin(), validPairs.end(),
+														[leftHitCov,rightHitCov](const std::pair<SATxpQueryPos, SATxpQueryPos>& a,
+																const std::pair<SATxpQueryPos, SATxpQueryPos>& b){
+																int score1 = leftHitCov[static_cast<int32_t>(a.first.pos - a.first.queryPos)]
+																						+ (rightHitCov[static_cast<int32_t>(a.second.pos - a.second.queryPos)] ;
+																int score2 = leftHitCov[static_cast<int32_t>(b.first.pos - b.first.queryPos)]
+																						+ (rightHitCov[static_cast<int32_t>(b.second.pos - b.second.queryPos)] ;
+																return (score1 < score2);
+						                                 });
+						*/
+						int maxCovScore = 0;
+						for(auto& vp : validPairs){
+							auto score = leftHitCov[static_cast<int32_t>(vp.first.pos - vp.first.queryPos)]
+										+ rightHitCov[static_cast<int32_t>(vp.second.pos - vp.second.queryPos)] ;
+							if(maxCovScore < score){
+								maxCovScore = score ;
+							}
+						}
+
 						for(auto& vp: validPairs){
 							//I will try to make QuasiAlignment objects
 							//real alignments and edit distance are not present
@@ -158,29 +178,31 @@ namespace rapmap {
 							int32_t hitPos1 = vp.first.pos - vp.first.queryPos ;
 							int32_t hitPos2 = vp.second.pos - vp.second.queryPos ;
 
-							int32_t startRead1 = std::max(hitPos1, signedZero);
-							int32_t startRead2 = std::max(hitPos2, signedZero);
+							if(leftHitCov[hitPos1] + rightHitCov[hitPos2] == maxCovScore){
+								int32_t startRead1 = std::max(hitPos1, signedZero);
+								int32_t startRead2 = std::max(hitPos2, signedZero);
 
-							bool read1First{(startRead1 < startRead2)};
-							int32_t fragStartPos = read1First ? startRead1 : startRead2;
-							int32_t fragEndPos = read1First ?
-							       (startRead2 + rpair.second.seq.length()) : (startRead1 + rpair.first.seq.length());
-							uint32_t fragLen = fragEndPos - fragStartPos;
+								bool read1First{(startRead1 < startRead2)};
+								int32_t fragStartPos = read1First ? startRead1 : startRead2;
+								int32_t fragEndPos = read1First ?
+									   (startRead2 + rpair.second.seq.length()) : (startRead1 + rpair.first.seq.length());
+								uint32_t fragLen = fragEndPos - fragStartPos;
 
-							jointHits.emplace_back(
-									tid,
-									hitPos1,
-									!vp.first.queryRC,
-									rpair.first.seq.length(),
-									vp.first.lcpLength,
-									fragLen,
-									true
-									);
-							auto& qaln = jointHits.back();
+								jointHits.emplace_back(
+										tid,
+										hitPos1,
+										!vp.first.queryRC,
+										rpair.first.seq.length(),
+										vp.first.lcpLength,
+										fragLen,
+										true
+										);
+								auto& qaln = jointHits.back();
 
-							qaln.mateLen = rpair.second.seq.length();
-							qaln.matePos = hitPos2 ;
-							qaln.mateIsFwd = !vp.second.queryRC ;
+								qaln.mateLen = rpair.second.seq.length();
+								qaln.matePos = hitPos2 ;
+								qaln.mateIsFwd = !vp.second.queryRC ;
+							}
 						}
     				}//end if
     			}//end for
