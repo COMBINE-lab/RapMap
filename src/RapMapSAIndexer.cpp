@@ -30,6 +30,7 @@
 #include <random>
 #include <type_traits>
 #include <unordered_map>
+#include <map>
 #include <vector>
 
 #include "tclap/CmdLine.h"
@@ -70,6 +71,7 @@
 
 #include "IndexHeader.hpp"
 
+#include "xxhash.h"
 // sha functionality
 #include "picosha2.h"
 
@@ -444,6 +446,7 @@ void indexTranscriptsSA(ParserT* parser,
                         std::string& outputDir,
                         bool noClipPolyA, bool usePerfectHash,
                         uint32_t numHashThreads,
+                        bool keepDuplicates,
                         std::string& sepStr,
                         std::mutex& iomutex,
                         std::shared_ptr<spdlog::logger> log) {
@@ -473,6 +476,12 @@ void indexTranscriptsSA(ParserT* parser,
 
   bool clipPolyA = !noClipPolyA;
 
+  struct DupInfo {
+    uint64_t txId;
+    uint64_t txOffset;
+    uint32_t txLen;
+  };
+
   // http://biology.stackexchange.com/questions/21329/whats-the-longest-transcript-known
   // longest human transcript is Titin (108861), so this gives us a *lot* of
   // leeway before
@@ -481,6 +490,9 @@ void indexTranscriptsSA(ParserT* parser,
   size_t numDistinctKmers{0};
   size_t numKmers{0};
   size_t currIndex{0};
+  size_t numDups{0};
+  std::map<XXH64_hash_t, std::vector<DupInfo>> potentialDuplicates;
+  spp::sparse_hash_map<uint64_t, std::vector<std::string>> duplicateNames;
   std::cerr << "\n[Step 1 of 4] : counting k-mers\n";
 
   // rsdic::RSDicBuilder rsdb;
@@ -508,6 +520,10 @@ void indexTranscriptsSA(ParserT* parser,
 
         uint32_t readLen = readStr.size();
         uint32_t completeLen = readLen;
+
+        // get the hash to check for collisions before we change anything.
+        auto txStringHash = XXH64(reinterpret_cast<void*>(const_cast<char*>(readStr.data())), readLen, 0);
+
         // First, replace non ATCG nucleotides
         for (size_t b = 0; b < readLen; ++b) {
           readStr[b] = ::toupper(readStr[b]);
@@ -562,6 +578,34 @@ void indexTranscriptsSA(ParserT* parser,
           // The name of the current transcript
           auto& recHeader = read.name;
           auto processedName = recHeader.substr(0, recHeader.find_first_of(sepStr));
+
+          // Add this transcript, indexed by it's sequence's hash value
+          // to the potential duplicate list.
+          bool didCollide{false};
+          auto dupIt = potentialDuplicates.find(txStringHash);
+          if (dupIt != potentialDuplicates.end()) {
+            auto& dupList = dupIt->second;
+            for (auto& dupInfo : dupList) {
+              // they must be of the same length
+              if (readLen == dupInfo.txLen) {
+                bool collision = (readStr.compare(0, readLen, txpSeqStream.data() + dupInfo.txOffset, readLen) == 0);
+                if (collision) {
+                  ++numDups;
+                  didCollide = true;
+                  duplicateNames[dupInfo.txId].push_back(processedName);
+                  continue;
+                } // if collision
+              } // if readLen == dupInfo.txLen
+            } // for dupInfo : dupList
+          } // if we had a potential duplicate
+
+          if (!keepDuplicates and didCollide) {
+            // roll back the txp index & skip the rest of this loop
+            n--;
+            continue;
+          }
+
+          // If there was no collision, then add the transcript
           transcriptNames.emplace_back(processedName);
           nameHasher.process(processedName.begin(), processedName.end());
 
@@ -569,6 +613,12 @@ void indexTranscriptsSA(ParserT* parser,
           transcriptStarts.push_back(currIndex);
           // The un-molested length of this transcript
           completeLengths.push_back(completeLen);
+
+          // If we made it here, we were not an actual duplicate, so add this transcript
+          // for future duplicate checking.
+          if (!keepDuplicates or (keepDuplicates and !didCollide)) {
+            potentialDuplicates[txStringHash].push_back({txpIndex, currIndex, readLen});
+          }
 
           txpSeqStream << readStr;
           txpSeqStream << '$';
@@ -586,6 +636,26 @@ void indexTranscriptsSA(ParserT* parser,
     }
   }
   std::cerr << "\n";
+  if (numDups > 0) {
+    if (!keepDuplicates) {
+      log->warn("Removed {} transcripts that were sequence duplicates of indexed transcripts.", numDups);
+      log->warn("If you wish to retain duplicate transcripts, please use the `--keepDuplicates` flag");
+    } else {
+      log->warn("There were {} transcripts that would need to be removed to avoid duplicates.", numDups);
+    }
+  }
+
+  std::ofstream dupClusterStream(outputDir + "duplicate_clusters.tsv");
+  {
+    dupClusterStream << "RetainedTxp" << '\t' << "DuplicateTxp" << '\n';
+    for (auto kvIt = duplicateNames.begin(); kvIt != duplicateNames.end(); ++kvIt) {
+      auto& retainedName = transcriptNames[kvIt->first];
+      for (auto& droppedName : kvIt->second) {
+        dupClusterStream << retainedName << '\t' << droppedName << '\n';
+      }
+    }
+  }
+  dupClusterStream.close();
 
   std::cerr << "Replaced " << numNucleotidesReplaced
             << " non-ATCG nucleotides\n";
@@ -740,7 +810,8 @@ int rapMapSAIndex(int argc, char* argv[]) {
       "path");
   TCLAP::ValueArg<uint32_t> kval("k", "klen", "The length of k-mer to index",
                                  false, 31, "positive integer less than 32");
-
+  TCLAP::SwitchArg keepDuplicatesSwitch("", "keepDuplicates", "Retain and index transcripts, even if they are exact sequence-level duplicates of others.",
+                                      false);
   TCLAP::ValueArg<std::string> customSeps("s", "headerSep", "Instead of a space or tab, break the header at the first "
                                           "occurrence of this string, and name the transcript as the token before "
                                           "the first separator", false, " \t", "string");
@@ -765,6 +836,7 @@ int rapMapSAIndex(int argc, char* argv[]) {
   cmd.add(transcripts);
   cmd.add(index);
   cmd.add(kval);
+  cmd.add(keepDuplicatesSwitch);
   cmd.add(noClip);
   cmd.add(perfectHash);
   cmd.add(customSeps);
@@ -803,7 +875,9 @@ int rapMapSAIndex(int argc, char* argv[]) {
 
   std::string logPath = indexDir + "quasi_index.log";
   auto fileSink = std::make_shared<spdlog::sinks::simple_file_sink_st>(logPath);
-  auto consoleSink = std::make_shared<spdlog::sinks::stderr_sink_st>();
+  auto rawConsoleSink = std::make_shared<spdlog::sinks::stderr_sink_st>();
+  auto consoleSink =
+    std::make_shared<spdlog::sinks::ansicolor_sink>(rawConsoleSink);
   auto consoleLog = spdlog::create("stderrLog", {consoleSink});
   auto fileLog = spdlog::create("fileLog", {fileSink});
   auto jointLog = spdlog::create("jointLog", {fileSink, consoleSink});
@@ -818,10 +892,11 @@ int rapMapSAIndex(int argc, char* argv[]) {
   transcriptParserPtr->start();
   bool noClipPolyA = noClip.getValue();
   bool usePerfectHash = perfectHash.getValue();
+  bool keepDuplicates = keepDuplicatesSwitch.getValue();
   uint32_t numPerfectHashThreads = numHashThreads.getValue();
   std::mutex iomutex;
   indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA,
-                     usePerfectHash, numPerfectHashThreads, sepStr, iomutex, jointLog);
+                     usePerfectHash, numPerfectHashThreads, keepDuplicates, sepStr, iomutex, jointLog);
 
   // Output info about the reference
   std::ofstream refInfoStream(indexDir + "refInfo.json");
