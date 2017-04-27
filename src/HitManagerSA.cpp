@@ -38,6 +38,13 @@ namespace rapmap {
 						  std::vector<QuasiAlignment>& jointHits
     		               ){
     	//using OffsetT = typename RapMapIndexT::IndexType;
+		typedef class covInfo{
+		  public:
+			covInfo(SATxpQueryPos s,int c, int e) : saTxpQp(s), cov(c), endPos(c){};
+			SATxpQueryPos saTxpQp ;
+			int cov ;
+			int endPos ;
+		};
 
     	constexpr const int32_t signedZero{0};
     	uint32_t maxInsertSize_{1000} ;
@@ -79,31 +86,46 @@ namespace rapmap {
 						//Discard pairs which are
 						//impossible in the sense
 						//that they are far(1000 bp) apart
-						std::map<int32_t , int> leftHitCov ;
+
+						std::map<int32_t , covInfo*> leftHitCov ;
 						{
-							std::map<int32_t , int> hitEndPos ;
+							//std::map<int32_t , int> hitEndPos ;
 							auto it = lefttqvec.begin();
 							while(it != lefttqvec.end()){
 								int numOfCov = 0;
 								int32_t hitKey = it->pos - it->queryPos ;
 								if(leftHitCov.count(hitKey) == 0){
-									leftHitCov[hitKey] = it->matchedLen;
-									hitEndPos[hitKey] = it->pos + it->matchedLen;
+									//covInfo cInfo;
+									covInfo cInfo(*it,it->matchedLen,it->pos + it->matchedLen);
+									/*covInfo cInfo;
+									cInfo.saTxpQp = *it;
+									cInfo.cov = it->matchedLen;
+									cInfo.endPos = it->pos + it->matchedLen;*/
+
+									leftHitCov[hitKey] = &cInfo ;
+
+									//leftHitCov[hitKey] = it->matchedLen;
+									//hitEndPos[hitKey] = it->pos + it->matchedLen;
 								}
 								else{
-									if(hitEndPos[hitKey] > it->pos){
-										leftHitCov[hitKey] += ( it->pos + it->matchedLen - hitEndPos[hitKey] );
-										hitEndPos[hitKey] = it->pos + it->matchedLen ;
-									}else{
-										leftHitCov[hitKey] += it->matchedLen;
-										hitEndPos[hitKey] = it->pos + it->matchedLen ;
+									auto& curr = leftHitCov[hitKey];
+									if(curr->endPos > it->pos) {
+										curr->cov +=  it->pos + it->matchedLen - curr->endPos;
+										curr->endPos = it->pos + it->matchedLen;
+										//leftHitCov[hitKey] += ( it->pos + it->matchedLen - hitEndPos[hitKey] );
+										//hitEndPos[hitKey] = it->pos + it->matchedLen ;
+									} else {
+										curr->cov += it->matchedLen;
+										curr->endPos += it->pos + it->matchedLen;
+										//leftHitCov[hitKey] += it->matchedLen;
+										//hitEndPos[hitKey] = it->pos + it->matchedLen ;
 									}
 								}
 								++it ;
 							}
 						}
 
-						std::map<int32_t , int> rightHitCov ;
+						std::map<int32_t , covInfo*> rightHitCov ;
 						{
 							std::map<int32_t , int> hitEndPos ;
 							auto it = righttqvec.begin();
@@ -111,16 +133,22 @@ namespace rapmap {
 								int numOfCov = 0;
 								int32_t hitKey = it->pos - it->queryPos ;
 								if(rightHitCov.count(hitKey) == 0){
-									rightHitCov[hitKey] = it->matchedLen;
-									hitEndPos[hitKey] = it->pos + it->matchedLen;
+									//covInfo cInfo;
+									covInfo cInfo(*it,it->matchedLen,it->pos + it->matchedLen);
+									/*covInfo cInfo = {} ;
+									cInfo.saTxpQp = *it;
+									cInfo.cov = it->matchedLen;
+									cInfo.endPos = it->pos + it->matchedLen;*/
+									rightHitCov[hitKey] = &cInfo;
 								}
 								else{
-									if(hitEndPos[hitKey] > it->pos){
-										rightHitCov[hitKey] += ( it->pos + it->matchedLen - hitEndPos[hitKey] );
-										hitEndPos[hitKey] = it->pos + it->matchedLen ;
+									auto& curr = rightHitCov[hitKey];
+									if(curr->endPos > it->pos){
+										curr->cov += ( it->pos + it->matchedLen - curr->endPos );
+										curr->endPos = it->pos + it->matchedLen ;
 									}else{
-										rightHitCov[hitKey] += it->matchedLen;
-										hitEndPos[hitKey] = it->pos + it->matchedLen ;
+										curr->cov += it->matchedLen;
+										curr->endPos = it->pos + it->matchedLen ;
 									}
 								}
 								++it ;
@@ -128,18 +156,21 @@ namespace rapmap {
 						}
 
 
-						std::vector<std::pair<SATxpQueryPos, SATxpQueryPos>> validPairs ;
+						std::vector<std::pair<int32_t, int32_t>> validPairs ;
 
-						for(auto& leftTQPos : lefttqvec){
-							for(auto& rightTQPos: righttqvec){
+						//for(auto& leftTQPos : lefttqvec){
+							//for(auto& rightTQPos: righttqvec){
+						for(auto& leftTQPos : leftHitCov){
+							for(auto& rightTQPos: rightHitCov){
+
 								// Check for the distance
 								// go with it otherwise
 								// go with something else
-								int32_t hitPos1 = leftTQPos.pos - leftTQPos.queryPos ;
-								int32_t hitPos2 = rightTQPos.pos - rightTQPos.queryPos ;
+								int32_t hitPos1 = leftTQPos.first; // pos - leftTQPos.queryPos ;
+								int32_t hitPos2 = rightTQPos.first; // pos - rightTQPos.queryPos ;
 
 								if(std::abs(hitPos1 - hitPos2) < maxInsertSize_){
-									validPairs.push_back(std::make_pair(leftTQPos, rightTQPos)) ;
+									validPairs.push_back(std::make_pair(hitPos1, hitPos2)) ;
 								}
 							}
 						}//end for
@@ -163,8 +194,8 @@ namespace rapmap {
 						*/
 						int maxCovScore = 0;
 						for(auto& vp : validPairs){
-							auto score = leftHitCov[static_cast<int32_t>(vp.first.pos - vp.first.queryPos)]
-										+ rightHitCov[static_cast<int32_t>(vp.second.pos - vp.second.queryPos)] ;
+							auto score = leftHitCov[static_cast<int32_t>(vp.first)]->cov
+										+ rightHitCov[static_cast<int32_t>(vp.second)]->cov ;
 							if(maxCovScore < score){
 								maxCovScore = score ;
 							}
@@ -175,10 +206,10 @@ namespace rapmap {
 							//real alignments and edit distance are not present
 							//yet
 
-							int32_t hitPos1 = vp.first.pos - vp.first.queryPos ;
-							int32_t hitPos2 = vp.second.pos - vp.second.queryPos ;
+							int32_t hitPos1 = vp.first;  // vp.first.pos - vp.first.queryPos ;
+							int32_t hitPos2 = vp.second; // vp.second.pos - vp.second.queryPos ;
 
-							if(leftHitCov[hitPos1] + rightHitCov[hitPos2] == maxCovScore){
+							if(leftHitCov[hitPos1]->cov + rightHitCov[hitPos2]->cov == maxCovScore){
 								int32_t startRead1 = std::max(hitPos1, signedZero);
 								int32_t startRead2 = std::max(hitPos2, signedZero);
 
@@ -191,9 +222,9 @@ namespace rapmap {
 								jointHits.emplace_back(
 										tid,
 										hitPos1,
-										!vp.first.queryRC,
+										!leftHitCov[vp.first]->saTxpQp.queryRC,
 										rpair.first.seq.length(),
-										vp.first.lcpLength,
+										leftHitCov[vp.first]->saTxpQp.lcpLength,
 										fragLen,
 										true
 										);
@@ -201,7 +232,8 @@ namespace rapmap {
 
 								qaln.mateLen = rpair.second.seq.length();
 								qaln.matePos = hitPos2 ;
-								qaln.mateIsFwd = !vp.second.queryRC ;
+								qaln.mateIsFwd = !((rightHitCov[vp.second]->saTxpQp).queryRC);  //!vp.second.queryRC ;
+								qaln.mateStatus = rapmap::utils::MateStatus::PAIRED_END_PAIRED ;
 							}
 						}
     				}//end if
