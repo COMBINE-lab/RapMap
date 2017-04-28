@@ -818,15 +818,16 @@ private:
             saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
 
 
-
+        /*
+         *
         if(matchedLen < k+5){
             matchedLen = k;
             lb = oldlb;
             ub = oldub;
-        }
+        }*/
         //until this
         //add this
-        matchedLen = k;
+        //matchedLen = k;
 
         OffsetT diff = ub - lb;
         if (ub > lb and diff < maxInterval_) {
