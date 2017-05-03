@@ -252,31 +252,6 @@ public:
                 auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
 
                 globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
-
-                if(hitsIt->toAlign){
-                    //std::cout<<"skip\n";
-                    auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
-                    extend = (overHangRight > 0)?(extend-overHangRight):extend;
-
-                    const char* thisTxpSeq = concatText.data() + globalPos;
-                    int thisTargetLen = extend;
-                      if(hitsIt->fwd){
-                        ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig( editThreshold+100, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
-                      }else{
-                        auto revRead = rapmap::utils::reverseComplement(read);
-                        ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold+100, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
-                      }
-                      auto& thisEdlibResult = ae_.result();
-                      auto thisEditDistance = thisEdlibResult.editDistance ;
-                    //std::cout<<thisEditDistance<<"\n";
-                    // if(read.c_str()== "AATCTACCAACAAATGGGAAAAGTTAACATTTGCACCATCTTGCCATATTCAAAAACCTTGTGCTTAAGTGTTTT")
-                    //    std::cout<< transcripts[txpID].RefName << " " << pos << " " << hitsIt->fwd << "\n";
-                    // if(read.c_str()== "TACCCCAGAATCTTCCATGCTCCGTCACACTGCAGCCAGGCCCAGAGGATACAGGAAAGGCCTGCGGCGTAGACT")
-                    //    std::cout<< transcripts[txpID].RefName << " " << pos << " " << hitsIt->fwd << "\n";
-
-
-                    continue;
-                }
                 if ( (!skipLCPOpt) && (search != tidset.end()) && (lcpLength >= readLen) && (tidPos[txpID] == globalPos)){
                           //std::cout << " \n LCP length " << lcpLength <<" readLen " << readLen << "\n";
                           //std::cout << "\nStart transcript sequence: "<<firsttidString<<"\n";
