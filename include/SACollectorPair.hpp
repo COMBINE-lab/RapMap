@@ -293,7 +293,7 @@ public:
 
     //bool checkRC = useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
     //TODO RC checked enabled
-    bool checkRC = true;//useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
+    bool checkRC = useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
     // If we had a hit on the reverse complement strand
     if (checkRC) {
       rapmap::utils::reverseRead(read, rcBuffer_);
@@ -310,8 +310,8 @@ public:
     // while looking at the RC strand, then check the fwd strand now
     //bool checkFwd = useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
     //TODO make check forward false
-    //bool checkFwd = !fwdHit;//useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
-    bool checkFwd = true ;
+    bool checkFwd = useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
+    //bool checkFwd = true ;
     if (!didCheckFwd and checkFwd) {
       didCheckFwd = true;
       getSAHits_(saSearcher,
@@ -792,18 +792,6 @@ private:
 
 
 
-        if(read == "TCCCCAGTAGCTGGGACTACAGGCGCCCGCCACCACGCCCAGCTAATTTTTTGTACTTTCATTAGAGATGGGGTT"){ // or read == "TGGGAGGCTGAGGCAGGAGAATTGCTTGAACCCGGGCGGCAGAGGTTGCAGTGTGCTGAGATTGCACCACTGCAC"){
-          if(merIt != khash.end()){
-              std::cout << "\n We are looking at the read \n" ;
-              auto tSAInt = merIt->second ;
-              for(auto i = tSAInt.interval.begin(); i != tSAInt.interval.end(); ++i){
-                  auto iGlobalPos = rmi_->SA[i] ;
-                  auto txpID = rmi_->transcriptAtPosition(iGlobalPos);
-                  std::cout << rmi_->txpNames[txpID] << "\n";
-              }
-          }
-          std::cout << "\n";
-      }
 
 
         auto oldlb = lb;
@@ -813,15 +801,17 @@ private:
         // lb must be 1 *less* then the current lb
         // We can't move any further in the reverse complement direction
         //comment these lines to disable MMP check
-        lb = std::max(static_cast<OffsetT>(0), lb - 1);
-        std::tie(lb, ub, matchedLen) =
-            saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
+
+        //if(readStartIt == startIt){
+            lb = std::max(static_cast<OffsetT>(0), lb - 1);
+            std::tie(lb, ub, matchedLen) =
+                saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
+        //} else
+        //    matchedLen = 0;
 
 
-        /*
-         *
-        if(matchedLen < k+5){
-            matchedLen = k;
+        /*if( matchedLen < readLen) {
+            matchedLen = k+readLen/10;
             lb = oldlb;
             ub = oldub;
         }*/

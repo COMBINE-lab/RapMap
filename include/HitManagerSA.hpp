@@ -61,7 +61,7 @@ namespace rapmap {
 	    bool mergeLeftRightMap(fastx_parser::ReadPair& rpair,
 							 SAHitMap& leftMap,
 							 SAHitMap& rightMap,
-							 std::vector<QuasiAlignment>& jointHits
+                             std::vector<QuasiAlignment>& jointHits
 							  );
 
         template <typename RapMapIndexT>

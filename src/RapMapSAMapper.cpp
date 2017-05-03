@@ -207,7 +207,7 @@ void processReadsSingleSA(single_parser * parser,
             // QuasiAlignment Object vector hits
             // which right now contains lcpLengths too
             // time to call the new function
-            hitSECollector(read, hits, mopts->editThreshold);
+            hitSECollector(read,read, hits, mopts->editThreshold);
 
             auto numHits = hits.size();
             hctr.totHits += numHits;

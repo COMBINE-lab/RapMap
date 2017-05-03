@@ -66,9 +66,8 @@ public:
 
     //int32_t hammingDist(QuasiAlignment& q, std::string& read, std::string& seq,  Offset trancriptLen, int maxDist);
 
-
    template <typename ReadStructT>
-       bool operator()(ReadStructT& readT,
+       bool compute(ReadStructT& readT,
                   std::vector<rapmap::utils::QuasiAlignment>& hits,
                   int32_t editThreshold
                   ) {
@@ -171,10 +170,10 @@ public:
                   /* ROB : slight interface change */
                   //EdlibAlignResult startEdlibResult;
                   if(startHit.fwd){
-                    ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                    ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold+100, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                   }else{
                     auto revRead = rapmap::utils::reverseComplement(read);
-                    ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                    ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold+100, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                   }
                   auto& startEdlibResult = ae_.result();
 
@@ -191,7 +190,7 @@ public:
                       std::cout << "\nIn selective Alignment start  edit distance: "<< startEditDistance << " length: "<< thisTxpLen << " pos " << pos << " fwd "<<  startHit.fwd << "\n";
                   }*/
 
-                  if(startEditDistance != -1){
+                  if(startEditDistance < editThreshold ){
                     startHit.toAlign = true;
                     /* ROB: No CIGAR right now */
                     /*
@@ -201,7 +200,6 @@ public:
                     */
                  }else{
                     startHit.toAlign = false ;
-
                  }
 
                 /* Take the kmer from the transcript */
@@ -255,11 +253,35 @@ public:
 
                 globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
 
+                if(hitsIt->toAlign){
+                    //std::cout<<"skip\n";
+                    auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
+                    extend = (overHangRight > 0)?(extend-overHangRight):extend;
+
+                    const char* thisTxpSeq = concatText.data() + globalPos;
+                    int thisTargetLen = extend;
+                      if(hitsIt->fwd){
+                        ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig( editThreshold+100, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                      }else{
+                        auto revRead = rapmap::utils::reverseComplement(read);
+                        ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold+100, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                      }
+                      auto& thisEdlibResult = ae_.result();
+                      auto thisEditDistance = thisEdlibResult.editDistance ;
+                    //std::cout<<thisEditDistance<<"\n";
+                    // if(read.c_str()== "AATCTACCAACAAATGGGAAAAGTTAACATTTGCACCATCTTGCCATATTCAAAAACCTTGTGCTTAAGTGTTTT")
+                    //    std::cout<< transcripts[txpID].RefName << " " << pos << " " << hitsIt->fwd << "\n";
+                    // if(read.c_str()== "TACCCCAGAATCTTCCATGCTCCGTCACACTGCAGCCAGGCCCAGAGGATACAGGAAAGGCCTGCGGCGTAGACT")
+                    //    std::cout<< transcripts[txpID].RefName << " " << pos << " " << hitsIt->fwd << "\n";
+
+
+                    continue;
+                }
                 if ( (!skipLCPOpt) && (search != tidset.end()) && (lcpLength >= readLen) && (tidPos[txpID] == globalPos)){
                           //std::cout << " \n LCP length " << lcpLength <<" readLen " << readLen << "\n";
                           //std::cout << "\nStart transcript sequence: "<<firsttidString<<"\n";
                           //std::cout << "This  transcript sequence: " <<concatText.substr(globalPos,75)<<"\n";
-                          if(startEditDistance != -1){
+                    if(startEditDistance < editThreshold){
                                 hitsIt->editD = startEditDistance;
                                 hitsIt->toAlign = true;
                                 //std::cout << " LCP Length " << lcpLength << "\n";
@@ -267,48 +289,46 @@ public:
                                 /* ROB: No CIGAR right now */
                                 //hitsIt->cigar = startHit.cigar;
                           }else{
+                               hitsIt->editD = startEditDistance;
                                 hitsIt->toAlign = false ;
                           }
-                  }else{
+                }else{
+                      auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
+                      extend = (overHangRight > 0)?(extend-overHangRight):extend;
+
+                      /* ROB: get rid of the copy */
+                      //auto thisTxpSeq = concatText.substr(globalPos, extend);
+                      const char* thisTxpSeq = concatText.data() + globalPos;
+                      int thisTargetLen = extend;
+
+                      //auto thisEditDistance = edit_distance(read, thisTxpSeq, 50) ;
+                      /* ROB : slight interface change */
+                      //EdlibAlignResult thisEdlibResult;
+                      if(hitsIt->fwd){
+                        ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig( editThreshold+100, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                      }else{
+                        auto revRead = rapmap::utils::reverseComplement(read);
+                        ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold+100, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                      }
+                      auto& thisEdlibResult = ae_.result();
+                      auto thisEditDistance = thisEdlibResult.editDistance ;
 
 
-
-
-                          auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
-                          extend = (overHangRight > 0)?(extend-overHangRight):extend;
-
-                          /* ROB: get rid of the copy */
-                          //auto thisTxpSeq = concatText.substr(globalPos, extend);
-                          const char* thisTxpSeq = concatText.data() + globalPos;
-                          int thisTargetLen = extend;
-
-                          //auto thisEditDistance = edit_distance(read, thisTxpSeq, 50) ;
-                          /* ROB : slight interface change */
-                          //EdlibAlignResult thisEdlibResult;
-                          if(hitsIt->fwd){
-                            ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig( editThreshold, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
-                          }else{
-                            auto revRead = rapmap::utils::reverseComplement(read);
-                            ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
-                          }
-                          auto& thisEdlibResult = ae_.result();
-                          auto thisEditDistance = thisEdlibResult.editDistance ;
-
-
-                          if(thisEditDistance != -1){
-                                  //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
-                                  hitsIt->editD = thisEditDistance;
-                                  hitsIt->toAlign = true;
-                                  /* ROB: No CIGAR right now */
-                                  /*
-                                  char* cigar_ = edlibAlignmentToCigar(thisEdlibResult.alignment, thisEdlibResult.alignmentLength, EDLIB_CIGAR_STANDARD);
-                                  std::string cigar(cigar_);
-                                  hitsIt->cigar = cigar;
-                                  */
-                          } else {
-                            hitsIt->toAlign = false;
-                          }
-                    }
+                      if(thisEditDistance < editThreshold){
+                              //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
+                              hitsIt->editD = thisEditDistance;
+                              hitsIt->toAlign = true;
+                              /* ROB: No CIGAR right now */
+                              /*
+                              char* cigar_ = edlibAlignmentToCigar(thisEdlibResult.alignment, thisEdlibResult.alignmentLength, EDLIB_CIGAR_STANDARD);
+                              std::string cigar(cigar_);
+                              hitsIt->cigar = cigar;
+                              */
+                      } else {
+                        hitsIt->editD = thisEditDistance;
+                        hitsIt->toAlign = false;
+                      }
+                }
 
             }
         }
@@ -316,6 +336,57 @@ public:
           //std::cout << "\n DONE \n" ;
           return true ;
    }
+
+   template <typename ReadStructT>
+       void operator()(ReadStructT& leftReadT,ReadStructT& rightReadT,
+                  std::vector<rapmap::utils::QuasiAlignment>& hits,
+                  int32_t editThreshold
+               ) {
+           auto leftHits = hits;
+           auto rightHits = hits;
+           //compute(leftReadT,hits,editThreshold);
+           //for(auto hit: hits)
+             //  std::cout<< hit.editD << "\n";
+           for(auto& hit: rightHits){
+                hit.pos = hit.matePos;
+                hit.fwd = hit.mateIsFwd;
+           }
+
+           compute(rightReadT,rightHits,editThreshold);
+           compute(leftReadT,leftHits,editThreshold);
+
+           bool edit = false; bool edit_r = true;
+           for(int i=0; i<leftHits.size(); i++) {
+                if(leftHits[i].editD<editThreshold and leftHits[i].editD != -1)
+                    edit = true;
+                if(rightHits[i].editD<editThreshold and rightHits[i].editD!=-1 )
+                    edit_r = true;
+                //if(leftHits[i].fwd)
+                //    std::cout<<"left fwd false\n";
+
+                //std::cout<<leftHits[i].editD << " " << rightHits[i].editD << "\n";
+                hits[i].editD = leftHits[i].editD + rightHits[i].editD;
+                hits[i].toAlign =  hits[i].editD <2*editThreshold;
+
+               //hits[i].toAlign = leftHits[i].toAlign and  rightHits[i].toAlign;
+                //std::cout<< leftHits[i].toAlign << " " << rightHits[i].toAlign << " " << hits[i].toAlign << "\n";
+                //if(hits[i].toAlign)
+                //    hits[i].editD = leftHits[i].editD + rightHits[i].editD;
+           }
+
+           /*if(!edit){
+               std::cout<<"size_l " << leftHits.size() << "\n";
+               for(auto hit: leftHits){
+                   std::cout<<hit.editD << "\n";
+                   std::cout<<transcripts[hit.tid].RefName <<" " << hit.pos << " "<< hit.fwd <<" "<< leftReadT.seq << "\n";
+                }
+           }
+           if(!edit_r){
+               std::cout<<"size_r " << rightHits.size() << "\n";
+               for(auto hit: rightHits)
+                   std::cout<<hit.editD << "\n";
+           }*/
+       }
 private:
   RapMapIndexT* rmi_ ;
   AlignerEngine ae_;
