@@ -285,7 +285,7 @@ bool updateSafe(std::string& concatText,
 
 	if(lcpLength > k){
 		auto start = val.interval.begin();
-		auto start = val.interval.end();
+		auto stop = val.interval.end();
 		rapmap::utils::my_mer mer ;
 		auto startIndex = SA[start];
     auto endIndex = startIndex + k - 1;
