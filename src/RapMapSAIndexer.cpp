@@ -284,6 +284,9 @@ bool updateSafe(std::string& concatText,
 	uint32_t lcpLength = val.lcpLength ;
   uint32_t safeLCP = k;
   uint32_t maxSafeLCP = std::numeric_limits<decltype(val.safeLength)>::max();
+  //assume readLen = 100
+  uint32_t readLen = 100;
+  maxSafeLCP = readLen ;
 
 	if(lcpLength > k){
 		auto start = val.interval.begin();
@@ -309,6 +312,7 @@ bool updateSafe(std::string& concatText,
 		while((shift < lcpLength-k) and (startIndex + shift + k) < tlen){
       // for now, we don't care about longer safe LCPs
       if (safeLCP >= maxSafeLCP) { safeLCP = maxSafeLCP; break; }
+
 
       mer.shift_left(concatText[startIndex+shift+k-1]);
 			//nextKmer = concatText.substr(startIndex+shift,k);

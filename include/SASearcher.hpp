@@ -73,6 +73,43 @@ class SASearcher {
         };
 
 
+        template <typename IteratorT>
+        uint8_t extendSafe(
+                OffsetT lbIn, // The lower bound for the search
+                OffsetT ubIn, // The upper bound for the search
+                OffsetT startAt, // The offset at which to start looking
+                IteratorT qb, // Iterator to the beginning of the query
+                IteratorT qe, // Iterator to the end of the query
+				uint8_t safeLength, // safe length
+                bool complementBases=false // True if bases should be complemented
+                                           // before comparison
+        		){
+
+            std::vector<OffsetT>& SA = *sa_;
+            std::string& seq = *seq_;
+
+            int64_t m = std::distance(qb, qe);
+            size_t n = seq.length();
+
+            auto sb = seq.begin();
+            auto se = seq.end();
+
+            int64_t i{startAt};
+            auto lowerIndex = SA[lbIn] ;
+
+
+            while(i < std::min((int64_t)safeLength,m)){
+            	char queryChar = ::toupper(*(qb + i));
+            	if(queryChar == *(sb + lowerIndex + i)){
+            		++i;
+            	}else{
+            		break ;
+            	}
+            }
+
+            return i;
+
+        }
 
 	/**
 	 * OK!  It should be (is) possible to figure out what we need with only two binary
