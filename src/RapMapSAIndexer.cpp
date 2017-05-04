@@ -306,19 +306,16 @@ bool updateSafe(std::string& concatText,
       mer.shift_left(concatText[startIndex+shift+k-1]);
 			//nextKmer = concatText.substr(startIndex+shift,k);
 			//mer = nextKmer ;
-			std::vector<uint32_t> thisTidSet ;
 			auto bits = mer.word(0);
 			auto hashIt = khash.find(bits);
 			if(hashIt != khash.end()){
 				//find out the transcript set
 				auto& thisVal = hashIt->second ;
-				for(auto i = thisVal.interval.begin() ; i < thisVal.interval.end() ; ++i){
-					thisTidSet.push_back(rankDir->rank(SA[i]));
-				}
-				// check if every tid in thisTidSet occurs in groundTidSet
+        // check if every tid in this interval occurs in groundTidSet
         // if so, this kmer is safe.
-				for(auto i = 0 ; i < thisTidSet.size() ; ++i){
-          if(groundTidSet.find(thisTidSet[i]) != notFoundIt){
+				for(auto i = thisVal.interval.begin() ; i < thisVal.interval.end() ; ++i){
+					uint32_t tid = rankDir->rank(SA[i]);
+          if(groundTidSet.find(tid) == notFoundIt){
             val.safeLength = safeLCP;
             return false;
           }
