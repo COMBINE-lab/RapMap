@@ -210,12 +210,42 @@ namespace rapmap {
         //void save(Archive& ar) const { ar(begin_, len_); }
     };
 
+      class TGroup {
+      public:
+        void push_back(uint32_t tid) { tids_.push_back(tid); }
+        size_t size() const { return tids_.size(); }
+        void prepare() {
+          std::sort(tids_.begin(), tids_.end());
+          tids_.erase(std::unique(tids_.begin(), tids_.end()), tids_.end());
+        }
+        bool operator==(const TGroup& other) const {
+          return tids_ == other.tids_;
+        }
+        bool contains(const TGroup& other) const {
+          for (auto tid : other.tids_) {
+            if (!std::binary_search(tids_.begin(), tids_.end(), tid)) { return false; }
+          }
+          return true;
+        }
+        size_t hash() const {
+          return XXH64(static_cast<void*>(const_cast<uint32_t*>(tids_.data())), sizeof(uint32_t)*tids_.size(), 0);
+        };
+      private:
+        std::vector<uint32_t> tids_;
+      };
+      class TGHasher {
+      public:
+        size_t operator()(const TGroup& g) const { return g.hash(); }
+      };
+
+
     template <typename IndexT>
     struct kmerVal{
     	using index_type = IndexT;
     	SAInterval<IndexT> interval ;
-        uint32_t  lcpLength ;
+        uint8_t  lcpLength ;
         uint8_t safeLength ;
+      uint32_t eqId;
     };
 
 

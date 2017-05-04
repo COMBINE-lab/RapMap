@@ -278,7 +278,9 @@ bool updateSafe(std::string& concatText,
 		  rapmap::utils::kmerVal<IndexT>& val,
 		  HashT& khash,
 		  std::unique_ptr<rank9b>& rankDir,
-		  uint32_t k){
+                uint32_t k,
+                std::vector<rapmap::utils::TGroup>& eqClasses
+                ){
 	uint32_t lcpLength = val.lcpLength ;
   uint32_t safeLCP = k;
   uint32_t maxSafeLCP = std::numeric_limits<decltype(val.safeLength)>::max();
@@ -290,12 +292,16 @@ bool updateSafe(std::string& concatText,
 		auto startIndex = SA[start];
     auto endIndex = startIndex + k - 1;
     uint32_t shift = 1;
+    auto groundEqId = val.eqId;
+    auto& groundEqClass = eqClasses[groundEqId];
+    /*
 		std::set<uint32_t> groundTidSet ;
 		//make the set of transcripts
 		for(auto i=start; i < stop ; ++i){
 			groundTidSet.insert(rankDir->rank(SA[i])) ;
 		}
     auto notFoundIt = groundTidSet.end();
+    */
 		//sort the transcript ids
 		//std::sort(groundTidSet.begin(), groundTidSet.end()) ;
 
@@ -314,6 +320,11 @@ bool updateSafe(std::string& concatText,
 				auto& thisVal = hashIt->second ;
         // check if every tid in this interval occurs in groundTidSet
         // if so, this kmer is safe.
+        if (thisVal.eqId != groundEqId or !(groundEqClass.contains(eqClasses[thisVal.eqId]))) {
+            val.safeLength = safeLCP;
+            return false;
+        }
+          /* 
 				for(auto i = thisVal.interval.begin() ; i < thisVal.interval.end() ; ++i){
 					uint32_t tid = rankDir->rank(SA[i]);
           if(groundTidSet.find(tid) == notFoundIt){
@@ -321,6 +332,7 @@ bool updateSafe(std::string& concatText,
             return false;
           }
 				}
+          */
 			}else{
 				//this case should never happen I mean come on
 				//get real
@@ -550,6 +562,56 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
     // The base type should always be uint64_t
     //using WordT = (k == 9)?(rapmap::utils::my_mer9::base_type):(rapmap::utils::my_mer::base_type);
 
+  //I am done with building hash here
+  //now I will test the safe
+  //quick hack to make rankDir alive
+  //very hacky need to change
+  struct BitArrayDeleter {
+    void operator()(BIT_ARRAY* b) {
+      if(b != nullptr) {
+        bit_array_free(b);
+      }
+    }
+  };
+  using BitArrayPointer = std::unique_ptr<BIT_ARRAY, BitArrayDeleter>;
+  BitArrayPointer bitArray{nullptr};
+
+  std::unique_ptr<rank9b> rankDict{nullptr} ;
+  std::string rsFileName = outputDir + "rsd.bin";
+  FILE* rsFile = fopen(rsFileName.c_str(), "r");
+  {
+    //logger->info("Loading Rank-Select Bit Array");
+    bitArray.reset(bit_array_create(0));
+    if (!bit_array_load(bitArray.get(), rsFile)) {
+      //std::ce("Couldn't load bit array from {}!", rsFileName);
+      std::exit(1);
+    }
+    //logger->info("There were {} set bits in the bit array", bit_array_num_bits_set(bitArray.get()));
+    rankDict.reset(new rank9b(bitArray->words, bitArray->num_of_bits));
+  }
+  fclose(rsFile);
+  //ends here
+
+
+  spp::sparse_hash_map<rapmap::utils::TGroup, uint32_t, rapmap::utils::TGHasher> eqTable;
+
+  auto getEqId = [&eqTable, &SA, &rankDict](IndexT start, IndexT stop) -> uint32_t {
+    rapmap::utils::TGroup kset;
+    for (size_t ival = start; ival < stop; ++ival) {
+      kset.push_back(rankDict->rank(SA[ival]));
+    }
+    kset.prepare();
+    uint32_t eqId{0};
+    auto eqIt = eqTable.find(kset);
+    if ( eqIt == eqTable.end()){
+      eqId = eqTable.size();
+      eqTable[kset] = eqTable.size();
+    } else {
+      eqId = eqIt->second;
+    }
+    return eqId;
+  };
+
   //using WordT = MerT::base_type ;
   MerT mer;
   RegHashT<WordT, rapmap::utils::kmerVal<IndexT>,
@@ -663,7 +725,9 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
             }
           }
           auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop-1);
-          khash[bits] = {start, stop, lcpLength};
+
+          auto eqId = getEqId(start, stop);
+          khash[bits] = {start, stop, lcpLength, k, eqId};
           //khash[bits] = {start, stop};
           /*
           IndexT len = stop - start;
@@ -705,7 +769,8 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
         currentKmer.find_first_of('$') != std::string::npos) {
       mer = currentKmer.c_str();
       auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop-1);
-      khash[mer.word(0)] = {start, stop, lcpLength};
+      auto eqId = getEqId(start, stop);
+      khash[mer.word(0)] = {start, stop, lcpLength, k, eqId};
       /*
       IndexT len = stop - start;
       bool overflow = (len >= std::numeric_limits<uint8_t>::max());
@@ -719,45 +784,26 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
     }
   }
 
-  //I am done with building hash here
-  //now I will test the safe
-  //quick hack to make rankDir alive
-  //very hacky need to change
-  struct BitArrayDeleter {
-          void operator()(BIT_ARRAY* b) {
-            if(b != nullptr) {
-              bit_array_free(b);
-            }
-          }
-        };
-  using BitArrayPointer = std::unique_ptr<BIT_ARRAY, BitArrayDeleter>;
-  BitArrayPointer bitArray{nullptr};
+  std::vector<rapmap::utils::TGroup> eqClasses(eqTable.size());
+  for (auto it = eqTable.begin(); it != eqTable.end(); ++it) {
+    eqClasses[it->second] = it->first;
+  }
 
- std::unique_ptr<rank9b> rankDict{nullptr} ;
- std::string rsFileName = outputDir + "rsd.bin";
- FILE* rsFile = fopen(rsFileName.c_str(), "r");
- {
-	 //logger->info("Loading Rank-Select Bit Array");
-	 bitArray.reset(bit_array_create(0));
-	 if (!bit_array_load(bitArray.get(), rsFile)) {
-		 //std::ce("Couldn't load bit array from {}!", rsFileName);
-		 std::exit(1);
-	 }
-	 //logger->info("There were {} set bits in the bit array", bit_array_num_bits_set(bitArray.get()));
-	 rankDict.reset(new rank9b(bitArray->words, bitArray->num_of_bits));
- }
- fclose(rsFile);
- //ends here
  if(k != 9){
    log->info("computing longest k-safe common prefixes");
    std::string lcpLogFilename = outputDir + "lcpLog.tsv";
    std::ofstream lcpLog(lcpLogFilename);
    lcpLog << "LCPLength\tSafeLCPLength\n";
+   size_t numProc{0};
 	 for(auto it : khash){
 		  auto& val = it.second ;
 		  auto& interval = val.interval ;
-		  updateSafe(concatText,tlen,SA,val,khash,rankDict,k);
+		  updateSafe(concatText,tlen,SA,val,khash,rankDict,k, eqClasses);
       lcpLog << val.lcpLength << '\t' << static_cast<uint32_t>(val.safeLength) << '\n';
+      if (numProc % 100000 == 0) {
+        std::cerr << "\r\rprocessed " << numProc << " of " << khash.size() << "intervals";
+      }
+      ++numProc;
 	  }
    lcpLog.close();
  }
