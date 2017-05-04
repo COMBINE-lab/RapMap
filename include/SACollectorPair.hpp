@@ -288,7 +288,7 @@ public:
                  rb,               // where to start the search
                  &(merIt->second.interval), // pointer to the search interval
 				 merIt->second.lcpLength, // starting lcpLength
-				 merIt->second.safe,
+                 merIt->second.safeLength > k,
                  fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false, sigHit, remap);
     }
 
@@ -792,7 +792,7 @@ private:
         lb = merIt->second.interval.begin();
         ub = merIt->second.interval.end();
         lcpLength = merIt->second.lcpLength ;
-        safe = merIt->second.safe ;
+        safe = merIt->second.safeLength > k ;
       skipSetup:
 
 

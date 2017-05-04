@@ -252,10 +252,13 @@ public:
                 auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
 
                 globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
+
+                if(hitsIt->toAlign){
+                    hitsIt->isMMPused = true;
+                    continue;
+                }
                 if ( (!skipLCPOpt) && (search != tidset.end()) && (lcpLength >= readLen) && (tidPos[txpID] == globalPos)){
-                          //std::cout << " \n LCP length " << lcpLength <<" readLen " << readLen << "\n";
-                          //std::cout << "\nStart transcript sequence: "<<firsttidString<<"\n";
-                          //std::cout << "This  transcript sequence: " <<concatText.substr(globalPos,75)<<"\n";
+                    hitsIt->isLCPused = true;
                     if(startEditDistance < editThreshold){
                                 hitsIt->editD = startEditDistance;
                                 hitsIt->toAlign = true;
@@ -343,6 +346,8 @@ public:
                 hits[i].editD = leftHits[i].editD + rightHits[i].editD;
                 hits[i].toAlign =  hits[i].editD <2*editThreshold;
 
+                hits[i].isLCPused = leftHits[i].isLCPused;
+                hits[i].isMMPused = leftHits[i].isMMPused;
                //hits[i].toAlign = leftHits[i].toAlign and  rightHits[i].toAlign;
                 //std::cout<< leftHits[i].toAlign << " " << rightHits[i].toAlign << " " << hits[i].toAlign << "\n";
                 //if(hits[i].toAlign)
