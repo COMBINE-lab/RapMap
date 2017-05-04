@@ -267,6 +267,76 @@ uint32_t findLCPLength(std::string &concatText,size_t tlen, std::vector<IndexT>&
 		return lcplen ;
 }
 
+
+
+template <typename IndexT, typename HashT>
+bool updateSafe(std::string& concatText,
+		  size_t tlen,
+		  std::vector<IndexT>& SA,
+		  rapmap::utils::kmerVal<IndexT>& val,
+		  HashT& khash,
+		  std::unique_ptr<rank9b>& rankDir,
+		  uint32_t k){
+	uint32_t lcpLength = val.lcpLength ;
+	if(lcpLength > k){
+		auto start = val.interval.begin() ;
+		auto stop = val.interval.begin() ;
+		uint32_t shift = 1;
+		std::string nextKmer;
+		rapmap::utils::my_mer mer ;
+		auto startIndex = SA[start];
+		std::vector<uint32_t> groundTidSet ;
+		//make the set of transcripts
+		for(auto i=start; i < stop ; ++i){
+			groundTidSet.push_back(rankDir->rank(SA[i])) ;
+		}
+		//sort the transcript ids
+		std::sort(groundTidSet.begin(), groundTidSet.end()) ;
+
+		while(shift < lcpLength-k){
+			nextKmer = concatText.substr(startIndex+shift,k);
+			mer = nextKmer ;
+			std::vector<uint32_t> thisTidSet ;
+			auto bits = mer.word(0);
+			auto hashIt = khash.find(bits);
+			if(hashIt != khash.end()){
+				//find out the transcript set
+				auto& thisVal = hashIt->second ;
+				for(auto i = thisVal.interval.begin() ; i < thisVal.interval.end() ; ++i){
+					thisTidSet.push_back(rankDir->rank(SA[i]));
+				}
+				//sort it
+				std::sort(thisTidSet.begin(),thisTidSet.end());
+				//check if this kmer is pure
+				if(thisTidSet.size() == groundTidSet.size()){
+					for(auto i = 0 ; i < thisTidSet.size() ; ++i){
+						if(groundTidSet[i] != thisTidSet[i]){
+							val.safe = false;
+							return false;
+						}
+					}
+				}else{
+					val.safe = false;
+					return false;
+				}
+			}else{
+				//this case should never happen I mean come on
+				//get real
+			}
+
+			shift += 1;
+		}
+
+	}else{
+		val.safe = true ;
+		return true;
+	}
+
+	val.safe = true ;
+	return true;
+
+}
+
 template<typename IndexT>
 bool build9kmerHash(const std::string& outputDir, std::string& concatText,
                     size_t tlen, uint32_t k, std::vector<IndexT>& SA) {
@@ -643,6 +713,44 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
       */
     }
   }
+
+  //I am done with building hash here
+  //now I will test the safe
+  //quick hack to make rankDir alive
+  //very hacky need to change
+  struct BitArrayDeleter {
+          void operator()(BIT_ARRAY* b) {
+            if(b != nullptr) {
+              bit_array_free(b);
+            }
+          }
+        };
+  using BitArrayPointer = std::unique_ptr<BIT_ARRAY, BitArrayDeleter>;
+  BitArrayPointer bitArray{nullptr};
+
+ std::unique_ptr<rank9b> rankDict{nullptr} ;
+ std::string rsFileName = outputDir + "rsd.bin";
+ FILE* rsFile = fopen(rsFileName.c_str(), "r");
+ {
+	 //logger->info("Loading Rank-Select Bit Array");
+	 bitArray.reset(bit_array_create(0));
+	 if (!bit_array_load(bitArray.get(), rsFile)) {
+		 //std::ce("Couldn't load bit array from {}!", rsFileName);
+		 std::exit(1);
+	 }
+	 //logger->info("There were {} set bits in the bit array", bit_array_num_bits_set(bitArray.get()));
+	 rankDict.reset(new rank9b(bitArray->words, bitArray->num_of_bits));
+ }
+ fclose(rsFile);
+ //ends here
+
+ for(auto it : khash){
+	  auto& val = it.second ;
+	  auto& interval = val.interval ;
+	  updateSafe(concatText,tlen,SA,val,khash,rankDict,k);
+
+  }
+
   std::cerr << "\nkhash had " << khash.size() << " keys\n";
   std::string fileName = (k == 9)?"hash9.bin":"hash.bin";
   std::ofstream hashStream(outputDir + fileName, std::ios::binary);
@@ -881,6 +989,7 @@ void indexTranscriptsSA(ParserT* parser,
     std::cerr << "done\n";
   }
   seqStream.close();
+
 
   // clear stuff we no longer need
   // positionIDs.clear();
