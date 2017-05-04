@@ -31,6 +31,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
+#include <set>
 
 #include "tclap/CmdLine.h"
 
@@ -288,13 +289,14 @@ bool updateSafe(std::string& concatText,
 		std::string nextKmer;
 		rapmap::utils::my_mer mer ;
 		auto startIndex = SA[start];
-		std::vector<uint32_t> groundTidSet ;
+		std::set<uint32_t> groundTidSet ;
 		//make the set of transcripts
 		for(auto i=start; i < stop ; ++i){
-			groundTidSet.push_back(rankDir->rank(SA[i])) ;
+			groundTidSet.insert(rankDir->rank(SA[i])) ;
 		}
+    auto notFoundIt = groundTidSet.end();
 		//sort the transcript ids
-		std::sort(groundTidSet.begin(), groundTidSet.end()) ;
+		//std::sort(groundTidSet.begin(), groundTidSet.end()) ;
 
     mer = concatText.substr(startIndex, k);
 		while((shift < lcpLength-k) and (startIndex + shift + k) < tlen){
@@ -313,19 +315,13 @@ bool updateSafe(std::string& concatText,
 				for(auto i = thisVal.interval.begin() ; i < thisVal.interval.end() ; ++i){
 					thisTidSet.push_back(rankDir->rank(SA[i]));
 				}
-				//sort it
-				std::sort(thisTidSet.begin(),thisTidSet.end());
-				//check if this kmer is safe
-				if(thisTidSet.size() == groundTidSet.size()){
-					for(auto i = 0 ; i < thisTidSet.size() ; ++i){
-						if(groundTidSet[i] != thisTidSet[i]){
-							val.safeLength = safeLCP;
-							return false;
-						}
-					}
-				}else{
-					val.safeLength = safeLCP;
-					return false;
+				// check if every tid in thisTidSet occurs in groundTidSet
+        // if so, this kmer is safe.
+				for(auto i = 0 ; i < thisTidSet.size() ; ++i){
+          if(groundTidSet.find(thisTidSet[i]) != notFoundIt){
+            val.safeLength = safeLCP;
+            return false;
+          }
 				}
 			}else{
 				//this case should never happen I mean come on
