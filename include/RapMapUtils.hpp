@@ -476,6 +476,8 @@ namespace rapmap {
         std::string mateCigar{"100M"};
 
         MateStatus mateStatus;
+        bool isLCPused{false};
+        bool isMMPused{false};
     };
 
     struct HitInfo {
