@@ -288,6 +288,7 @@ public:
                  rb,               // where to start the search
                  &(merIt->second.interval), // pointer to the search interval
 				 merIt->second.lcpLength, // starting lcpLength
+				 merIt->second.safe,
                  fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false, sigHit, remap);
     }
 
@@ -302,6 +303,7 @@ public:
                  rcBuffer_.begin(), // where to start the search
                  nullptr,           // pointer to the search interval
 				 0, //starting lcpLength
+				 false,
                                  rcCov, rcHit, fwdHit, rcSAInts, kmerScores, true, sigHit, remap);
     }
 
@@ -319,6 +321,7 @@ public:
                  read.begin(), // where to start the search
                  nullptr,      // pointer to the search interval
 				 0, //starting lcpLength
+				 false,
                  fwdCov, fwdHit, rcHit, fwdSAInts, kmerScores, false, sigHit, remap);
     }
 
@@ -665,7 +668,7 @@ private:
   inline void getSAHits_(
       SASearcher<RapMapIndexT>& saSearcher, std::string& read,
       std::string::iterator startIt,
-      rapmap::utils::SAInterval<OffsetT>* startInterval, uint32_t lcpLengthIn, size_t& cov,
+      rapmap::utils::SAInterval<OffsetT>* startInterval, uint32_t lcpLengthIn, bool safeIn, size_t& cov,
       uint32_t& strandHits, uint32_t& otherStrandHits,
       std::vector<rapmap::utils::SAIntervalHit<OffsetT>>& saInts,
       std::vector<KmerDirScore>& kmerScores,
@@ -698,6 +701,7 @@ private:
     auto re = rb + k;
     OffsetT lb, ub;
     uint32_t lcpLength = lcpLengthIn;
+    bool safe = safeIn;
     size_t invalidPos{0};
 
     MerT mer, complementMer;
@@ -788,6 +792,7 @@ private:
         lb = merIt->second.interval.begin();
         ub = merIt->second.interval.end();
         lcpLength = merIt->second.lcpLength ;
+        safe = merIt->second.safe ;
       skipSetup:
 
 
