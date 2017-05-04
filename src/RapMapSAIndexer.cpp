@@ -293,7 +293,7 @@ bool updateSafe(std::string& concatText,
 		//sort the transcript ids
 		std::sort(groundTidSet.begin(), groundTidSet.end()) ;
 
-		while(shift < lcpLength-k){
+		while((shift < lcpLength-k) && (startIndex + shift + k) < tlen){
 			nextKmer = concatText.substr(startIndex+shift,k);
 			mer = nextKmer ;
 			std::vector<uint32_t> thisTidSet ;
@@ -743,13 +743,14 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
  }
  fclose(rsFile);
  //ends here
+ if(k != 9){
+	 for(auto it : khash){
+		  auto& val = it.second ;
+		  auto& interval = val.interval ;
+		  updateSafe(concatText,tlen,SA,val,khash,rankDict,k);
 
- for(auto it : khash){
-	  auto& val = it.second ;
-	  auto& interval = val.interval ;
-	  updateSafe(concatText,tlen,SA,val,khash,rankDict,k);
-
-  }
+	  }
+ }
 
   std::cerr << "\nkhash had " << khash.size() << " keys\n";
   std::string fileName = (k == 9)?"hash9.bin":"hash.bin";
