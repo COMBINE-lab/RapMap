@@ -281,14 +281,15 @@ bool updateSafe(std::string& concatText,
 		  uint32_t k){
 	uint32_t lcpLength = val.lcpLength ;
   uint32_t safeLCP = k;
+  uint32_t maxSafeLCP = std::numeric_limits<decltype(val.safeLength)>::max();
 
 	if(lcpLength > k){
-		auto start = val.interval.begin() ;
-		auto stop = val.interval.begin() ;
-		uint32_t shift = 1;
-		std::string nextKmer;
+		auto start = val.interval.begin();
+		auto start = val.interval.end();
 		rapmap::utils::my_mer mer ;
 		auto startIndex = SA[start];
+    auto endIndex = startIndex + k - 1;
+    uint32_t shift = 1;
 		std::set<uint32_t> groundTidSet ;
 		//make the set of transcripts
 		for(auto i=start; i < stop ; ++i){
@@ -301,7 +302,7 @@ bool updateSafe(std::string& concatText,
     mer = concatText.substr(startIndex, k);
 		while((shift < lcpLength-k) and (startIndex + shift + k) < tlen){
       // for now, we don't care about longer safe LCPs
-      if (safeLCP >= 255) { break; }
+      if (safeLCP >= maxSafeLCP) { safeLCP = maxSafeLCP; break; }
 
       mer.shift_left(concatText[startIndex+shift+k-1]);
 			//nextKmer = concatText.substr(startIndex+shift,k);
