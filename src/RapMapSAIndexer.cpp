@@ -752,12 +752,16 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
  //ends here
  if(k != 9){
    log->info("computing longest k-safe common prefixes");
+   std::string lcpLogFilename = outputDir + "lcpLog.tsv";
+   std::ofstream lcpLog(lcpLogFilename);
+   lcpLog << "LCPLength\tSafeLCPLength\n";
 	 for(auto it : khash){
 		  auto& val = it.second ;
 		  auto& interval = val.interval ;
 		  updateSafe(concatText,tlen,SA,val,khash,rankDict,k);
-
+      lcpLog << val.lcpLength << '\t' << static_cast<uint32_t>(val.safeLength) << '\n';
 	  }
+   lcpLog.close();
  }
 
   std::cerr << "\nkhash had " << khash.size() << " keys\n";
