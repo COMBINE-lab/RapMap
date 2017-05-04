@@ -127,7 +127,8 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
 template <typename IndexT>
 bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
                       size_t tlen, uint32_t k, std::vector<IndexT>& SA,
-                      uint32_t numHashThreads) {
+                      uint32_t numHashThreads,
+                      std::shared_ptr<spdlog::logger> log) {
   //BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
   PerfectHashT<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
   intervals.setSAPtr(&SA);
@@ -278,6 +279,8 @@ bool updateSafe(std::string& concatText,
 		  std::unique_ptr<rank9b>& rankDir,
 		  uint32_t k){
 	uint32_t lcpLength = val.lcpLength ;
+  uint32_t safeLCP = k;
+
 	if(lcpLength > k){
 		auto start = val.interval.begin() ;
 		auto stop = val.interval.begin() ;
@@ -293,9 +296,14 @@ bool updateSafe(std::string& concatText,
 		//sort the transcript ids
 		std::sort(groundTidSet.begin(), groundTidSet.end()) ;
 
-		while((shift < lcpLength-k) && (startIndex + shift + k) < tlen){
-			nextKmer = concatText.substr(startIndex+shift,k);
-			mer = nextKmer ;
+    mer = concatText.substr(startIndex, k);
+		while((shift < lcpLength-k) and (startIndex + shift + k) < tlen){
+      // for now, we don't care about longer safe LCPs
+      if (safeLCP >= 255) { break; }
+
+      mer.shift_left(concatText[startIndex+shift+k-1]);
+			//nextKmer = concatText.substr(startIndex+shift,k);
+			//mer = nextKmer ;
 			std::vector<uint32_t> thisTidSet ;
 			auto bits = mer.word(0);
 			auto hashIt = khash.find(bits);
@@ -307,32 +315,34 @@ bool updateSafe(std::string& concatText,
 				}
 				//sort it
 				std::sort(thisTidSet.begin(),thisTidSet.end());
-				//check if this kmer is pure
+				//check if this kmer is safe
 				if(thisTidSet.size() == groundTidSet.size()){
 					for(auto i = 0 ; i < thisTidSet.size() ; ++i){
 						if(groundTidSet[i] != thisTidSet[i]){
-							val.safe = false;
+							val.safeLength = safeLCP;
 							return false;
 						}
 					}
 				}else{
-					val.safe = false;
+					val.safeLength = safeLCP;
 					return false;
 				}
 			}else{
 				//this case should never happen I mean come on
 				//get real
+        std::cerr << "Impossible is the opposite of possible (https://www.youtube.com/watch?v=nAV0sxwx9rY)" << std::endl;
+        return false;
 			}
-
-			shift += 1;
+			++shift;
+      ++safeLCP;
 		}
 
 	}else{
-		val.safe = true ;
+		val.safeLength = safeLCP;
 		return true;
 	}
 
-	val.safe = true ;
+	val.safeLength = safeLCP;
 	return true;
 
 }
@@ -540,7 +550,8 @@ bool build9kmerHash(const std::string& outputDir, std::string& concatText,
 
 template <typename IndexT, typename WordT, typename MerT>
 bool buildHash(const std::string& outputDir, std::string& concatText,
-               size_t tlen, uint32_t k, std::vector<IndexT>& SA) {
+               size_t tlen, uint32_t k, std::vector<IndexT>& SA,
+               std::shared_ptr<spdlog::logger> log) {
   // Now, build the k-mer lookup table
     // The base type should always be uint64_t
     //using WordT = (k == 9)?(rapmap::utils::my_mer9::base_type):(rapmap::utils::my_mer::base_type);
@@ -744,6 +755,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
  fclose(rsFile);
  //ends here
  if(k != 9){
+   log->info("computing longest k-safe common prefixes");
 	 for(auto it : khash){
 		  auto& val = it.second ;
 		  auto& interval = val.interval ;
@@ -1018,9 +1030,9 @@ void indexTranscriptsSA(ParserT* parser,
 
     if (usePerfectHash) {
       success = buildPerfectHash<IndexT>(outputDir, concatText, tlen, k, SA,
-                                         numHashThreads);
+                                         numHashThreads, log);
     } else {
-      success = buildHash<IndexT, rapmap::utils::my_mer::base_type, rapmap::utils::my_mer>(outputDir, concatText, tlen, k, SA);
+      success = buildHash<IndexT, rapmap::utils::my_mer::base_type, rapmap::utils::my_mer>(outputDir, concatText, tlen, k, SA, log);
     }
     if (!success) {
       std::cerr << "[fatal] Could not build the suffix interval hash!\n";
@@ -1029,7 +1041,7 @@ void indexTranscriptsSA(ParserT* parser,
     std::cerr << "[info] building all 9 mer hash on the"
                "suffix array"
                <<"\n" ;
-    bool success2 = buildHash<IndexT, rapmap::utils::my_mer9::base_type, rapmap::utils::my_mer9>(outputDir, concatText, tlen, 9, SA);
+    bool success2 = buildHash<IndexT, rapmap::utils::my_mer9::base_type, rapmap::utils::my_mer9>(outputDir, concatText, tlen, 9, SA, log);
     if(!success2) {
         std::cerr << "[fatal] Could not build the 9 mer vector!\n";
         std::exit(1);
@@ -1048,9 +1060,9 @@ void indexTranscriptsSA(ParserT* parser,
 
     if (usePerfectHash) {
       success = buildPerfectHash<IndexT>(outputDir, concatText, tlen, k, SA,
-                                         numHashThreads);
+                                         numHashThreads, log);
     } else {
-      success = buildHash<IndexT, rapmap::utils::my_mer::base_type, rapmap::utils::my_mer>(outputDir, concatText, tlen, k, SA);
+      success = buildHash<IndexT, rapmap::utils::my_mer::base_type, rapmap::utils::my_mer>(outputDir, concatText, tlen, k, SA, log);
     }
     if (!success) {
       std::cerr << "[fatal] Could not build the suffix interval hash!\n";
@@ -1059,7 +1071,7 @@ void indexTranscriptsSA(ParserT* parser,
     std::cerr << "[info] building all 9 mer hash on the"
                "suffix array"
                <<"\n" ;
-    bool success2 = buildHash<IndexT, rapmap::utils::my_mer9::base_type, rapmap::utils::my_mer9>(outputDir, concatText, tlen, 9, SA);
+    bool success2 = buildHash<IndexT, rapmap::utils::my_mer9::base_type, rapmap::utils::my_mer9>(outputDir, concatText, tlen, 9, SA, log);
     if(!success2) {
         std::cerr << "[fatal] Could not build the 9 mer vector!\n";
         std::exit(1);

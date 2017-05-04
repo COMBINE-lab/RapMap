@@ -215,7 +215,7 @@ namespace rapmap {
     	using index_type = IndexT;
     	SAInterval<IndexT> interval ;
         uint32_t  lcpLength ;
-        bool safe ;
+        uint8_t safeLength ;
     };
 
 
