@@ -328,7 +328,7 @@ bool updateSafe(std::string& concatText,
             val.safeLength = safeLCP;
             return false;
         }
-          /* 
+          /*
 				for(auto i = thisVal.interval.begin() ; i < thisVal.interval.end() ; ++i){
 					uint32_t tid = rankDir->rank(SA[i]);
           if(groundTidSet.find(tid) == notFoundIt){
