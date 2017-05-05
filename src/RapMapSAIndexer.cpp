@@ -291,7 +291,7 @@ bool updateSafe(std::string& concatText,
 	if(lcpLength > k){
 		auto start = val.interval.begin();
 		auto stop = val.interval.end();
-		rapmap::utils::my_mer mer ;
+		rapmap::utils::my_mer mer,rcMer ;
 		auto startIndex = SA[start];
     auto endIndex = startIndex + k - 1;
     uint32_t shift = 1;
@@ -309,43 +309,46 @@ bool updateSafe(std::string& concatText,
 		//std::sort(groundTidSet.begin(), groundTidSet.end()) ;
 
     mer = concatText.substr(startIndex, k);
+    rcMer = mer.get_reverse_complement() ;
+
 		while((shift < lcpLength-k) and (startIndex + shift + k) < tlen){
       // for now, we don't care about longer safe LCPs
-      if (safeLCP >= maxSafeLCP) { safeLCP = maxSafeLCP; break; }
+                        if (safeLCP >= maxSafeLCP) { safeLCP = maxSafeLCP; break; }
 
 
-      mer.shift_left(concatText[startIndex+shift+k-1]);
+                        mer.shift_left(concatText[startIndex+shift+k-1]);
+                        rcMer = mer.get_reverse_complement() ;
+
 			//nextKmer = concatText.substr(startIndex+shift,k);
 			//mer = nextKmer ;
 			auto bits = mer.word(0);
 			auto hashIt = khash.find(bits);
+                        auto rcHashIt = khash.find(rcMer.word(0)) ;
+
 			if(hashIt != khash.end()){
-				//find out the transcript set
-				auto& thisVal = hashIt->second ;
-        // check if every tid in this interval occurs in groundTidSet
-        // if so, this kmer is safe.
-        if (thisVal.eqId != groundEqId or !(groundEqClass.contains(eqClasses[thisVal.eqId]))) {
-            val.safeLength = safeLCP;
-            return false;
-        }
-          /*
-				for(auto i = thisVal.interval.begin() ; i < thisVal.interval.end() ; ++i){
-					uint32_t tid = rankDir->rank(SA[i]);
-          if(groundTidSet.find(tid) == notFoundIt){
-            val.safeLength = safeLCP;
-            return false;
-          }
-				}
-          */
-			}else{
+			    //find out the transcript set
+                            auto& thisVal = hashIt->second ;
+                            if (thisVal.eqId != groundEqId or !(groundEqClass.contains(eqClasses[thisVal.eqId]))) {
+                                    val.safeLength = safeLCP;
+                                    return false;
+                                }
+
+                            if(rcHashIt != khash.end()){
+                                 auto& rcVal = rcHashIt->second ;
+                                 if(rcVal.eqId != groundEqId or !(groundEqClass.contains(eqClasses[thisVal.eqId]))){
+                                    val.safeLength = safeLCP;
+                                    return false;
+                                 }
+                            }
+                        }else{
 				//this case should never happen I mean come on
 				//get real
-        std::cerr << "Impossible is the opposite of possible (https://www.youtube.com/watch?v=nAV0sxwx9rY)" << std::endl;
-        return false;
+                            std::cerr << "Impossible is the opposite of possible (https://www.youtube.com/watch?v=nAV0sxwx9rY)" << std::endl;
+                            return false;
 			}
 			++shift;
-      ++safeLCP;
-		}
+                        ++safeLCP;
+	            }
 
 	}else{
 		val.safeLength = safeLCP;
