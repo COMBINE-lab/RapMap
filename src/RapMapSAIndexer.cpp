@@ -328,14 +328,14 @@ bool updateSafe(std::string& concatText,
 			if(hashIt != khash.end()){
 			    //find out the transcript set
                             auto& thisVal = hashIt->second ;
-                            if (thisVal.eqId != groundEqId or !(groundEqClass.contains(eqClasses[thisVal.eqId]))) {
+                            if (thisVal.eqId != groundEqId and !(groundEqClass.contains(eqClasses[thisVal.eqId]))) {
                                     val.safeLength = safeLCP;
                                     return false;
                                 }
 
                             if(rcHashIt != khash.end()){
                                  auto& rcVal = rcHashIt->second ;
-                                 if(rcVal.eqId != groundEqId or !(groundEqClass.contains(eqClasses[rcVal.eqId]))){
+                                 if(rcVal.eqId != groundEqId and !(groundEqClass.contains(eqClasses[rcVal.eqId]))){
                                     val.safeLength = safeLCP;
                                     return false;
                                  }
