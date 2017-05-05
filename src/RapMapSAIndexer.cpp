@@ -335,7 +335,7 @@ bool updateSafe(std::string& concatText,
 
                             if(rcHashIt != khash.end()){
                                  auto& rcVal = rcHashIt->second ;
-                                 if(rcVal.eqId != groundEqId or !(groundEqClass.contains(eqClasses[thisVal.eqId]))){
+                                 if(rcVal.eqId != groundEqId or !(groundEqClass.contains(eqClasses[rcVal.eqId]))){
                                     val.safeLength = safeLCP;
                                     return false;
                                  }
