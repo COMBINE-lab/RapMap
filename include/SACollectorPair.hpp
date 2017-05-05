@@ -294,7 +294,7 @@ public:
 
     //bool checkRC = useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
     //TODO RC checked enabled
-    bool checkRC = useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
+    bool checkRC = true; //useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
     // If we had a hit on the reverse complement strand
     if (checkRC) {
       rapmap::utils::reverseRead(read, rcBuffer_);
@@ -312,7 +312,7 @@ public:
     // while looking at the RC strand, then check the fwd strand now
     //bool checkFwd = useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
     //TODO make check forward false
-    bool checkFwd = useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
+    bool checkFwd = true;// useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
     //bool checkFwd = true ;
     if (!didCheckFwd and checkFwd) {
       didCheckFwd = true;
@@ -803,34 +803,51 @@ private:
         auto oldub = ub;
 
 
-        // lb must be 1 *less* then the current lb
-        // We can't move any further in the reverse complement direction
-        //comment these lines to disable MMP check
+        lb = std::max(static_cast<OffsetT>(0), lb - 1);
+            std::tie(lb, ub, matchedLen) =
+                saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
+             if( matchedLen < readLen) {
+                matchedLen = k+10;//readLen/10;
+                lb = oldlb;
+                ub = oldub;
+            }
 
-        //if(readStartIt == startIt){
-            lb = std::max(static_cast<OffsetT>(0), lb - 1);
+        /*if(readStartIt == startIt){
+            std::tie(lb, ub, matchedLen) =
+                saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
+            if(matchedLen == readLen){
+                matchedLen = readLen;
+            }
+            else {
+                //    matchedLen = 0;
+                lb = oldlb;
+                ub = oldub;
+                auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt,safeLength );
+                //std::cout <<"1 " <<newExtend << "\n";
+                if(newExtend > k){
+                    matchedLen = newExtend ;
+                }else{
+                    matchedLen = k;
+                }
+            }
+        } else {
+            auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt,safeLength );
+            if(newExtend > k){
+               // std::cout <<"2 " <<newExtend << "\n";
+                matchedLen = newExtend ;
+            }else{
+                matchedLen = k;
+            }
 
-            //std::tie(lb, ub, matchedLen) =
-              //  saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
-        //} else
-        //    matchedLen = 0;
-
-
-        /*if( matchedLen < readLen) {
-            matchedLen = k+readLen/10;
-            lb = oldlb;
-            ub = oldub;
+            if( matchedLen < readLen) {
+                matchedLen = k+readLen/10;
+                lb = oldlb;
+                ub = oldub;
+            }
+            //until this
+            //add this
+            //matchedLen = k;
         }*/
-        //until this
-        //add this
-        //matchedLen = k;
-        auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt,safeLength );
-        if(newExtend > k){
-        	matchedLen = newExtend ;
-        }else{
-        	matchedLen = k+10 ;
-        }
-
         OffsetT diff = ub - lb;
         if (ub > lb and diff < maxInterval_) {
           uint32_t queryStart =

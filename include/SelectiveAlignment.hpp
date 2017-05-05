@@ -253,10 +253,10 @@ public:
 
                 globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
 
-                if(hitsIt->toAlign){
+                /*if(hitsIt->toAlign){
                     hitsIt->isMMPused = true;
                     continue;
-                }
+                }*/
                 if ( (!skipLCPOpt) && (search != tidset.end()) && (lcpLength >= readLen) && (tidPos[txpID] == globalPos)){
                     hitsIt->isLCPused = true;
                     if(startEditDistance < editThreshold){
