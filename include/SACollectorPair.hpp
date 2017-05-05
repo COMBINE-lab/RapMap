@@ -804,15 +804,15 @@ private:
 
 
         lb = std::max(static_cast<OffsetT>(0), lb - 1);
-            std::tie(lb, ub, matchedLen) =
+            /*std::tie(lb, ub, matchedLen) =
                 saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
              if( matchedLen < readLen) {
                 matchedLen = k+10;//readLen/10;
                 lb = oldlb;
                 ub = oldub;
-            }
+            }*/
 
-        /*if(readStartIt == startIt){
+        if(readStartIt == startIt){
             std::tie(lb, ub, matchedLen) =
                 saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
             if(matchedLen == readLen){
@@ -847,7 +847,8 @@ private:
             //until this
             //add this
             //matchedLen = k;
-        }*/
+        }
+
         OffsetT diff = ub - lb;
         if (ub > lb and diff < maxInterval_) {
           uint32_t queryStart =
