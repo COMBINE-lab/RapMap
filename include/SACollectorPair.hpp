@@ -839,11 +839,11 @@ private:
                 matchedLen = k;
             }
 
-            if( matchedLen < readLen) {
+            /*if( matchedLen < readLen) {
                 matchedLen = k+readLen/10;
                 lb = oldlb;
                 ub = oldub;
-            }
+            }*/
             //until this
             //add this
             //matchedLen = k;
