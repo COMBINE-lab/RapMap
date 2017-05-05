@@ -74,7 +74,7 @@ class SASearcher {
 
 
         template <typename IteratorT>
-        uint8_t extendSafe(
+        int64_t extendSafe(
                 OffsetT lbIn, // The lower bound for the search
                 OffsetT ubIn, // The upper bound for the search
                 OffsetT startAt, // The offset at which to start looking

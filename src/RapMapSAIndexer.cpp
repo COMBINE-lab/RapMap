@@ -799,7 +799,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
    std::ofstream lcpLog(lcpLogFilename);
    lcpLog << "LCPLength\tSafeLCPLength\n";
    size_t numProc{0};
-	 for(auto it : khash){
+	 for(auto& it : khash){
 		  auto& val = it.second ;
 		  auto& interval = val.interval ;
 		  updateSafe(concatText,tlen,SA,val,khash,rankDict,k, eqClasses);
