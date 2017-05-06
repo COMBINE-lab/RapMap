@@ -294,7 +294,7 @@ public:
 
     //bool checkRC = useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
     //TODO RC checked enabled
-    bool checkRC = true; //useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
+    bool checkRC = useCoverageCheck ? (rcHit > 0) : (rcHit >= fwdHit);
     // If we had a hit on the reverse complement strand
     if (checkRC) {
       rapmap::utils::reverseRead(read, rcBuffer_);
@@ -312,7 +312,7 @@ public:
     // while looking at the RC strand, then check the fwd strand now
     //bool checkFwd = useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
     //TODO make check forward false
-    bool checkFwd = true;// useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
+    bool checkFwd = useCoverageCheck ? (fwdHit > 0) : (fwdHit >= rcHit);
     //bool checkFwd = true ;
     if (!didCheckFwd and checkFwd) {
       didCheckFwd = true;
@@ -839,11 +839,11 @@ private:
                 matchedLen = k;
             }
 
-            if( matchedLen < readLen) {
+            /*if( matchedLen < readLen) {
                 matchedLen = k+readLen/10;
                 lb = oldlb;
                 ub = oldub;
-            }
+            }*/
             //until this
             //add this
             //matchedLen = k;
