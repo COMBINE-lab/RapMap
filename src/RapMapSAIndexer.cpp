@@ -331,14 +331,18 @@ bool updateSafe(std::string& concatText,
                             if (thisVal.eqId != groundEqId and !(groundEqClass.contains(eqClasses[thisVal.eqId]))) {
                                     val.safeLength = safeLCP;
                                     return false;
-                                }
+                            }
 
                             if(rcHashIt != khash.end()){
+                                /*
                                  auto& rcVal = rcHashIt->second ;
                                  if(rcVal.eqId != groundEqId and !(groundEqClass.contains(eqClasses[rcVal.eqId]))){
                                     val.safeLength = safeLCP;
                                     return false;
-                                 }
+                                 }*/
+                                val.safeLength = safeLCP;
+                                return false;
+
                             }
                         }else{
 				//this case should never happen I mean come on
@@ -806,7 +810,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
 		  auto& val = it.second ;
 		  auto& interval = val.interval ;
 		  updateSafe(concatText,tlen,SA,val,khash,rankDict,k, eqClasses);
-      lcpLog << val.lcpLength << '\t' << static_cast<uint32_t>(val.safeLength) << '\n';
+      lcpLog << static_cast<uint32_t>(val.lcpLength) << '\t' << static_cast<uint32_t>(val.safeLength) << '\n';
       if (numProc % 100000 == 0) {
         std::cerr << "\r\rprocessed " << numProc << " of " << khash.size() << "intervals";
       }
