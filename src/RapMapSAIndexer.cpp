@@ -266,7 +266,7 @@ uint32_t findLCPLength(std::string &concatText,size_t tlen, std::vector<IndexT>&
 			if(lcplen >= 255) { return 255; }
 			++lcplen ;
 		}
-		return lcplen ;
+		return (lcplen) ;
 }
 
 
@@ -329,7 +329,7 @@ bool updateSafe(std::string& concatText,
 			    //find out the transcript set
                             auto& thisVal = hashIt->second ;
                             if (thisVal.eqId != groundEqId and !(groundEqClass.contains(eqClasses[thisVal.eqId]))) {
-                                    val.safeLength = safeLCP;
+                                    val.safeLength = safeLCP + 1;
                                     return false;
                             }
 
@@ -340,7 +340,7 @@ bool updateSafe(std::string& concatText,
                                     val.safeLength = safeLCP;
                                     return false;
                                  }*/
-                                val.safeLength = safeLCP;
+                                val.safeLength = safeLCP + 1;
                                 return false;
 
                             }
@@ -359,7 +359,7 @@ bool updateSafe(std::string& concatText,
 		return true;
 	}
 
-	val.safeLength = safeLCP;
+	val.safeLength = safeLCP + 1;
 	return true;
 
 }
