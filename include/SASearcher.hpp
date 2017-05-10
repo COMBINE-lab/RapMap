@@ -64,7 +64,7 @@ class SASearcher {
         enum class SearchDirection : uint8_t {
             UP = 0, DOWN
         };
-    
+
         template <typename IndexT>
         struct BoundSearchResult {
             IndexT maxLen;
@@ -97,17 +97,21 @@ class SASearcher {
             int64_t i{startAt};
             auto lowerIndex = SA[lbIn] ;
 
-
+            bool inc = false ;
             while(i < std::min((int64_t)safeLength,m)){
             	char queryChar = ::toupper(*(qb + i));
             	if(queryChar == *(sb + lowerIndex + i)){
             		++i;
+                        inc = true ;
             	}else{
             		break ;
             	}
             }
 
-            return i;
+            if(inc)
+                return (i-1);
+            else
+                return i;
 
         }
 

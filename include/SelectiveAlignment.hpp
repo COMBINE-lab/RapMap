@@ -170,10 +170,10 @@ public:
                   /* ROB : slight interface change */
                   //EdlibAlignResult startEdlibResult;
                   if(startHit.fwd){
-                    ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold+100, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                    ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                   }else{
                     auto revRead = rapmap::utils::reverseComplement(read);
-                    ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold+100, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                    ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                   }
                   auto& startEdlibResult = ae_.result();
 
@@ -283,10 +283,10 @@ public:
                       /* ROB : slight interface change */
                       //EdlibAlignResult thisEdlibResult;
                       if(hitsIt->fwd){
-                        ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig( editThreshold+100, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                        ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig( editThreshold*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                       }else{
                         auto revRead = rapmap::utils::reverseComplement(read);
-                        ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold+100, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                        ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(editThreshold*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                       }
                       auto& thisEdlibResult = ae_.result();
                       auto thisEditDistance = thisEdlibResult.editDistance ;
@@ -339,19 +339,17 @@ public:
                     edit = true;
                 if(rightHits[i].editD<editThreshold and rightHits[i].editD!=-1 )
                     edit_r = true;
-                //if(leftHits[i].fwd)
-                //    std::cout<<"left fwd false\n";
 
-                //std::cout<<leftHits[i].editD << " " << rightHits[i].editD << "\n";
+                if(leftHits[i].editD==-1)
+                    leftHits[i].editD = editThreshold*3;
+                if(rightHits[i].editD==-1)
+                    rightHits[i].editD = editThreshold*3;
+
                 hits[i].editD = leftHits[i].editD + rightHits[i].editD;
-                hits[i].toAlign =  hits[i].editD <2*editThreshold;
+                hits[i].toAlign =  hits[i].editD <= 2*editThreshold;
 
                 hits[i].isLCPused = leftHits[i].isLCPused;
                 hits[i].isMMPused = leftHits[i].isMMPused;
-               //hits[i].toAlign = leftHits[i].toAlign and  rightHits[i].toAlign;
-                //std::cout<< leftHits[i].toAlign << " " << rightHits[i].toAlign << " " << hits[i].toAlign << "\n";
-                //if(hits[i].toAlign)
-                //    hits[i].editD = leftHits[i].editD + rightHits[i].editD;
            }
 
            /*if(!edit){

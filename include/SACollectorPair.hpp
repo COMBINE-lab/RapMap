@@ -797,7 +797,9 @@ private:
 
 
 
-
+        if(read=="TTAACTCTCTTGTCCACCTTGGTGTTGCTGGGCTTGTGATTCACGTTGCAGGTGTAGGTCTGGGTGCCCAAGCTG" or read == "CAGCTTGGGCACCCAGACCTACACCTGCAACGTGAATCACAAGCCCAGCAACACCAAGGTGGACAAGAGAGTTAA"){
+            std::cout <<"\n" << mer << " " <<(uint32_t)safeLength << " " << saSearcher.extendSafe(lb, ub, k, rb, readEndIt,safeLength ) << "\n";
+        }
 
         auto oldlb = lb;
         auto oldub = ub;

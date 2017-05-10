@@ -347,6 +347,7 @@ bool updateSafe(std::string& concatText,
                         }else{
 				//this case should never happen I mean come on
 				//get real
+                            //std::cerr << "\n" << mer << "\n" ;
                             std::cerr << "Impossible is the opposite of possible (https://www.youtube.com/watch?v=nAV0sxwx9rY)" << std::endl;
                             return false;
 			}
@@ -675,7 +676,9 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
             }
 
             auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop-1);
-            khash[bits] = {start, stop, lcpLength};
+            auto eqId = getEqId(start, stop);
+            khash[bits] = {start, stop, lcpLength, k, eqId};
+            //khash[bits] = {start, stop, lcpLength};
             /*
             IndexT len = stop - start;
             bool overflow = (len >= std::numeric_limits<uint8_t>::max());
@@ -767,6 +770,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
       }
       // The current interval is invalid and empty
       currentKmer = nextKmer;
+
       start = stop;
     }
     if (stop % 1000000 == 0) {
@@ -777,7 +781,8 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
   }
   if (start < tlen) {
     if (currentKmer.length() == k and
-        currentKmer.find_first_of('$') != std::string::npos) {
+        currentKmer.find_first_of('$') == std::string::npos) {
+
       mer = currentKmer.c_str();
       auto lcpLength = findLCPLength(concatText,tlen,SA,start,stop-1);
       auto eqId = getEqId(start, stop);
@@ -796,8 +801,14 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
   }
 
   std::vector<rapmap::utils::TGroup> eqClasses(eqTable.size());
-  for (auto it = eqTable.begin(); it != eqTable.end(); ++it) {
-    eqClasses[it->second] = it->first;
+
+  std::cerr << "\n \n  EqTable size : " <<eqTable.size() << "\n\n" ;
+
+  if(k != 9){
+    for (auto it = eqTable.begin(); it != eqTable.end(); ++it) {
+        //std::cerr << "\n WTF " << it->second << "\n" ;
+        eqClasses[it->second] = it->first;
+      }
   }
 
  if(k != 9){
