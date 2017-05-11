@@ -161,6 +161,41 @@ namespace rapmap {
 
 						std::vector<std::pair<int32_t, int32_t>> validPairs ;
 
+                                                bool leftFirst = leftHitCov.cbegin()->first - rightHitCov.cbegin()->first < 0 ;
+
+                                                //leftHitCov and rightHitCov are already sorted with key values
+                                            if(leftFirst){
+                                                for(auto lIt = leftHitCov.cbegin(), rIt = rightHitCov.cbegin(),
+                                                        lend = leftHitCov.cend(), rend = rightHitCov.cend() ;
+                                                        lIt != lend || rIt != rend ; ){
+                                                    if(lIt != lend && rIt == rend){
+                                                        rIt = rightHitCov.cbegin() ;
+                                                    }
+                                                    if( std::abs(lIt->first - rIt->first) > maxInsertSize_){
+                                                        ++lIt ;
+                                                    }else{
+                                                        validPairs.push_back(std::make_pair(lIt->first, rIt->first)) ;
+                                                        ++rIt ;
+                                                    }
+                                                }
+                                            }else{
+                                                for(auto lIt = rightHitCov.cbegin(), rIt = leftHitCov.cbegin(),
+                                                        lend = rightHitCov.cend(), rend = leftHitCov.cend() ;
+                                                        lIt != lend || rIt != rend ; ){
+                                                    if(lIt != lend && rIt == rend){
+                                                        rIt = rightHitCov.cbegin() ;
+                                                    }
+                                                    if( std::abs(lIt->first - rIt->first) > maxInsertSize_){
+                                                        ++lIt ;
+                                                    }else{
+                                                        validPairs.push_back(std::make_pair(lIt->first, rIt->first)) ;
+                                                        ++rIt ;
+                                                    }
+                                                }
+
+                                            }
+
+                                                /*
 						for(auto& leftTQPos : leftHitCov){
 							for(auto& rightTQPos: rightHitCov){
 
@@ -174,7 +209,7 @@ namespace rapmap {
 									validPairs.push_back(std::make_pair(hitPos1, hitPos2)) ;
 								}
 							}
-						}//end for
+						}//end for*/
 
 						//Now I have valid pairs so I can directly make QuasiAlignment vectors
 						//
