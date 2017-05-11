@@ -318,14 +318,6 @@ bool updateSafe(std::string& concatText,
 
                         if (safeLCP >= maxSafeLCP) { safeLCP = maxSafeLCP; break; }
 
-                        if( mer_c.to_str() =="AAAGAGTCCACCTTGCACCTGGTGC"){
-                            std::cerr<<mer << "  " << (uint32_t)safeLCP << "\n";
-                            auto& thisValc = hashItc->second ;
-                            auto tidsc = eqClasses[thisValc.eqId].getTIDs() ;
-                            for(auto t : tidsc)
-                                std::cerr << " "<< t << " ";
-                            std::cerr << "\n" ;
-            }
 
                         mer.shift_left(concatText[startIndex+shift+k-1]);
                         rcMer = mer.get_reverse_complement() ;
@@ -342,19 +334,6 @@ bool updateSafe(std::string& concatText,
                             auto& thisVal = hashIt->second ;
                             if (thisVal.eqId != groundEqId and !(groundEqClass.contains(eqClasses[thisVal.eqId]))) {
                                     val.safeLength = safeLCP + 1;
-                                    if( mer_c.to_str() =="AAAGAGTCCACCTTGCACCTGGTGC"){
-                                        std::cerr<<mer << "  " << (uint32_t)val.safeLength << "\n";
-                                        auto& thisValc = hashItc->second ;
-                                        auto tidsc = eqClasses[thisValc.eqId].getTIDs() ;
-                                        for(auto t : tidsc)
-                                            std::cerr << " "<< t << " ";
-                                        std::cerr << "\n" ;
-                                    }
-                                    if( mer.to_str() =="TGCACCTGGTGCTCCGTCTCAGAGG"){
-                                        std::cerr<<mer << "  " << (uint32_t)safeLCP << "\n";
-
-
-                                    }
 
 
                                    return false;
