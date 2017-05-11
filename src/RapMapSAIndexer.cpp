@@ -855,18 +855,6 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
    }
 	
    for (auto& t : workers) { t.join(); }
-   /* 
-
-	 for(auto& it : khash){
-		  auto& val = it.second ;
-		  auto& interval = val.interval ;
-		  updateSafe(concatText,tlen,SA,val,khash,rankDict,k, eqClasses);
-      if (numProc % 100000 == 0) {
-        std::cerr << "\r\rprocessed " << numProc << " of " << khash.size() << "intervals";
-      }
-      ++numProc;
-	  }
-   */
    lcpLog.close();
  }
 

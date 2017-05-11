@@ -67,16 +67,17 @@ namespace rapmap {
 
 
     		std::set<int> commonTids ;
+		std::set<int> leftTids;
     		for(auto& phLeft : leftMap){
-    			auto leftTid = phLeft.first ;
-    			for(auto& phRight: rightMap){
-    				auto rightTid = phRight.first ;
-
-                    if(leftTid == rightTid){
-                            commonTids.insert(leftTid);
-                        }
-                    }
+    		  auto leftTid = phLeft.first ;
+	          leftTids.insert(leftTid);
+		}
+    		for(auto& phRight: rightMap){
+    		 auto rightTid = phRight.first ;
+                 if (leftTids.find(rightTid) != leftTids.end()) { commonTids.insert(rightTid); }
                 }
+
+
     		if(commonTids.size() > 0){
 
     			//for each common tid check
@@ -160,7 +161,7 @@ namespace rapmap {
 
 						std::vector<std::pair<int32_t, int32_t>> validPairs ;
 
-			            for(auto& leftTQPos : leftHitCov){
+						for(auto& leftTQPos : leftHitCov){
 							for(auto& rightTQPos: rightHitCov){
 
 								// Check for the distance
