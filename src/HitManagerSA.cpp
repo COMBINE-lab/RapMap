@@ -165,33 +165,42 @@ namespace rapmap {
 
                                                 //leftHitCov and rightHitCov are already sorted with key values
                                             if(leftFirst){
-                                                for(auto lIt = leftHitCov.cbegin(), rIt = rightHitCov.cbegin(),
-                                                        lend = leftHitCov.cend(), rend = rightHitCov.cend() ;
-                                                        lIt != lend || rIt != rend ; ){
-                                                    if(lIt != lend && rIt == rend){
-                                                        rIt = rightHitCov.cbegin() ;
+						for(auto& leftTQPos : leftHitCov){
+                                                    if(std::abs( leftTQPos.first - rightHitCov.cbegin()->first) > maxInsertSize_){
+                                                        continue ;
                                                     }
-                                                    if( std::abs(lIt->first - rIt->first) > maxInsertSize_){
-                                                        ++lIt ;
-                                                    }else{
-                                                        validPairs.push_back(std::make_pair(lIt->first, rIt->first)) ;
-                                                        ++rIt ;
-                                                    }
-                                                }
+							for(auto& rightTQPos: rightHitCov){
+
+								// Check for the distance
+								// go with it otherwise
+								// go with something else
+								int32_t hitPos1 = leftTQPos.first; // pos - leftTQPos.queryPos ;
+								int32_t hitPos2 = rightTQPos.first; // pos - rightTQPos.queryPos ;
+
+								if(std::abs(hitPos1 - hitPos2) < maxInsertSize_){
+									validPairs.push_back(std::make_pair(hitPos1, hitPos2)) ;
+								}
+							}
+						}//end for*/
+
                                             }else{
-                                                for(auto lIt = rightHitCov.cbegin(), rIt = leftHitCov.cbegin(),
-                                                        lend = rightHitCov.cend(), rend = leftHitCov.cend() ;
-                                                        lIt != lend || rIt != rend ; ){
-                                                    if(lIt != lend && rIt == rend){
-                                                        rIt = rightHitCov.cbegin() ;
+
+                                                for(auto& rightTQPos : rightHitCov){
+                                                    if(std::abs( rightTQPos.first - leftHitCov.cbegin()->first) > maxInsertSize_){
+                                                        continue ;
                                                     }
-                                                    if( std::abs(lIt->first - rIt->first) > maxInsertSize_){
-                                                        ++lIt ;
-                                                    }else{
-                                                        validPairs.push_back(std::make_pair(lIt->first, rIt->first)) ;
-                                                        ++rIt ;
-                                                    }
-                                                }
+                                                    for(auto& leftTQPos: leftHitCov){
+								// Check for the distance
+								// go with it otherwise
+								// go with something else
+								int32_t hitPos1 = leftTQPos.first; // pos - leftTQPos.queryPos ;
+								int32_t hitPos2 = rightTQPos.first; // pos - rightTQPos.queryPos ;
+
+								if(std::abs(hitPos1 - hitPos2) < maxInsertSize_){
+									validPairs.push_back(std::make_pair(hitPos1, hitPos2)) ;
+								}
+							}
+						}//end for*/
 
                                             }
 
