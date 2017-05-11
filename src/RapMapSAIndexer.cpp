@@ -311,13 +311,25 @@ bool updateSafe(std::string& concatText,
     mer = concatText.substr(startIndex, k);
     rcMer = mer.get_reverse_complement() ;
 
-		while((shift < lcpLength-k) and (startIndex + shift + k) < tlen){
+    auto mer_c = mer;
+   		while((shift < lcpLength-k) and (startIndex + shift + k) < tlen){
       // for now, we don't care about longer safe LCPs
+            auto hashItc = khash.find(mer.word(0)) ;
+
                         if (safeLCP >= maxSafeLCP) { safeLCP = maxSafeLCP; break; }
 
+                        if( mer_c.to_str() =="AAAGAGTCCACCTTGCACCTGGTGC"){
+                            std::cerr<<mer << "  " << (uint32_t)safeLCP << "\n";
+                            auto& thisValc = hashItc->second ;
+                            auto tidsc = eqClasses[thisValc.eqId].getTIDs() ;
+                            for(auto t : tidsc)
+                                std::cerr << " "<< t << " ";
+                            std::cerr << "\n" ;
+            }
 
                         mer.shift_left(concatText[startIndex+shift+k-1]);
                         rcMer = mer.get_reverse_complement() ;
+
 
 			//nextKmer = concatText.substr(startIndex+shift,k);
 			//mer = nextKmer ;
@@ -330,7 +342,22 @@ bool updateSafe(std::string& concatText,
                             auto& thisVal = hashIt->second ;
                             if (thisVal.eqId != groundEqId and !(groundEqClass.contains(eqClasses[thisVal.eqId]))) {
                                     val.safeLength = safeLCP + 1;
-                                    return false;
+                                    if( mer_c.to_str() =="AAAGAGTCCACCTTGCACCTGGTGC"){
+                                        std::cerr<<mer << "  " << (uint32_t)val.safeLength << "\n";
+                                        auto& thisValc = hashItc->second ;
+                                        auto tidsc = eqClasses[thisValc.eqId].getTIDs() ;
+                                        for(auto t : tidsc)
+                                            std::cerr << " "<< t << " ";
+                                        std::cerr << "\n" ;
+                                    }
+                                    if( mer.to_str() =="TGCACCTGGTGCTCCGTCTCAGAGG"){
+                                        std::cerr<<mer << "  " << (uint32_t)safeLCP << "\n";
+
+
+                                    }
+
+
+                                   return false;
                             }
 
                             if(rcHashIt != khash.end()){
@@ -617,7 +644,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
     auto eqIt = eqTable.find(kset);
     if ( eqIt == eqTable.end()){
       eqId = eqTable.size();
-      eqTable[kset] = eqTable.size();
+      eqTable[kset] = eqId;//eqTable.size();
     } else {
       eqId = eqIt->second;
     }

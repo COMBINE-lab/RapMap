@@ -230,6 +230,7 @@ namespace rapmap {
         size_t hash() const {
           return XXH64(static_cast<void*>(const_cast<uint32_t*>(tids_.data())), sizeof(uint32_t)*tids_.size(), 0);
         };
+        std::vector<uint32_t> getTIDs(){ return tids_; };
       private:
         std::vector<uint32_t> tids_;
       };

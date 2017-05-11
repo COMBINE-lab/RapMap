@@ -514,13 +514,14 @@ void processReadsPairSA(paired_parser* parser,
                     rmi,
                     mopts->maxNumHits,
                     mopts->consistentHits,
-                    hctr);
+                    hctr,
+                    7);
 
 
 
             /*
             if (mopts->fuzzy) {
-                rapmap::utils::mergeLeftRightHitsFuzzy(
+            AI
                         lh, rh,
                         leftHits, rightHits, jointHits,
                         readLen, mopts->maxNumHits, tooManyHits, hctr);

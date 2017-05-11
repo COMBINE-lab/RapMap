@@ -77,7 +77,8 @@ namespace rapmap {
                                 RapMapIndexT& rmi,
 								bool maxNumHits,
 								bool consistentHits,
-                                rapmap::utils::HitCounters& hctr);
+                                rapmap::utils::HitCounters& hctr,
+                                uint32_t editDistance);
 
     }
 }

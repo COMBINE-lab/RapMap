@@ -258,7 +258,7 @@ public:
                     continue;
                 }*/
                 if ( (!skipLCPOpt) && (search != tidset.end()) && (lcpLength >= readLen) && (tidPos[txpID] == globalPos)){
-                    hitsIt->isLCPused = true;
+                    //hitsIt->isLCPused = true;
                     if(startEditDistance < editThreshold){
                                 hitsIt->editD = startEditDistance;
                                 hitsIt->toAlign = true;
