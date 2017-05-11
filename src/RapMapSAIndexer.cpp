@@ -596,6 +596,7 @@ bool build9kmerHash(const std::string& outputDir, std::string& concatText,
 template <typename IndexT, typename WordT, typename MerT>
 bool buildHash(const std::string& outputDir, std::string& concatText,
                size_t tlen, uint32_t k, std::vector<IndexT>& SA,
+               uint32_t numHashThreads,
                std::shared_ptr<spdlog::logger> log) {
   // Now, build the k-mer lookup table
     // The base type should always be uint64_t
@@ -844,16 +845,49 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
    std::ofstream lcpLog(lcpLogFilename);
    lcpLog << "LCPLength\tSafeLCPLength\n";
    size_t numProc{0};
+   std::mutex writeMutex;
+   std::atomic<int64_t> numToProc{0};//static_cast<int64_t>(khash.size())};
+   auto hashIt = khash.begin();
+   auto hashEnd = khash.end();
+   auto total = khash.size();
+   size_t id{0};
+   std::vector<std::thread> workers;
+   workers.reserve(numHashThreads);
+   
+   for(size_t i = 0; i < numHashThreads; ++i) {
+	   workers.push_back(std::thread([&, &khash, &numToProc, &hashIt, &id, total, i]() {
+           for (;;) {
+             writeMutex.lock();
+	     auto it = hashIt++;
+	     auto locID = id++;
+   	     writeMutex.unlock(); 
+             if(locID >= total) { break; }
+             if (locID % 100000 == 0) {
+               std::cerr << "\r\rprocessed " << locID << " of " << total << " intervals";
+             }
+	     auto& val = it->second;
+             updateSafe(concatText,tlen,SA,val,khash,rankDict,k, eqClasses);
+             writeMutex.lock();
+             lcpLog << static_cast<uint32_t>(val.lcpLength) << '\t' << static_cast<uint32_t>(val.safeLength) << '\n';
+             writeMutex.unlock();
+           }
+	   return true;
+         }));
+   }
+	
+   for (auto& t : workers) { t.join(); }
+   /* 
+
 	 for(auto& it : khash){
 		  auto& val = it.second ;
 		  auto& interval = val.interval ;
 		  updateSafe(concatText,tlen,SA,val,khash,rankDict,k, eqClasses);
-      lcpLog << static_cast<uint32_t>(val.lcpLength) << '\t' << static_cast<uint32_t>(val.safeLength) << '\n';
       if (numProc % 100000 == 0) {
         std::cerr << "\r\rprocessed " << numProc << " of " << khash.size() << "intervals";
       }
       ++numProc;
 	  }
+   */
    lcpLog.close();
  }
 
@@ -1125,7 +1159,7 @@ void indexTranscriptsSA(ParserT* parser,
       success = buildPerfectHash<IndexT>(outputDir, concatText, tlen, k, SA,
                                          numHashThreads, log);
     } else {
-      success = buildHash<IndexT, rapmap::utils::my_mer::base_type, rapmap::utils::my_mer>(outputDir, concatText, tlen, k, SA, log);
+      success = buildHash<IndexT, rapmap::utils::my_mer::base_type, rapmap::utils::my_mer>(outputDir, concatText, tlen, k, SA, numHashThreads, log);
     }
     if (!success) {
       std::cerr << "[fatal] Could not build the suffix interval hash!\n";
@@ -1134,7 +1168,7 @@ void indexTranscriptsSA(ParserT* parser,
     std::cerr << "[info] building all 9 mer hash on the"
                "suffix array"
                <<"\n" ;
-    bool success2 = buildHash<IndexT, rapmap::utils::my_mer9::base_type, rapmap::utils::my_mer9>(outputDir, concatText, tlen, 9, SA, log);
+    bool success2 = buildHash<IndexT, rapmap::utils::my_mer9::base_type, rapmap::utils::my_mer9>(outputDir, concatText, tlen, 9, SA, numHashThreads, log);
     if(!success2) {
         std::cerr << "[fatal] Could not build the 9 mer vector!\n";
         std::exit(1);
@@ -1155,7 +1189,7 @@ void indexTranscriptsSA(ParserT* parser,
       success = buildPerfectHash<IndexT>(outputDir, concatText, tlen, k, SA,
                                          numHashThreads, log);
     } else {
-      success = buildHash<IndexT, rapmap::utils::my_mer::base_type, rapmap::utils::my_mer>(outputDir, concatText, tlen, k, SA, log);
+      success = buildHash<IndexT, rapmap::utils::my_mer::base_type, rapmap::utils::my_mer>(outputDir, concatText, tlen, k, SA, numHashThreads, log);
     }
     if (!success) {
       std::cerr << "[fatal] Could not build the suffix interval hash!\n";
@@ -1164,7 +1198,7 @@ void indexTranscriptsSA(ParserT* parser,
     std::cerr << "[info] building all 9 mer hash on the"
                "suffix array"
                <<"\n" ;
-    bool success2 = buildHash<IndexT, rapmap::utils::my_mer9::base_type, rapmap::utils::my_mer9>(outputDir, concatText, tlen, 9, SA, log);
+    bool success2 = buildHash<IndexT, rapmap::utils::my_mer9::base_type, rapmap::utils::my_mer9>(outputDir, concatText, tlen, 9, SA, numHashThreads, log);
     if(!success2) {
         std::cerr << "[fatal] Could not build the 9 mer vector!\n";
         std::exit(1);
