@@ -807,7 +807,6 @@ private:
                 if(safeLength==k)
                     safeLength=k+1;
                 auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt,safeLength );
-                //std::cout <<"1 " <<newExtend << "\n";
                 if(newExtend > k){
                     matchedLen = newExtend ;
                 }else{

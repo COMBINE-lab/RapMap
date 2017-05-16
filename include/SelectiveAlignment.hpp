@@ -147,7 +147,8 @@ public:
 	  // get transcript id
 	  // sequence and read sequence
 	  // and position
-	  {
+
+            if(!startHit.toAlign){
                   uint32_t txpID = startHit.tid ;
                   int32_t pos = startHit.pos;
                   int32_t startOffset, endOffset ;
@@ -178,7 +179,6 @@ public:
                   auto& startEdlibResult = ae_.result();
 
                   startHit.editD = startEdlibResult.editDistance;
-
 
                   startEditDistance = startEdlibResult.editDistance;
 
@@ -290,6 +290,9 @@ public:
                       auto thisEditDistance = thisEdlibResult.editDistance ;
 
 
+                      if(hitsIt->toAlign and thisEditDistance!=0){
+                          std::cout<<"WTF\n";
+                      }
                       if(thisEditDistance < editThreshold){
                               //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
                               hitsIt->editD = thisEditDistance;
@@ -326,6 +329,8 @@ public:
            for(auto& hit: rightHits){
                 hit.pos = hit.matePos;
                 hit.fwd = hit.mateIsFwd;
+                hit.toAlign = hit.mateToAlign;
+                hit.editD = hit.mateEditD;
            }
 
            compute(rightReadT,rightHits,editThreshold);
@@ -333,31 +338,15 @@ public:
 
            bool edit = false; bool edit_r = true;
            for(int i=0; i<leftHits.size(); i++) {
-                if(leftHits[i].editD<editThreshold and leftHits[i].editD != -1)
-                    edit = true;
-                if(rightHits[i].editD<editThreshold and rightHits[i].editD!=-1 )
-                    edit_r = true;
-
-                if(leftHits[i].editD==-1)
+               if(leftHits[i].editD==-1)
                     leftHits[i].editD = editThreshold*3;
                 if(rightHits[i].editD==-1)
                     rightHits[i].editD = editThreshold*3;
 
+                hits[i].editD = leftHits[i].editD + rightHits[i].editD;
+                hits[i].toAlign =  hits[i].editD <= 2*editThreshold;
 
            }
-
-           /*if(!edit){
-               std::cout<<"size_l " << leftHits.size() << "\n";
-               for(auto hit: leftHits){
-                   std::cout<<hit.editD << "\n";
-                   std::cout<<transcripts[hit.tid].RefName <<" " << hit.pos << " "<< hit.fwd <<" "<< leftReadT.seq << "\n";
-                }
-           }
-           if(!edit_r){
-               std::cout<<"size_r " << rightHits.size() << "\n";
-               for(auto hit: rightHits)
-                   std::cout<<hit.editD << "\n";
-           }*/
        }
 private:
   RapMapIndexT* rmi_ ;
