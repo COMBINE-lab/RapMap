@@ -780,18 +780,6 @@ private:
       complementMer = mer.get_reverse_complement();
       merIt = khash.find(mer.word(0));//get_bits(0, 2 * k));
 
-      /*if(read=="AAACCATTTTCAGACCGGGCACGGTGGCTCACCTGTAATCCCAGGACTTTGGGAGGCCAGGGCGGGCAGATCACC" or read=="GGTGATCTGCCCGCCCTGGCCTCCCAAAGTCCTGGGATTACAGGTGAGCCACCGTGCCCGGTCTGAAAATGGTTT"){
-          std::cout<<"\n\n berfore going khash check: " << mer << "\n\n";
-      }*/
-
-
-      //@debug HIRAK check a falsely read
-      //finds the true list in its transcript or not
-     //auto& SA = rmi_->SA ;
-     //auto& txpNames = rmi_->txpNames;
-
-
-      // If we found the k-mer
       if (merIt != hashEnd_) {
         spotCheck_(mer, pos, readLen, &merIt, nullItPtr, isRC, strandHits,
                    otherStrandHits, kmerScores, remap);
@@ -801,32 +789,9 @@ private:
         lcpLength = merIt->second.lcpLength ;
         safeLength = merIt->second.safeLength ;
       skipSetup:
-
-      /*if(read=="AAACCATTTTCAGACCGGGCACGGTGGCTCACCTGTAATCCCAGGACTTTGGGAGGCCAGGGCGGGCAGATCACC" or read=="GGTGATCTGCCCGCCCTGGCCTCCCAAAGTCCTGGGATTACAGGTGAGCCACCGTGCCCGGTCTGAAAATGGTTT"){
-          std::cout<<"\n\n after khash check: " << mer << "\n\n";
-      }*/
-
-
-
-
-        //if(read=="TCAACTGGGCTAGATAATTGAAGGCTGAGCTCTTTGTAAGTTTTTTTTTTGTTTTTTTTTTTGAGACTGATTCTC" or read=="GAGAATCAGTCTCAAAAAAAAAAACAAAAAAAAAACTTACAAAGAGCTCAGCCTTCAATTATCTAGCCCAGTTGA"){
-        // if(read=="GATCACAAGGTCAAGAGATTGAGACCATCTTGGCCAACATGGTGAAACCCCGTCTCTACTAAAAACACAAAAATC" or read == "")
-        //if(read=="CAGCCTCCCGAGTAGCTGGGACTACAGGTGCATGCCACGACGGCCGGCTGATTTTTGTGTTTTTTGTAGAGACGG" or read == "CCGTCTCTACAAAAAACACAAAAATCAGCCGGCCGTCGTGGCATGCACCTGTAGTCCCAGCTACTCGGGAGGCTG"){
-        //    std::cout <<"\n" << mer << " " <<(uint32_t)safeLength << " " << saSearcher.extendSafe(lb, ub, k, rb, readEndIt,safeLength ) << "\n";
-        //}
-
         auto oldlb = lb;
         auto oldub = ub;
 
-
-        /*lb = std::max(static_cast<OffsetT>(0), lb - 1);
-        std::tie(lb, ub, matchedLen) =
-            saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
-        if( matchedLen < readLen) {
-            matchedLen = k+10;//readLen/10;
-            lb = oldlb;
-            ub = oldub;
-        }*/
 
         if(readStartIt == startIt){
 
@@ -846,7 +811,7 @@ private:
                 if(newExtend > k){
                     matchedLen = newExtend ;
                 }else{
-                    matchedLen = k;
+                    matchedLen = k+readLen/10;
                 }
             }
         } else {
@@ -854,28 +819,11 @@ private:
                 safeLength=k+1;
             auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt,safeLength );
             if(newExtend > k){
-                matchedLen = newExtend ;
+                matchedLen = newExtend;
             }else{
-                matchedLen = k;
+                matchedLen = k + readLen/10;
             }
         }
-
-        //if(read=="TCAACTGGGCTAGATAATTGAAGGCTGAGCTCTTTGTAAGTTTTTTTTTTGTTTTTTTTTTTGAGACTGATTCTC" or read=="GAGAATCAGTCTCAAAAAAAAAAACAAAAAAAAAACTTACAAAGAGCTCAGCCTTCAATTATCTAGCCCAGTTGA"){
-        //if(read=="GAAAGAGTCCACCTTGCACCTGGTGCTCCGTCTCAGAGGTGGGATGCAGATCGTCGTGAAGACCCTGACTGGTAA" or read=="TTACCAGTCAGGGTCTTCACGACGATCTGCATCCCACCTCTGAGACGGAGCACCAGGTGCAAGGTGGACTCTTTC"){
-        /*if(read=="TCCTTCTTTGGGCCTGGGTTTCCTCATCTAATCTGCAAACCAAGAATGCAGACTAGTCCTACCACTCCCGGAAGA" or read =="TCTTCCGGGAGTGGTAGGACTAGTCTGCATTCTTGGTTTGCAGATTAGATGAGGAAACCCAGGCCCAAAGAAGGA"){
-        //if(read=="AGGGATGCCCTCCTTGTCTTGGATCTTTGCCTTGACATTCTCAATGGTGTCACTCGGCTCCACCTCGAGAGTGAT" or read=="ATCACTCTCGAGGTGGAGCCGAGTGACACCATTGAGAATGTCAAGGCAAAGATCCAAGACAAGGAGGGCATCCCT"){
-        //if(read=="CAGGCTGGAGTGCAGTGGCACGATCTTGGCTCACTGCAAGCTCCGCCTCCCAGGTTCACGTCATTCCCCTGCCAG" or read=="CTGGCAGGGGAATGACGTGAACCTGGGAGGCGGAGCTTGCAGTGAGCCAAGATCGTGCCACTGCACTCCAGCCTG"){
-        std::cout <<"\n" << mer << " " << "safeLength: " << (uint32_t)safeLength << " extendLength: " << (uint32_t)matchedLen <<"\n";
-        rapmap::utils::my_mer mer_(std::string(rb,rb+k));
-        auto merIt_ = khash.find(mer_.word(0));
-        for(auto spos = merIt_->second.interval.begin() ; spos < merIt_->second.interval.end(); ++spos){
-            std::cout<<"\n"<<rmi_->txpNames[rmi_->transcriptAtPosition(rmi_->SA[spos])] << "\n";// <<" pos: "<< spos - rmi_->txpOffsets[rmi_->transcriptAtPosition(rmi_->SA[spos])] << "\n";
-        }
-        for(auto i=rb;i<rb+k;i++){
-            std::cout<<*i;
-        }
-        std::cout<<" encountered\n";
-        }*/
 
 
         OffsetT diff = ub - lb;

@@ -515,9 +515,14 @@ void processReadsPairSA(paired_parser* parser,
                     mopts->maxNumHits,
                     mopts->consistentHits,
                     hctr,
-                    7);
+                    mopts->editThreshold);
 
+	   hitSECollector(rpair.first,rpair.second, jointHits, mopts->editThreshold);
 
+           jointHits.erase(std::remove_if(jointHits.begin(), jointHits.end(),
+                      [](QuasiAlignment& a) {
+                      return !a.toAlign;
+                      }), jointHits.end());
 
             /*
             if (mopts->fuzzy) {
