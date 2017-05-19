@@ -715,6 +715,8 @@ private:
     bool lastSearch{false};
     size_t prevMMPEnd{0};
     bool validMer{true};
+    
+    OffsetT hybridSkip{std::max(size_t(1), readLen / 10)};
 
     // If we have some place to start that we have already computed
     // then use it.
@@ -727,7 +729,7 @@ private:
       invalidPos = pos;
       lb = startInterval->begin();
       ub = startInterval->end();
-
+      
       goto skipSetup;
     }
 
@@ -760,18 +762,6 @@ private:
       if (mer.is_homopolymer()) {
         rb += homoPolymerSkip;
         re += homoPolymerSkip;
-        /*
-        rb += homoPolymerSkip;
-        re += homoPolymerSkip;
-        // If the default skip jumps us off the end of the read
-        // then try to check the last k-mer
-        if (re >= readEndIt and !lastSearch) {
-          rb = readEndIt - k;
-          re = rb + k;
-          // but give up if that's still a homopolymer
-          lastSearch = true;
-        }
-        */
         continue;
       }
 
@@ -798,19 +788,33 @@ private:
             lb = std::max(static_cast<OffsetT>(0), lb - 1);
             std::tie(lb, ub, matchedLen) =
                 saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
+
+            // **Note** : If we don't match the whole read, why go back and
+            // re-do the extendSafe?  We know how long the matchedLen is, so
+            // we should be able to just reduce it to min(matchedLen, safeLength)
+            // and proceed without re-checking, right?
+
             if(matchedLen == readLen){
                 matchedLen = readLen;
-            }
-            else {
+            } else {
+                if(safeLength==k) { safeLength=k+1; }
+                /** Assuming there isn't an OBO here, I think we can
+                    replace the call to extendSafe in this block by
+                    the code immediately below **/
+                /**
+                if (matchedLen > k) {
+                  matchedLen = std::min(matchedLen, safeLength);
+                } else {
+                  matchedLen = k+hybridSkip;
+                }
+                **/
                 lb = oldlb;
                 ub = oldub;
-                if(safeLength==k)
-                    safeLength=k+1;
-                auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt,safeLength );
+                auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt, safeLength);
                 if(newExtend > k){
                     matchedLen = newExtend ;
                 }else{
-                    matchedLen = k+readLen/10;
+                    matchedLen = k+hybridSkip;
                 }
             }
         } else {
