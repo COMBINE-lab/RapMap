@@ -803,21 +803,21 @@ private:
                 /** Assuming there isn't an OBO here, I think we can
                     replace the call to extendSafe in this block by
                     the code immediately below **/
-                /**
-                if (matchedLen > k) {
-                  matchedLen = std::min(matchedLen, safeLength);
+                
+		lb = oldlb;
+		ub = oldub;
+                if (matchedLen > k+1) {
+                  matchedLen = std::min((uint32_t)matchedLen,(uint32_t) safeLength);
                 } else {
                   matchedLen = k+hybridSkip;
                 }
-                **/
-                lb = oldlb;
-                ub = oldub;
-                auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt, safeLength);
+                
+                /**auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt, safeLength);
                 if(newExtend > k){
                     matchedLen = newExtend ;
                 }else{
                     matchedLen = k+hybridSkip;
-                }
+                }**/
             }
         } else {
             if(safeLength==k)
