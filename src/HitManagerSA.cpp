@@ -286,14 +286,14 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
     //}
 
   // since we use an ordered set, these should be sorted.
-  
+  /*
   if(jointHits.size()>0){
     std::sort(jointHits.begin(), jointHits.end(),
               [](const QuasiAlignment& a, const QuasiAlignment& b)-> bool {
                 return a.tid < b.tid;
               } );
   }
-  
+  */
   return foundHit;
 }
 
@@ -409,6 +409,12 @@ bool mergeLeftRightSAInts(
     foundHit = true;
   }
 
+  if(fwdRc and rcFwd and jointHits.size()>0){
+    std::sort(jointHits.begin(), jointHits.end(),
+              [](const QuasiAlignment& a, const QuasiAlignment& b)-> bool {
+                return a.tid < b.tid;
+              } );
+  }
   return foundHit;
 }
 
