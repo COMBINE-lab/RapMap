@@ -69,25 +69,24 @@ bool loadHashFromIndex(const std::string& indexDir,
                        RegHashT<uint64_t,
                        //rapmap::utils::kmerVal<IndexT>,
                        rapmap::utils::kmerVal<IndexT>,
-                       rapmap::utils::KmerKeyHasher>& khash,
-                       RegHashT<uint64_t,
+                       rapmap::utils::KmerKeyHasher>& khash){
+                       //RegHashT<uint64_t,
                        //rapmap::utils::kmerVal<IndexT>,
-                       rapmap::utils::kmerVal<IndexT>,
-                       rapmap::utils::KmerKeyHasher>& khash9) {
+                       //rapmap::utils::kmerVal<IndexT>) {
       std::ifstream hashStream(indexDir + "hash.bin", std::ios::binary);
       khash.unserialize(typename spp_utils::pod_hash_serializer<uint64_t, rapmap::utils::kmerVal<IndexT>>(),
 			&hashStream);
 
-      std::ifstream hashStream9(indexDir + "hash9.bin", std::ios::binary);
-      khash9.unserialize(typename spp_utils::pod_hash_serializer<uint64_t, rapmap::utils::kmerVal<IndexT>>(),
-			&hashStream9);
+      //std::ifstream hashStream9(indexDir + "hash9.bin", std::ios::binary);
+      //khash9.unserialize(typename spp_utils::pod_hash_serializer<uint64_t, rapmap::utils::kmerVal<IndexT>>(),
+			//&hashStream9);
       return true;
 }
 
 template <typename IndexT>
 bool loadHashFromIndex(const std::string& indexDir,
-		       PerfectHashT<uint64_t, rapmap::utils::kmerVal<IndexT>> & h,
-                       PerfectHashT<uint64_t, rapmap::utils::kmerVal<IndexT>> & h9) {
+                       PerfectHashT<uint64_t, rapmap::utils::kmerVal<IndexT>> & h){
+                       //PerfectHashT<uint64_t, rapmap::utils::kmerVal<IndexT>> & h9) {
     std::string hashBase = indexDir + "hash_info";
     h.load(hashBase);
     return true;
@@ -122,7 +121,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
 
     // This part takes the longest, so do it in it's own asynchronous task
     std::future<bool> loadingHash = std::async(std::launch::async, [this, logger, indDir]() -> bool {
-	return loadHashFromIndex(indDir, khash, khash9);
+        return loadHashFromIndex(indDir, khash);
     });
 
     std::ifstream saStream(indDir + "sa.bin");

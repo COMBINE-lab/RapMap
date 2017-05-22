@@ -112,8 +112,8 @@ public:
     auto& rankDict = rmi_->rankDict;
     auto& txpStarts = rmi_->txpOffsets;
     auto& SA = rmi_->SA;
-    auto& khash = (remap)?rmi_->khash9:rmi_->khash;
-    //auto& khash = rmi_->khash;
+    //auto& khash = (remap)?rmi_->khash9:rmi_->khash;
+    auto& khash = rmi_->khash;
     auto& text = rmi_->seq;
     auto salen = SA.size();
     if(remap) hashEnd_ = khash.end();
@@ -589,7 +589,8 @@ private:
              ) {
     IteratorT merIt = hashEnd_;
     IteratorT complementMerIt = hashEnd_;
-    auto& khash =(remap)?rmi_->khash9:rmi_->khash;
+    //auto& khash =(remap)?rmi_->khash9:rmi_->khash;
+    auto& khash = rmi_->khash;
     //auto hashEnd_ = khash.end();
     auto k = rapmap::utils::my_mer::k();
     if(remap){
@@ -669,7 +670,8 @@ private:
       bool remap=false
       ) {
     using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
-    auto& khash = (remap)?rmi_->khash9:rmi_->khash;
+    //auto& khash = (remap)?rmi_->khash9:rmi_->khash;
+    auto& khash = rmi_->khash;
 
     //auto hashEnd_ = khash.end();
     //

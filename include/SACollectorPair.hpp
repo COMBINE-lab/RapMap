@@ -113,8 +113,8 @@ public:
     auto& rankDict = rmi_->rankDict;
     auto& txpStarts = rmi_->txpOffsets;
     auto& SA = rmi_->SA;
-    auto& khash = (remap)?rmi_->khash9:rmi_->khash;
-    //auto& khash = rmi_->khash;
+    //auto& khash = (remap)?rmi_->khash9:rmi_->khash;
+    auto& khash = rmi_->khash;
     auto& text = rmi_->seq;
     auto salen = SA.size();
     if(remap) hashEnd_ = khash.end();
@@ -600,7 +600,8 @@ private:
              ) {
     IteratorT merIt = hashEnd_;
     IteratorT complementMerIt = hashEnd_;
-    auto& khash =(remap)?rmi_->khash9:rmi_->khash;
+    //auto& khash =(remap)?rmi_->khash9:rmi_->khash;
+    auto& khash = rmi_->khash;
     //auto hashEnd_ = khash.end();
     auto k = rapmap::utils::my_mer::k();
     if(remap){
@@ -680,7 +681,8 @@ private:
       bool remap=false
       ) {
     using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
-    auto& khash = (remap)?rmi_->khash9:rmi_->khash;
+    //auto& khash = (remap)?rmi_->khash9:rmi_->khash;
+    auto& khash = rmi_->khash;
 
     //auto hashEnd_ = khash.end();
     //
@@ -915,19 +917,9 @@ private:
         // if (skipMatch + k )
         // Where we would jump if we used the LCE
         auto skipLCE = rb + lce - skipOverlapNIP;
-        // TODO: GIANT HACK TO TEST SENSITIVITY!!!!
-        //auto neverSkipMoreThan = rb + 10;
         // Pick the maximum of the two
         auto maxSkip = std::max(skipMatch, skipLCE);
-        // And that's where our new search will start
-        //rb = maxSkip;
-
         rb = rb+matchedLen-k+1;
-        /*
-        if (rb > neverSkipMoreThan) {
-            rb = neverSkipMoreThan;
-        }*/
-
 
         // If NIP skipping is *enabled*, and we got to the current position
         // by doing an LCE query, then we allow ourselves to *double check*

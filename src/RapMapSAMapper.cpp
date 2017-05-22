@@ -586,6 +586,9 @@ void processReadsPairSA(paired_parser* parser,
 
             hctr.totHits += jointHits.size();
 
+            /** NOTE : the following line only holds until we fix orphans **/
+            hctr.peHits += jointHits.size();
+
             // If we have reads to output, and we're writing output.
             //if (jointHits.size() > 0 and !mopts->noOutput and jointHits.size() <= mopts->maxNumHits) {
             if (jointHits.size() > 0 and !mopts->noOutput and jointHits.size() <= mopts->maxNumHits) {

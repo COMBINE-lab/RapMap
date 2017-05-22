@@ -1132,6 +1132,7 @@ void indexTranscriptsSA(ParserT* parser,
       std::cerr << "[fatal] Could not build the suffix interval hash!\n";
       std::exit(1);
     }
+    /*
     std::cerr << "[info] building all 9 mer hash on the"
                "suffix array"
                <<"\n" ;
@@ -1140,6 +1141,7 @@ void indexTranscriptsSA(ParserT* parser,
         std::cerr << "[fatal] Could not build the 9 mer vector!\n";
         std::exit(1);
     }
+    */
   } else {
     std::cerr << "[info] Building 32-bit suffix array "
                  "(length of generalized text is "
@@ -1162,6 +1164,7 @@ void indexTranscriptsSA(ParserT* parser,
       std::cerr << "[fatal] Could not build the suffix interval hash!\n";
       std::exit(1);
     }
+    /*
     std::cerr << "[info] building all 9 mer hash on the"
                "suffix array"
                <<"\n" ;
@@ -1170,6 +1173,7 @@ void indexTranscriptsSA(ParserT* parser,
         std::cerr << "[fatal] Could not build the 9 mer vector!\n";
         std::exit(1);
     }
+    */
   }
 
 
