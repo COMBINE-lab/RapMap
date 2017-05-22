@@ -409,7 +409,7 @@ bool mergeLeftRightSAInts(
     foundHit = true;
   }
 
-  if(fwdRc and rcFwd and jointHits.size()>0){
+  if(fwdRc and rcFwd and jointHits.size()>1){
     std::sort(jointHits.begin(), jointHits.end(),
               [](const QuasiAlignment& a, const QuasiAlignment& b)-> bool {
                 return a.tid < b.tid;
