@@ -393,8 +393,8 @@ bool mergeLeftRightSAInts(
   }
 
   //jointHits in two different orientations
-  std::vector<QuasiAlignment> fwdRcHits;
-  std::vector<QuasiAlignment> rcFwdHits;
+  //std::vector<QuasiAlignment> fwdRcHits;
+  //std::vector<QuasiAlignment> rcFwdHits;
 
   // there are two possibilities
   bool fwdRc{false};
@@ -402,19 +402,26 @@ bool mergeLeftRightSAInts(
   // 1. The left is from forward and right is from reverse
   if (leftFwdMap.size() > 0 and rightRcMap.size() > 0) {
     // only consider transcripts that are common between both
-    fwdRc = mergeLeftRightMap(rpair, leftFwdMap, rightRcMap, fwdRcHits,
+    fwdRc = mergeLeftRightMap(rpair, leftFwdMap, rightRcMap, jointHits,//fwdRcHits,
                               editDistance, rmi);
     foundHit = true;
   }
+  size_t fwdRcOffset = jointHits.size();
 
   if (leftRcMap.size() > 0 and rightFwdMap.size() > 0) {
-    rcFwd = mergeLeftRightMap(rpair, leftRcMap, rightFwdMap, rcFwdHits,
+    rcFwd = mergeLeftRightMap(rpair, leftRcMap, rightFwdMap, jointHits,//rcFwdHits,
                               editDistance, rmi);
     foundHit = true;
   }
 
   // merge two sets if jointHits in different orientations instead of sort
-
+  // use std::merge for this
+  std::inplace_merge(jointHits.begin(), jointHits.begin() + fwdRcOffset,
+                     jointHits.end(),
+                     [](const QuasiAlignment& l, const QuasiAlignment& r)->bool {
+                       return l.tid < r.tid;
+                     });
+  /*
   uint32_t i = 0;
   uint32_t j = 0;
   while(i<fwdRcHits.size() and j<rcFwdHits.size()){
@@ -434,6 +441,7 @@ bool mergeLeftRightSAInts(
     jointHits.push_back(rcFwdHits[j]);
     j++;
   }
+  */
 
   /*if(fwdRc and rcFwd and jointHits.size()>1){
     std::sort(jointHits.begin(), jointHits.end(),
