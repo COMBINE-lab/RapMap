@@ -392,29 +392,55 @@ bool mergeLeftRightSAInts(
     }
   }
 
+  //jointHits in two different orientations
+  std::vector<QuasiAlignment> fwdRcHits;
+  std::vector<QuasiAlignment> rcFwdHits;
+
   // there are two possibilities
   bool fwdRc{false};
   bool rcFwd{false};
   // 1. The left is from forward and right is from reverse
   if (leftFwdMap.size() > 0 and rightRcMap.size() > 0) {
     // only consider transcripts that are common between both
-    fwdRc = mergeLeftRightMap(rpair, leftFwdMap, rightRcMap, jointHits,
+    fwdRc = mergeLeftRightMap(rpair, leftFwdMap, rightRcMap, fwdRcHits,
                               editDistance, rmi);
     foundHit = true;
   }
 
   if (leftRcMap.size() > 0 and rightFwdMap.size() > 0) {
-    rcFwd = mergeLeftRightMap(rpair, leftRcMap, rightFwdMap, jointHits,
+    rcFwd = mergeLeftRightMap(rpair, leftRcMap, rightFwdMap, rcFwdHits,
                               editDistance, rmi);
     foundHit = true;
   }
 
-  if(fwdRc and rcFwd and jointHits.size()>1){
+  // merge two sets if jointHits in different orientations instead of sort
+
+  uint32_t i = 0;
+  uint32_t j = 0;
+  while(i<fwdRcHits.size() and j<rcFwdHits.size()){
+    if(fwdRcHits[i].tid < rcFwdHits[j].tid){
+      jointHits.push_back(fwdRcHits[i]);
+      i++;
+    } else {
+      jointHits.push_back(rcFwdHits[j]);
+      j++;
+    }
+  }
+  while (i<fwdRcHits.size()) {
+    jointHits.push_back(fwdRcHits[i]);
+    i++;
+  }
+  while (j<rcFwdHits.size()) {
+    jointHits.push_back(rcFwdHits[j]);
+    j++;
+  }
+
+  /*if(fwdRc and rcFwd and jointHits.size()>1){
     std::sort(jointHits.begin(), jointHits.end(),
               [](const QuasiAlignment& a, const QuasiAlignment& b)-> bool {
                 return a.tid < b.tid;
               } );
-  }
+  }*/
   return foundHit;
 }
 
