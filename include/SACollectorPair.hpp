@@ -806,8 +806,9 @@ private:
                 
 		lb = oldlb;
 		ub = oldub;
-                if (matchedLen > k+1) {
-                  matchedLen = std::min((uint32_t)matchedLen,(uint32_t) safeLength);
+		auto newExtend =  std::min((uint32_t)matchedLen,(uint32_t) safeLength); 
+                if (newExtend > k+1) {
+                  matchedLen = newExtend;
                 } else {
                   matchedLen = k+hybridSkip;
                 }
@@ -826,7 +827,7 @@ private:
             if(newExtend > k){
                 matchedLen = newExtend;
             }else{
-                matchedLen = k + readLen/10;
+                matchedLen = k+hybridSkip;
             }
         }
 
