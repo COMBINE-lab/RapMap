@@ -61,8 +61,8 @@ namespace rapmap {
 	    bool mergeLeftRightMap(fastx_parser::ReadPair& rpair,
 							 SAHitMap& leftMap,
 							 SAHitMap& rightMap,
-                             std::vector<QuasiAlignment>& jointHits
-							  );
+                             				 std::vector<QuasiAlignment>& jointHits);
+							 //uint32_t editDistance, RapMapIndexT& rmi, uint32_t maxInsertSize_);
 
         template <typename RapMapIndexT>
         bool mergeLeftRightSAInts(
@@ -78,7 +78,7 @@ namespace rapmap {
 								bool maxNumHits,
 								bool consistentHits,
                                 rapmap::utils::HitCounters& hctr,
-                                uint32_t editDistance);
+                                uint32_t editDistance, uint32_t maxInsertSize_);
 
     }
 }

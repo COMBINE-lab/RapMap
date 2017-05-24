@@ -136,6 +136,7 @@ struct MappingOpts {
     bool remap{false};
     uint32_t mmpThreshold{15};
     int32_t editThreshold{10};
+    uint32_t maxInsertSize{1000}; 
 };
 
 template <typename RapMapIndexT, typename MutexT>
@@ -515,7 +516,8 @@ void processReadsPairSA(paired_parser* parser,
                     mopts->maxNumHits,
                     mopts->consistentHits,
                     hctr,
-                    mopts->editThreshold);
+                    mopts->editThreshold, 
+		    mopts->maxInsertSize);
 
 	   hitSECollector(rpair.first,rpair.second, jointHits, mopts->editThreshold);
 
@@ -837,6 +839,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::SwitchArg remap("g", "remap", "In case of unmapped reads/mates try again with 9 mer hash and recover", false);
   TCLAP::ValueArg<uint32_t> mmpThreshold("M", "mmpLen", "In case of unmapped reads/mates try again with 9 mer hash and recover", false, 15, "positive integer");
   TCLAP::ValueArg<int32_t> editThreshold("E", "editThreshold", "Edit score to allow", false, 10, "positive integer");
+  TCLAP::ValueArg<uint32_t> maxInsertSize("I", "maxInsertSize", "Insert size to allow", false, 1000, "positive integer");
 
   cmd.add(index);
   cmd.add(noout);
@@ -856,6 +859,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(remap);
   cmd.add(mmpThreshold);
   cmd.add(editThreshold);
+  cmd.add(maxInsertSize);
 
   auto rawConsoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
   auto consoleSink =
@@ -922,6 +926,7 @@ int rapMapSAMap(int argc, char* argv[]) {
     mopts.remap = remap.getValue();
     mopts.mmpThreshold = mmpThreshold.getValue();
     mopts.editThreshold = editThreshold.getValue();
+    mopts.maxInsertSize = maxInsertSize.getValue();
 
     if (quasiCov.isSet() and !sensitive.isSet()) {
         consoleLog->info("The --quasiCoverage option is set to {}, but the --sensitive flag was not set. The former implies the later. Enabling sensitive mode.", quasiCov.getValue());

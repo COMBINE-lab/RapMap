@@ -35,7 +35,7 @@ template <typename RapMapIndexT>
 bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
                        SAHitMap& rightMap,
                        std::vector<QuasiAlignment>& jointHits,
-                       uint32_t editDistance, RapMapIndexT& rmi) {
+                       uint32_t editDistance, RapMapIndexT& rmi, uint32_t maxInsertSize_) {
   // using OffsetT = typename RapMapIndexT::IndexType;
   typedef struct covInfo {
   public:
@@ -63,7 +63,7 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
   };
 
   constexpr const int32_t signedZero{0};
-  uint32_t maxInsertSize_{1000};
+  //uint32_t maxInsertSize_{1000};
   bool foundHit{false};
 
   SECollector<RapMapIndexT> hitSECollector(&rmi);
@@ -307,7 +307,7 @@ bool mergeLeftRightSAInts(
     std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& rightRcSAInts,
     std::vector<QuasiAlignment>& jointHits, RapMapIndexT& rmi, bool maxNumHits,
     bool consistentHits, rapmap::utils::HitCounters& hctr,
-    uint32_t editDistance) {
+    uint32_t editDistance, uint32_t maxInsertSize_) {
 
   using OffsetT = typename RapMapIndexT::IndexType;
   AlignerEngine ae_;
@@ -316,7 +316,7 @@ bool mergeLeftRightSAInts(
   auto& txpStarts = rmi.txpOffsets;
   auto& txpIDs = rmi.positionIDs;
 
-  OffsetT maxInsertSize_{1000};
+  //uint32_t maxInsertSize_{1000};
 
   bool foundHit{false};
 
@@ -403,14 +403,14 @@ bool mergeLeftRightSAInts(
   if (leftFwdMap.size() > 0 and rightRcMap.size() > 0) {
     // only consider transcripts that are common between both
     fwdRc = mergeLeftRightMap(rpair, leftFwdMap, rightRcMap, jointHits,//fwdRcHits,
-                              editDistance, rmi);
+                              editDistance, rmi,maxInsertSize_);
     foundHit = true;
   }
   size_t fwdRcOffset = jointHits.size();
 
   if (leftRcMap.size() > 0 and rightFwdMap.size() > 0) {
     rcFwd = mergeLeftRightMap(rpair, leftRcMap, rightFwdMap, jointHits,//rcFwdHits,
-                              editDistance, rmi);
+                              editDistance, rmi, maxInsertSize_);
     foundHit = true;
   }
 
@@ -473,7 +473,8 @@ template bool mergeLeftRightSAInts<SAIndex32BitDense>(
     std::vector<SAIntervalHit<int32_t>>& rightRcSAInts,
     std::vector<QuasiAlignment>& jointHits, SAIndex32BitDense& rmi,
     bool maxNumHits, bool consistentHits, rapmap::utils::HitCounters& hctr,
-    uint32_t editDistance);
+    uint32_t editDistance, uint32_t maxInsertSize_);
+
 template bool mergeLeftRightSAInts<SAIndex64BitDense>(
     fastx_parser::ReadPair& rpair, bool lhp, bool rhp,
     std::vector<SAIntervalHit<int64_t>>& leftFwdSAInts,
@@ -482,7 +483,8 @@ template bool mergeLeftRightSAInts<SAIndex64BitDense>(
     std::vector<SAIntervalHit<int64_t>>& rightRcSAInts,
     std::vector<QuasiAlignment>& jointHits, SAIndex64BitDense& rmi,
     bool maxNumHits, bool consistentHits, rapmap::utils::HitCounters& hctr,
-    uint32_t editDistance);
+    uint32_t editDistance, uint32_t maxInsertSize_);
+
 template bool mergeLeftRightSAInts<SAIndex32BitPerfect>(
     fastx_parser::ReadPair& rpair, bool lhp, bool rhp,
     std::vector<SAIntervalHit<int32_t>>& leftFwdSAInts,
@@ -491,7 +493,8 @@ template bool mergeLeftRightSAInts<SAIndex32BitPerfect>(
     std::vector<SAIntervalHit<int32_t>>& rightRcSAInts,
     std::vector<QuasiAlignment>& jointHits, SAIndex32BitPerfect& rmi,
     bool maxNumHits, bool consistentHits, rapmap::utils::HitCounters& hctr,
-    uint32_t editDistance);
+    uint32_t editDistance, uint32_t maxInsertSize_);
+
 template bool mergeLeftRightSAInts<SAIndex64BitPerfect>(
     fastx_parser::ReadPair& rpair, bool lhp, bool rhp,
     std::vector<SAIntervalHit<int64_t>>& leftFwdSAInts,
@@ -500,26 +503,26 @@ template bool mergeLeftRightSAInts<SAIndex64BitPerfect>(
     std::vector<SAIntervalHit<int64_t>>& rightRcSAInts,
     std::vector<QuasiAlignment>& jointHits, SAIndex64BitPerfect& rmi,
     bool maxNumHits, bool consistentHits, rapmap::utils::HitCounters& hctr,
-    uint32_t editDistance);
+    uint32_t editDistance, uint32_t maxInsertSize_);
 
 template bool mergeLeftRightMap<SAIndex32BitDense>(
     fastx_parser::ReadPair& rpair, SAHitMap& leftMap, SAHitMap& rightMap,
     std::vector<QuasiAlignment>& jointHits, uint32_t editDistance,
-    SAIndex32BitDense& rmi);
+    SAIndex32BitDense& rmi, uint32_t maxInsertSize_);
 
 template bool mergeLeftRightMap<SAIndex64BitDense>(
     fastx_parser::ReadPair& rpair, SAHitMap& leftMap, SAHitMap& rightMap,
     std::vector<QuasiAlignment>& jointHits, uint32_t editDistance,
-    SAIndex64BitDense& rmi);
+    SAIndex64BitDense& rmi, uint32_t maxInsertSize_);
 
 template bool mergeLeftRightMap<SAIndex32BitPerfect>(
     fastx_parser::ReadPair& rpair, SAHitMap& leftMap, SAHitMap& rightMap,
     std::vector<QuasiAlignment>& jointHits, uint32_t editDistance,
-    SAIndex32BitPerfect& rmi);
+    SAIndex32BitPerfect& rmi, uint32_t maxInsertSize_);
 
 template bool mergeLeftRightMap<SAIndex64BitPerfect>(
     fastx_parser::ReadPair& rpair, SAHitMap& leftMap, SAHitMap& rightMap,
     std::vector<QuasiAlignment>& jointHits, uint32_t editDistance,
-    SAIndex64BitPerfect& rmi);
+    SAIndex64BitPerfect& rmi, uint32_t maxInsertSize_);
 }
 }
