@@ -147,11 +147,14 @@ void processReadsSingleSA(single_parser * parser,
                           HitCounters& hctr,
                           MappingOpts* mopts) {
     using OffsetT = typename RapMapIndexT::IndexType;
+    using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT> ;
 
     //Normal Call to SACollector
     SACollector<RapMapIndexT, rapmap::utils::my_mer> hitCollector(&rmi);
     //Remap caqll to SACollector
-    SACollector<RapMapIndexT, rapmap::utils::my_mer9> hitCollector9(&rmi);
+    //SACollector<RapMapIndexT, rapmap::utils::my_mer9> hitCollector9(&rmi);
+
+    SACollectorPair<RapMapIndexT, rapmap::utils::my_mer> hitCollectorPair(&rmi);
 
     SECollector<RapMapIndexT> hitSECollector(&rmi);
 
@@ -190,6 +193,10 @@ void processReadsSingleSA(single_parser * parser,
     // communicate with the parser (*once per-thread*)
     auto rg = parser->getReadGroup();
 
+
+    std::vector<SAIntervalHit> leftFwdSAInts;
+    std::vector<SAIntervalHit> leftRcSAInts;
+
     while (parser->refill(rg)) {
       //while(true) {
       //  typename single_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
@@ -199,16 +206,47 @@ void processReadsSingleSA(single_parser * parser,
 	    readLen = read.seq.length();//j->data[i].seq.length();
             ++hctr.numReads;
             hits.clear();
-            hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, dummy, false, mopts->mmpThreshold, mopts->consistentHits);
-            if(hits.size() == 0 && mopts->remap){
+            //hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, dummy, false, mopts->mmpThreshold, mopts->consistentHits);
+
+            leftFwdSAInts.clear();
+            leftRcSAInts.clear();
+
+            bool lh = hitCollectorPair(read.seq,
+                    leftFwdSAInts, leftRcSAInts, saSearcher,
+                    MateStatus::SINGLE_END,
+                    dummy,
+                    false,
+                    mopts->mmpThreshold,
+                    mopts->consistentHits);
+
+
+ 	    bool res = rapmap::hit_manager_sa::mergeSAInts(
+                    read,
+                    lh,
+                    leftFwdSAInts, leftRcSAInts,
+                    hits,
+                    rmi,
+                    false,
+                    mopts->consistentHits,
+                    hctr
+                    );
+
+
+            /*if(hits.size() == 0 && mopts->remap){
                 hitCollector9(read.seq, hits, saSearcher, MateStatus::SINGLE_END, dummy, true, mopts->mmpThreshold, mopts->consistentHits);
-            }
+            }*/
             // @hirak
             // Here I collected all the QuasiALignments in
             // QuasiAlignment Object vector hits
             // which right now contains lcpLengths too
             // time to call the new function
-            hitSECollector(read,read, hits, mopts->editThreshold);
+            hitSECollector(read, hits, mopts->editThreshold);
+                hits.erase(std::remove_if(hits.begin(), hits.end(),
+                      [](QuasiAlignment& a) {
+                      return !a.toAlign;
+                      }), hits.end());
+
+
 
             auto numHits = hits.size();
             hctr.totHits += numHits;
@@ -286,7 +324,7 @@ void processReadsPairSA(paired_parser* parser,
     //Normal Call to SACollector
     SACollector<RapMapIndexT, rapmap::utils::my_mer> hitCollector(&rmi);
     //Remap caqll to SACollector
-    SACollector<RapMapIndexT, rapmap::utils::my_mer9> hitCollector9(&rmi);
+    //SACollector<RapMapIndexT, rapmap::utils::my_mer9> hitCollector9(&rmi);
     //Rammap call to SACollectorPair
     SACollectorPair<RapMapIndexT, rapmap::utils::my_mer> hitCollectorPair(&rmi);
 

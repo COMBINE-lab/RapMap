@@ -58,11 +58,24 @@ namespace rapmap {
         // hpp file there
 
         //template <typename readT>
-	    bool mergeLeftRightMap(fastx_parser::ReadPair& rpair,
+	bool mergeLeftRightMap(fastx_parser::ReadPair& rpair,
 							 SAHitMap& leftMap,
 							 SAHitMap& rightMap,
                              				 std::vector<QuasiAlignment>& jointHits);
 							 //uint32_t editDistance, RapMapIndexT& rmi, uint32_t maxInsertSize_);
+
+
+	/*template <typename RapMapIndexT>
+	bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
+                       SAHitMap& rightMap,
+                       std::vector<QuasiAlignment>& jointHits,
+                       uint32_t editDistance, RapMapIndexT& rmi, uint32_t maxInsertSize_);*/
+
+	bool mergeMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
+                       std::vector<QuasiAlignment>& jointHits);
+
+
+
 
         template <typename RapMapIndexT>
         bool mergeLeftRightSAInts(
@@ -79,6 +92,14 @@ namespace rapmap {
 								bool consistentHits,
                                 rapmap::utils::HitCounters& hctr,
                                 uint32_t editDistance, uint32_t maxInsertSize_);
+
+	template <typename RapMapIndexT>
+	bool mergeSAInts(
+	    fastx_parser::ReadSeq& rp, bool lhp,
+	    std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& leftFwdSAInts,
+	    std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& leftRcSAInts,
+	    std::vector<QuasiAlignment>& jointHits, RapMapIndexT& rmi, bool maxNumHits,
+	    bool consistentHits, rapmap::utils::HitCounters& hctr);
 
     }
 }
