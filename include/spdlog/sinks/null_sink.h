@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include <spdlog/sinks/base_sink.h>
-#include <spdlog/details/null_mutex.h>
+#include "spdlog/sinks/base_sink.h"
+#include "spdlog/details/null_mutex.h"
 
 #include <mutex>
 
@@ -22,12 +22,12 @@ protected:
     void _sink_it(const details::log_msg&) override
     {}
 
-    void flush() override
+    void _flush() override
     {}
 
 };
 typedef null_sink<details::null_mutex> null_sink_st;
-typedef null_sink<std::mutex> null_sink_mt;
+typedef null_sink<details::null_mutex> null_sink_mt;
 
 }
 }

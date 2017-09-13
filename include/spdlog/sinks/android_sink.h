@@ -7,49 +7,55 @@
 
 #if defined(__ANDROID__)
 
-#include <spdlog/sinks/base_sink.h>
-#include <spdlog/details/null_mutex.h>
-
-#include <android/log.h>
+#include "spdlog/sinks/sink.h"
 
 #include <mutex>
 #include <string>
+#include <android/log.h>
+#include <thread>
+#include <chrono>
+
+#if !defined(SPDLOG_ANDROID_RETRIES)
+#define SPDLOG_ANDROID_RETRIES 2
+#endif
 
 namespace spdlog
 {
 namespace sinks
 {
+
 /*
 * Android sink (logging using __android_log_write)
+* __android_log_write is thread-safe. No lock is needed.
 */
-template<class Mutex>
-class base_android_sink : public base_sink < Mutex >
+class android_sink : public sink
 {
 public:
-    explicit base_android_sink(std::string tag="spdlog"): _tag(tag)
+    explicit android_sink(const std::string& tag = "spdlog", bool use_raw_msg = false): _tag(tag), _use_raw_msg(use_raw_msg) {}
+
+    void log(const details::log_msg& msg) override
     {
+        const android_LogPriority priority = convert_to_android(msg.level);
+        const char *msg_output = (_use_raw_msg ? msg.raw.c_str() : msg.formatted.c_str());
+
+        // See system/core/liblog/logger_write.c for explanation of return value
+        int ret = __android_log_write(priority, _tag.c_str(), msg_output);
+        int retry_count = 0;
+        while ((ret == -11/*EAGAIN*/) && (retry_count < SPDLOG_ANDROID_RETRIES))
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            ret = __android_log_write(priority, _tag.c_str(), msg_output);
+            retry_count++;
+        }
+
+        if (ret < 0)
+        {
+            throw spdlog_ex("__android_log_write() failed", ret);
+        }
     }
 
     void flush() override
     {
-    }
-
-protected:
-    void _sink_it(const details::log_msg& msg) override
-    {
-        const android_LogPriority priority = convert_to_android(msg.level);
-        const int expected_size = msg.formatted.size();
-        const int size = __android_log_write(
-                             priority, _tag.c_str(), msg.formatted.c_str()
-                         );
-        if (size > expected_size)
-        {
-            // Will write a little bit more than original message
-        }
-        else
-        {
-            throw spdlog_ex("Send to Android logcat failed");
-        }
     }
 
 private:
@@ -63,28 +69,20 @@ private:
             return ANDROID_LOG_DEBUG;
         case spdlog::level::info:
             return ANDROID_LOG_INFO;
-        case spdlog::level::notice:
-            return ANDROID_LOG_INFO;
         case spdlog::level::warn:
             return ANDROID_LOG_WARN;
         case spdlog::level::err:
             return ANDROID_LOG_ERROR;
         case spdlog::level::critical:
             return ANDROID_LOG_FATAL;
-        case spdlog::level::alert:
-            return ANDROID_LOG_FATAL;
-        case spdlog::level::emerg:
-            return ANDROID_LOG_FATAL;
         default:
-            throw spdlog_ex("Incorrect level value");
+            return ANDROID_LOG_DEFAULT;
         }
     }
 
     std::string _tag;
+    bool _use_raw_msg;
 };
-
-typedef base_android_sink<std::mutex> android_sink_mt;
-typedef base_android_sink<details::null_mutex> android_sink_st;
 
 }
 }

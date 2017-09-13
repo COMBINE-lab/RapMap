@@ -875,12 +875,11 @@ int rapMapSAIndex(int argc, char* argv[]) {
 
   std::string logPath = indexDir + "quasi_index.log";
   auto fileSink = std::make_shared<spdlog::sinks::simple_file_sink_st>(logPath);
-  auto rawConsoleSink = std::make_shared<spdlog::sinks::stderr_sink_st>();
-  auto consoleSink =
-    std::make_shared<spdlog::sinks::ansicolor_sink>(rawConsoleSink);
+  auto consoleSink = std::make_shared<spdlog::sinks::ansicolor_stderr_sink_mt>();
   auto consoleLog = spdlog::create("stderrLog", {consoleSink});
   auto fileLog = spdlog::create("fileLog", {fileSink});
-  auto jointLog = spdlog::create("jointLog", {fileSink, consoleSink});
+  std::vector<spdlog::sink_ptr> sinks{consoleSink, fileSink};
+  auto jointLog = spdlog::create("jointLog", std::begin(sinks), std::end(sinks));
 
   size_t numThreads{1};
 

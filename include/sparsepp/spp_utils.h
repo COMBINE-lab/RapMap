@@ -353,7 +353,7 @@ static inline uint32_t s_spp_popcount_default(uint64_t x) SPP_NOEXCEPT
 #else
     static inline uint32_t count_trailing_zeroes(size_t v) SPP_NOEXCEPT
     {
-        return s_spp_popcount_default((v & -v) - 1);
+        return s_spp_popcount_default((v & -(intptr_t)v) - 1);
     }
 
     static inline uint32_t s_popcount(size_t v) SPP_NOEXCEPT
@@ -375,7 +375,20 @@ public:
     typedef size_t    size_type;
 
     libc_allocator() {}
-    libc_allocator(const libc_allocator &) {}
+    libc_allocator(const libc_allocator&) {}
+
+    template<class U>
+    libc_allocator(const libc_allocator<U> &) {}
+
+    libc_allocator& operator=(const libc_allocator &) { return *this; }
+
+    template<class U>
+    libc_allocator& operator=(const libc_allocator<U> &) { return *this; }
+
+#ifndef SPP_NO_CXX11_RVALUE_REFERENCES    
+    libc_allocator(libc_allocator &&) {}
+    libc_allocator& operator=(libc_allocator &&) { return *this; }
+#endif
 
     pointer allocate(size_t n, const_pointer  /* unused */= 0) 
     {
@@ -420,7 +433,7 @@ public:
 
 // forward declaration
 // -------------------
-template<class T, size_t page_size = SPP_ALLOC_PAGE_SIZE>
+template<class T>
 class spp_allocator;
 
 }

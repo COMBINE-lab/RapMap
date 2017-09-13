@@ -574,11 +574,9 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(consistent);
   cmd.add(quiet);
   
-  auto rawConsoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
-  auto consoleSink =
-      std::make_shared<spdlog::sinks::ansicolor_sink>(rawConsoleSink);
+  auto consoleSink = std::make_shared<spdlog::sinks::ansicolor_stderr_sink_mt>();
   auto consoleLog = spdlog::create("stderrLog", {consoleSink});
-  
+
   try {
 
     cmd.parse(argc, argv);

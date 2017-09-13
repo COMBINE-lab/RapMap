@@ -4,16 +4,19 @@
 //
 #pragma once
 
-#include <spdlog/common.h>
+#include "spdlog/common.h"
 
 #include <cstdio>
 #include <ctime>
 #include <functional>
 #include <string>
-#include <stdio.h>
-#include <string.h>
+#include <chrono>
+#include <thread>
+#include <algorithm>
+#include <cstring>
+#include <cstdlib>
 #include <sys/stat.h>
-
+#include <sys/types.h>
 
 #ifdef _WIN32
 
@@ -25,26 +28,31 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <process.h> //  _get_pid support
+#include <io.h> // _get_osfhandle and _isatty support
 
 #ifdef __MINGW32__
 #include <share.h>
 #endif
 
-#include <sys/types.h>
+#else // unix
 
-#elif __linux__
-
-#include <sys/syscall.h> //Use gettid() syscall under linux to get thread id
 #include <unistd.h>
-#include <chrono>
+#include <fcntl.h>
+
+#ifdef __linux__
+#include <sys/syscall.h> //Use gettid() syscall under linux to get thread id
 
 #elif __FreeBSD__
 #include <sys/thr.h> //Use thr_self() syscall under FreeBSD to get thread id
-
-#else
-#include <thread>
-
 #endif
+
+#endif //unix
+
+#ifndef __has_feature       // Clang - feature checking macros.
+#define __has_feature(x) 0  // Compatibility with non-clang compilers.
+#endif
+
 
 namespace spdlog
 {
@@ -135,6 +143,18 @@ inline bool operator!=(const std::tm& tm1, const std::tm& tm2)
 SPDLOG_CONSTEXPR static const char* eol = SPDLOG_EOL;
 SPDLOG_CONSTEXPR static int eol_size = sizeof(SPDLOG_EOL) - 1;
 
+inline void prevent_child_fd(FILE *f)
+{
+#ifdef _WIN32
+    auto file_handle = (HANDLE)_get_osfhandle(_fileno(f));
+    if (!::SetHandleInformation(file_handle, HANDLE_FLAG_INHERIT, 0))
+        throw spdlog_ex("SetHandleInformation failed", errno);
+#else
+    auto fd = fileno(f);
+    if (fcntl(fd, F_SETFD, FD_CLOEXEC) == -1)
+        throw spdlog_ex("fcntl with FD_CLOEXEC failed", errno);
+#endif
+}
 
 
 //fopen_s on non windows for writing
@@ -146,12 +166,17 @@ inline int fopen_s(FILE** fp, const filename_t& filename, const filename_t& mode
 #else
     *fp = _fsopen((filename.c_str()), mode.c_str(), _SH_DENYWR);
 #endif
-    return *fp == nullptr;
-#else
+#else //unix
     *fp = fopen((filename.c_str()), mode.c_str());
-    return *fp == nullptr;
 #endif
+
+#ifdef SPDLOG_PREVENT_CHILD_FD
+    if (*fp != nullptr)
+        prevent_child_fd(*fp);
+#endif
+    return *fp == nullptr;
 }
+
 
 inline int remove(const filename_t &filename)
 {
@@ -184,7 +209,7 @@ inline bool file_exists(const filename_t& filename)
     return (attribs != INVALID_FILE_ATTRIBUTES && !(attribs & FILE_ATTRIBUTE_DIRECTORY));
 #else //common linux/unix all have the stat system call
     struct stat buffer;
-    return (stat (filename.c_str(), &buffer) == 0);
+    return (stat(filename.c_str(), &buffer) == 0);
 #endif
 }
 
@@ -204,9 +229,9 @@ inline size_t filesize(FILE *f)
         return st.st_size;
 
 #else //windows 32 bits
-    struct _stat st;
-    if (_fstat(fd, &st) == 0)
-        return st.st_size;
+    long ret = _filelength(fd);
+    if (ret >= 0)
+        return static_cast<size_t>(ret);
 #endif
 
 #else // unix
@@ -215,11 +240,11 @@ inline size_t filesize(FILE *f)
 #if !defined(__FreeBSD__) && !defined(__APPLE__) && (defined(__x86_64__) || defined(__ppc64__))
     struct stat64 st;
     if (fstat64(fd, &st) == 0)
-        return st.st_size;
+        return static_cast<size_t>(st.st_size);
 #else // unix 32 bits or osx
     struct stat st;
     if (fstat(fd, &st) == 0)
-        return st.st_size;
+        return static_cast<size_t>(st.st_size);
 #endif
 #endif
     throw spdlog_ex("Failed getting file size from fd", errno);
@@ -292,7 +317,7 @@ inline int utc_minutes_offset(const std::tm& tm = details::os::localtime())
 
 //Return current thread id as size_t
 //It exists because the std::this_thread::get_id() is much slower(espcially under VS 2013)
-inline size_t thread_id()
+inline size_t _thread_id()
 {
 #ifdef _WIN32
     return  static_cast<size_t>(::GetCurrentThreadId());
@@ -305,12 +330,27 @@ inline size_t thread_id()
     long tid;
     thr_self(&tid);
     return static_cast<size_t>(tid);
-#else //Default to standard C++11 (OSX and other Unix)
+#elif __APPLE__
+    uint64_t tid;
+    pthread_threadid_np(nullptr, &tid);
+    return static_cast<size_t>(tid);
+#else //Default to standard C++11 (other Unix)
     return static_cast<size_t>(std::hash<std::thread::id>()(std::this_thread::get_id()));
 #endif
-
-
 }
+
+//Return current thread id as size_t (from thread local storage)
+inline size_t thread_id()
+{
+#if defined(_MSC_VER) && (_MSC_VER < 1900) || defined(__clang__) && !__has_feature(cxx_thread_local)
+    return _thread_id();
+#else
+    static thread_local const size_t tid = _thread_id();
+    return tid;
+#endif
+}
+
+
 
 
 // wchar support for windows file names (SPDLOG_WCHAR_FILENAMES must be defined)
@@ -329,6 +369,22 @@ inline std::string filename_to_str(const filename_t& filename)
 }
 #endif
 
+inline std::string errno_to_string(char[256], char* res)
+{
+    return std::string(res);
+}
+
+inline std::string errno_to_string(char buf[256], int res)
+{
+    if (res == 0)
+    {
+        return std::string(buf);
+    }
+    else
+    {
+        return "Unknown error";
+    }
+}
 
 // Return errno string (thread safe)
 inline std::string errno_str(int err_num)
@@ -337,24 +393,77 @@ inline std::string errno_str(int err_num)
     SPDLOG_CONSTEXPR auto buf_size = sizeof(buf);
 
 #ifdef _WIN32
-    if(strerror_s(buf, buf_size, err_num) == 0)
+    if (strerror_s(buf, buf_size, err_num) == 0)
         return std::string(buf);
     else
-        return "Unkown error";
+        return "Unknown error";
 
-#elif defined(__FreeBSD__) || defined(__APPLE__) || ((_POSIX_C_SOURCE >= 200112L) && ! _GNU_SOURCE) // posix version
+#elif defined(__FreeBSD__) || defined(__APPLE__) || defined(ANDROID) || defined(__SUNPRO_CC) || \
+      ((_POSIX_C_SOURCE >= 200112L) && ! defined(_GNU_SOURCE)) // posix version
+
     if (strerror_r(err_num, buf, buf_size) == 0)
         return std::string(buf);
     else
-        return "Unkown error";
+        return "Unknown error";
 
 #else  // gnu version (might not use the given buf, so its retval pointer must be used)
-    return std::string(strerror_r(err_num, buf, buf_size));
+    auto err = strerror_r(err_num, buf, buf_size); // let compiler choose type
+    return errno_to_string(buf, err); // use overloading to select correct stringify function
 #endif
 }
 
+inline int pid()
+{
+
+#ifdef _WIN32
+    return ::_getpid();
+#else
+    return static_cast<int>(::getpid());
+#endif
+
+}
+
+
+// Detrmine if the terminal supports colors
+// Source: https://github.com/agauniyal/rang/
+inline bool is_color_terminal()
+{
+#ifdef _WIN32
+    return true;
+#else
+    static constexpr const char* Terms[] =
+    {
+        "ansi", "color", "console", "cygwin", "gnome", "konsole", "kterm",
+        "linux", "msys", "putty", "rxvt", "screen", "vt100", "xterm"
+    };
+
+    const char *env_p = std::getenv("TERM");
+    if (env_p == nullptr)
+    {
+        return false;
+    }
+
+    static const bool result = std::any_of(
+                                   std::begin(Terms), std::end(Terms), [&](const char* term)
+    {
+        return std::strstr(env_p, term) != nullptr;
+    });
+    return result;
+#endif
+}
+
+
+// Detrmine if the terminal attached
+// Source: https://github.com/agauniyal/rang/
+inline bool in_terminal(FILE* file)
+{
+
+#ifdef _WIN32
+    return _isatty(_fileno(file)) ? true : false;
+#else
+    return isatty(fileno(file)) ? true : false;
+#endif
+}
 } //os
 } //details
 } //spdlog
-
-

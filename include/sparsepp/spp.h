@@ -65,7 +65,7 @@
 #include <sparsepp/spp_utils.h>
 
 #ifdef SPP_INCLUDE_SPP_ALLOC
-    #include <sparsepp/spp_alloc.h>
+    #include <sparsepp/spp_dlalloc.h>
 #endif
 
 #if !defined(SPP_NO_CXX11_HDR_INITIALIZER_LIST)
@@ -1290,17 +1290,18 @@ public:
 
 private:
     //typedef spp_::integral_constant<bool, spp_::is_relocatable<value_type>::value> check_relocatable;
-    //typedef spp_::true_type  relocatable_type;
-    //typedef spp_::false_type not_relocatable_type;
+    typedef spp_::true_type  realloc_ok_type;
+    typedef spp_::false_type realloc_not_ok_type;
 
-    typedef spp_::zero_type  libc_reloc_type;
-    typedef spp_::one_type   spp_reloc_type;
-    typedef spp_::two_type   spp_not_reloc_type;
-    typedef spp_::three_type generic_alloc_type;
+    //typedef spp_::zero_type  libc_reloc_type;
+    //typedef spp_::one_type   spp_reloc_type;
+    //typedef spp_::two_type   spp_not_reloc_type;
+    //typedef spp_::three_type generic_alloc_type;
 
-#if 0
-    typedef typename if_<(spp_::is_same<allocator_type, libc_allocator<value_type> >::value &&
-                          spp_::is_relocatable<value_type>::value), libc_reloc_type, generic_alloc_type>::type
+#if 1
+    typedef typename if_<((spp_::is_same<allocator_type, libc_allocator<value_type> >::value ||
+                           spp_::is_same<allocator_type,  spp_allocator<value_type> >::value) &&
+                          spp_::is_relocatable<value_type>::value), realloc_ok_type, realloc_not_ok_type>::type
              check_alloc_type;
 #else
     typedef typename if_<spp_::is_same<allocator_type, spp_allocator<value_type> >::value,
@@ -1360,68 +1361,7 @@ private:
     // return true if the slot was constructed (i.e. contains a valid value_type
     // ---------------------------------------------------------------------------------
     template <class Val>
-    void _set_aux(allocator_type &alloc, size_type offset, Val &val, spp_reloc_type)
-    {
-        //static int x=0;  if (++x < 10) printf("x\n"); // check we are getting here
-
-        uint32_t  num_items = _num_items();
-        uint32_t  num_alloc = _sizing(num_items);
-
-        if (num_items == num_alloc)
-        {
-            num_alloc = _sizing(num_items + 1);
-            _group = alloc.reallocate(_group, num_items, num_alloc);
-            _set_num_alloc(num_alloc);
-        }
-
-        for (uint32_t i = num_items; i > offset; --i)
-            memcpy(_group + i, _group + i-1, sizeof(*_group));
-
-        _init_val((mutable_pointer)(_group + offset), val);
-    }
-
-    // Create space at _group[offset], assuming value_type is *not* relocatable, and the 
-    // allocator_type is the spp allocator.
-    // return true if the slot was constructed (i.e. contains a valid value_type
-    // ---------------------------------------------------------------------------------
-    template <class Val>
-    void _set_aux(allocator_type &alloc, size_type offset, Val &val, spp_not_reloc_type)
-    {
-        uint32_t  num_items = _num_items();
-        uint32_t  num_alloc = _sizing(num_items);
-
-        //assert(num_alloc == (uint32_t)_num_allocated);
-        if (num_items < num_alloc)
-        {
-            // create new object at end and rotate it to position
-            _init_val((mutable_pointer)&_group[num_items], val);
-            std::rotate((mutable_pointer)(_group + offset),
-                        (mutable_pointer)(_group + num_items),
-                        (mutable_pointer)(_group + num_items + 1));
-            return;
-        }
-
-        // This is valid because 0 <= offset <= num_items
-        pointer p = _allocate_group(alloc, _sizing(num_items + 1));
-        if (offset)
-            std::uninitialized_copy(MK_MOVE_IT((mutable_pointer)_group),
-                                    MK_MOVE_IT((mutable_pointer)(_group + offset)),
-                                    (mutable_pointer)p);
-        if (num_items > offset)
-            std::uninitialized_copy(MK_MOVE_IT((mutable_pointer)(_group + offset)),
-                                    MK_MOVE_IT((mutable_pointer)(_group + num_items)),
-                                    (mutable_pointer)(p + offset + 1));
-        _init_val((mutable_pointer)(p + offset), val);
-        _free_group(alloc, num_alloc);
-        _group = p;
-    }
-
-    // Extend the array, assuming value_type is relocatable, and the 
-    // allocator_type is the libc allocator (supporting reallocate).
-    // return true if the slot was constructed (i.e. contains a valid value_type
-    // ---------------------------------------------------------------------------------
-    template <class Val>
-    void _set_aux(allocator_type &alloc, size_type offset, Val &val, libc_reloc_type)
+    void _set_aux(allocator_type &alloc, size_type offset, Val &val, realloc_ok_type)
     {
         //static int x=0;  if (++x < 10) printf("x\n"); // check we are getting here
 
@@ -1441,12 +1381,12 @@ private:
         _init_val((mutable_pointer)(_group + offset), val);
     }
 
-    // Create space at _group[offset], without special assumptions about value_type
-    // and allocator_type, with a default value
+    // Create space at _group[offset], assuming value_type is *not* relocatable, and the 
+    // allocator_type is the spp allocator.
     // return true if the slot was constructed (i.e. contains a valid value_type
     // ---------------------------------------------------------------------------------
     template <class Val>
-    void _set_aux(allocator_type &alloc, size_type offset, Val &val, generic_alloc_type)
+    void _set_aux(allocator_type &alloc, size_type offset, Val &val, realloc_not_ok_type)
     {
         uint32_t  num_items = _num_items();
         uint32_t  num_alloc = _sizing(num_items);
@@ -1521,80 +1461,9 @@ public:
 
 private:
     // Shrink the array, assuming value_type is relocatable, and the 
-    // allocator_type is the spp allocator.
-    // -------------------------------------------------------------
-    void _group_erase_aux(allocator_type &alloc, size_type offset, spp_reloc_type)
-    {
-        // static int x=0;  if (++x < 10) printf("Y\n"); // check we are getting here
-        uint32_t  num_items = _num_items();
-        uint32_t  num_alloc = _sizing(num_items);
-
-        if (num_items == 1)
-        {
-            assert(offset == 0);
-            _free_group(alloc, num_alloc);
-            _set_num_alloc(0);
-            return;
-        }
-
-        _group[offset].~value_type();
-
-        for (size_type i = offset; i < num_items - 1; ++i)
-            memcpy(_group + i, _group + i + 1, sizeof(*_group));
-
-        if (_sizing(num_items - 1) != num_alloc)
-        {
-            uint32_t new_size = _sizing(num_items - 1);
-            assert(new_size);            // because we have at least 1 item left
-            _group = alloc.reallocate(_group, num_alloc, new_size);
-            _set_num_alloc(num_alloc);
-        }
-    }
-
-    // Shrink the array, assuming value_type is *not* relocatable, and the 
-    // allocator_type is the spp allocator.
-    // --------------------------------------------------------------------------
-    void _group_erase_aux(allocator_type &alloc, size_type offset, spp_not_reloc_type)
-    {
-        uint32_t  num_items = _num_items();
-        uint32_t  num_alloc = _sizing(num_items);
-
-        if (_sizing(num_items - 1) != num_alloc)
-        {
-            pointer p = 0;
-            if (num_items > 1)
-            {
-                p = _allocate_group(alloc, num_items - 1);
-                if (offset)
-                    std::uninitialized_copy(MK_MOVE_IT((mutable_pointer)(_group)),
-                                            MK_MOVE_IT((mutable_pointer)(_group + offset)),
-                                            (mutable_pointer)(p));
-                if (static_cast<uint32_t>(offset + 1) < num_items)
-                    std::uninitialized_copy(MK_MOVE_IT((mutable_pointer)(_group + offset + 1)),
-                                            MK_MOVE_IT((mutable_pointer)(_group + num_items)),
-                                            (mutable_pointer)(p + offset));
-            }
-            else
-            {
-                assert(offset == 0);
-                _set_num_alloc(0);
-            }
-            _free_group(alloc, num_alloc);
-            _group = p;
-        }
-        else
-        {
-            std::rotate((mutable_pointer)(_group + offset),
-                        (mutable_pointer)(_group + offset + 1),
-                        (mutable_pointer)(_group + num_items));
-            ((mutable_pointer)(_group + num_items - 1))->~mutable_value_type();
-        }
-    }
-
-    // Shrink the array, assuming value_type is relocatable, and the 
     // allocator_type is the libc allocator (supporting reallocate).
     // -------------------------------------------------------------
-    void _group_erase_aux(allocator_type &alloc, size_type offset, libc_reloc_type)
+    void _group_erase_aux(allocator_type &alloc, size_type offset, realloc_ok_type)
     {
         // static int x=0;  if (++x < 10) printf("Y\n"); // check we are getting here
         uint32_t  num_items = _num_items();
@@ -1625,7 +1494,7 @@ private:
     // Shrink the array, without any special assumptions about value_type and
     // allocator_type.
     // --------------------------------------------------------------------------
-    void _group_erase_aux(allocator_type &alloc, size_type offset, generic_alloc_type)
+    void _group_erase_aux(allocator_type &alloc, size_type offset, realloc_not_ok_type)
     {
         uint32_t  num_items = _num_items();
         uint32_t  num_alloc   = _sizing(num_items);
@@ -2111,7 +1980,9 @@ public:
         _last_group(0),
         _table_size(sz),
         _num_buckets(0),
-        _alloc(alloc)  // todo - copy or move allocator according to
+        _group_alloc(alloc),
+        _alloc(alloc)
+                       // todo - copy or move allocator according to
                        // http://en.cppreference.com/w/cpp/container/unordered_map/unordered_map
     {
         _allocate_groups(num_groups(sz));
@@ -2748,19 +2619,6 @@ private:
     // -----------------------------------------------------------------------
     enum MoveDontCopyT {MoveDontCopy, MoveDontGrow};
 
-    void _squash_deleted()
-    {
-        // gets rid of any deleted entries we have
-        // ---------------------------------------
-        if (num_deleted)
-        {
-            // get rid of deleted before writing
-            sparse_hashtable tmp(MoveDontGrow, *this);
-            swap(tmp);                    // now we are tmp
-        }
-        assert(num_deleted == 0);
-    }
-
     // creating iterators from sparsetable::ne_iterators
     // -------------------------------------------------
     iterator             _mk_iterator(ne_it it) const               { return it; }
@@ -3128,7 +2986,7 @@ public:
         if (!empty() || num_deleted != 0)
         {
             table.clear();
-            table = Table(HT_DEFAULT_STARTING_BUCKETS);
+            table = Table(HT_DEFAULT_STARTING_BUCKETS, table.get_allocator());
         }
         settings.reset_thresholds(bucket_count());
         num_deleted = 0;
@@ -3927,6 +3785,7 @@ public:
     // ------
     iterator find(const key_type& key)                 { return rep.find(key); }
     const_iterator find(const key_type& key) const     { return rep.find(key); }
+    bool contains(const key_type& key) const           { return rep.find(key) != rep.end(); }
 
     mapped_type& operator[](const key_type& key)
     {
@@ -4305,6 +4164,7 @@ public:
     // Lookup
     // ------
     iterator find(const key_type& key) const     { return rep.find(key); }
+    bool contains(const key_type& key) const     { return rep.find(key) != rep.end(); }
 
     size_type count(const key_type& key) const   { return rep.count(key); }
 
