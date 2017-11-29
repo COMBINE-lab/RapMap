@@ -460,55 +460,58 @@ bool mapReads(RapMapIndexT& rmi,
     //for the parser
     size_t chunkSize{10000};
 	SpinLockT iomutex;
-	{
-	    ScopedTimer timer(!mopts->quiet);
-	    HitCounters hctrs;
-	    consoleLog->info("mapping reads . . . \n\n\n");
-        if (pairedEnd) {
-            std::vector<std::string> read1Vec = rapmap::utils::tokenize(mopts->read1, ',');
-            std::vector<std::string> read2Vec = rapmap::utils::tokenize(mopts->read2, ',');
+  {
+    ScopedTimer timer(!mopts->quiet);
+    HitCounters hctrs;
+    consoleLog->info("mapping reads . . . \n\n\n");
+    if (pairedEnd) {
+      std::vector<std::string> read1Vec = rapmap::utils::tokenize(mopts->read1, ',');
+      std::vector<std::string> read2Vec = rapmap::utils::tokenize(mopts->read2, ',');
 
-            if (read1Vec.size() != read2Vec.size()) {
-                consoleLog->error("The number of provided files for "
-                                  "-1 and -2 must be the same!");
-                std::exit(1);
-            }
+      if (read1Vec.size() != read2Vec.size()) {
+        consoleLog->error("The number of provided files for "
+                          "-1 and -2 must be the same!");
+        std::exit(1);
+      }
 
-	    uint32_t nprod = (read1Vec.size() > 1) ? 2 : 1; 
-	    pairParserPtr.reset(new paired_parser(read1Vec, read2Vec, nthread, nprod, chunkSize));
-	    pairParserPtr->start();
-            spawnProcessReadsThreads(nthread, pairParserPtr.get(), rmi, iomutex,
-                                     outLog, hctrs, mopts);
-        } else {
-            std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(mopts->unmatedReads, ',');
+      uint32_t nprod = (read1Vec.size() > 1) ? 2 : 1; 
+      pairParserPtr.reset(new paired_parser(read1Vec, read2Vec, nthread, nprod, chunkSize));
+      pairParserPtr->start();
+      spawnProcessReadsThreads(nthread, pairParserPtr.get(), rmi, iomutex,
+                               outLog, hctrs, mopts);
+      pairParserPtr->stop();
+    } else {
+      std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(mopts->unmatedReads, ',');
 
 
-	    uint32_t nprod = (unmatedReadVec.size() > 1) ? 2 : 1; 
-	    singleParserPtr.reset(new single_parser(unmatedReadVec, nthread, nprod, chunkSize));
-	    singleParserPtr->start();
-            /** Create the threads depending on the collector type **/
-            spawnProcessReadsThreads(nthread, singleParserPtr.get(), rmi, iomutex,
-                                      outLog, hctrs, mopts);
-        }
-	if (!mopts->quiet) { std::cerr << "\n\n"; }
+      uint32_t nprod = (unmatedReadVec.size() > 1) ? 2 : 1; 
+      singleParserPtr.reset(new single_parser(unmatedReadVec, nthread, nprod, chunkSize));
+      singleParserPtr->start();
+      /** Create the threads depending on the collector type **/
+      spawnProcessReadsThreads(nthread, singleParserPtr.get(), rmi, iomutex,
+                               outLog, hctrs, mopts);
+      singleParserPtr->stop();
+
+    }
+    if (!mopts->quiet) { std::cerr << "\n\n"; }
 
 
     consoleLog->info("Done mapping reads.");
     consoleLog->info("In total saw {} reads.", hctrs.numReads);
     consoleLog->info("Final # hits per read = {}", hctrs.totHits / static_cast<float>(hctrs.numReads));
-	consoleLog->info("flushing output queue.");
-	outLog->flush();
-	/*
-	    consoleLog->info("Discarded {} reads because they had > {} alignments",
-		    hctrs.tooManyHits, maxNumHits.getValue());
-		    */
+    consoleLog->info("flushing output queue.");
+    outLog->flush();
+    /*
+      consoleLog->info("Discarded {} reads because they had > {} alignments",
+      hctrs.tooManyHits, maxNumHits.getValue());
+    */
 
-	}
+  }
 
-	if (haveOutputFile) {
-	    outFile.close();
-	}
-	return true;
+  if (haveOutputFile) {
+      outFile.close();
+  }
+  return true;
 }
 
 void displayOpts(MappingOpts& mopts, spdlog::logger* log) {

@@ -190,7 +190,7 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
   }
   if (start < tlen) {
     if (currentKmer.length() == k and
-        currentKmer.find_first_of('$') != std::string::npos) {
+        currentKmer.find_first_of('$') == std::string::npos) {
       mer = rapmap::utils::my_mer(currentKmer);
       auto bits = mer.get_bits(0, 2 * k);
       // intervals.push_back(std::make_pair<uint64_t,
@@ -410,7 +410,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
   }
   if (start < tlen) {
     if (currentKmer.length() == k and
-        currentKmer.find_first_of('$') != std::string::npos) {
+        currentKmer.find_first_of('$') == std::string::npos) {
       mer = currentKmer.c_str();
       khash[mer.word(0)] = {start, stop};
       /*
@@ -644,6 +644,9 @@ void indexTranscriptsSA(ParserT* parser,
       log->warn("There were {} transcripts that would need to be removed to avoid duplicates.", numDups);
     }
   }
+
+  // Stop the parser here
+  parser->stop();
 
   std::ofstream dupClusterStream(outputDir + "duplicate_clusters.tsv");
   {
