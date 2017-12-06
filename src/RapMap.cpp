@@ -41,8 +41,6 @@ void printUsage() {
     auto usage =
         R"(
 There are currently 4 RapMap subcommands
-    pseudoindex   --- builds a k-mer-based index
-    pseudomap     --- map reads using a k-mer-based index
     quasiindex --- builds a suffix array-based (SA) index
     quasimap   --- map reads using the SA-based index
 
@@ -79,11 +77,13 @@ int main(int argc, char* argv[]) {
     }
 
     if (std::string(argv[1]) == "pseudoindex") {
-        return rapMapIndex(argc - 1, args.data());
+        std::cerr << "This mode not enabled in this branch\n";
+        return 1;//rapMapIndex(argc - 1, args.data());
     } else if (std::string(argv[1]) == "quasiindex") {
         return rapMapSAIndex(argc - 1, args.data());
     } else if (std::string(argv[1]) == "pseudomap") {
-        return rapMapMap(argc - 1, args.data());
+        std::cerr << "This mode not enabled in this branch\n";
+        return 1;//rapMapMap(argc - 1, args.data());
     } else if (std::string(argv[1]) == "quasimap") {
         return rapMapSAMap(argc - 1, args.data());
     } else {

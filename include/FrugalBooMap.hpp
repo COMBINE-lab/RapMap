@@ -251,19 +251,19 @@ public:
 
     inline KeyT getKmerFromInterval_(ValueT& ival) {
         rapmap::utils::my_mer m;// copy the global mer to get k-mer object
-        m.from_chars(txtPtr_ + (*saPtr_)[ival.begin()]);
+        m.fromChars(txtPtr_ + (*saPtr_)[ival.begin()]);
         return m.word(0);
     }
 
     // variant where we provide an existing mer object
     inline KeyT getKmerFromInterval_(ValueT& ival, rapmap::utils::my_mer& m) {
-        m.from_chars(txtPtr_ + (*saPtr_)[ival.begin()]);
+        m.fromChars(txtPtr_ + (*saPtr_)[ival.begin()]);
         return m.word(0);
     }
 
     // variant where we provide an existing mer object
     inline KeyT getKmerFromPos_(IndexT pos, rapmap::utils::my_mer& m) {
-        m.from_chars(txtPtr_ + (*saPtr_)[pos]);
+        m.fromChars(txtPtr_ + (*saPtr_)[pos]);
         return m.word(0);
     }
 

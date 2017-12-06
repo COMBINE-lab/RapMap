@@ -42,6 +42,7 @@
 #include <cereal/types/utility.hpp>
 #include <cereal/types/vector.hpp>
 
+#include "RapMapUtils.hpp"
 #include "BooMap.hpp"
 #include "FrugalBooMap.hpp"
 #include "xxhash.h"
@@ -49,24 +50,14 @@
 #include "spdlog/spdlog.h"
 
 #include "FastxParser.hpp"
-// Jellyfish 2 include
-#include "jellyfish/mer_dna.hpp"
 
 #include "divsufsort.h"
 #include "divsufsort64.h"
 
 #include "RapMapFileSystem.hpp"
-#include "RapMapUtils.hpp"
 #include "ScopedTimer.hpp"
 #include "bit_array.h"
 
-#include "JFRaw.hpp"
-#include "jellyfish/binary_dumper.hpp"
-#include "jellyfish/file_header.hpp"
-#include "jellyfish/hash_counter.hpp"
-#include "jellyfish/mer_iterator.hpp"
-#include "jellyfish/mer_overlap_sequence_parser.hpp"
-#include "jellyfish/thread_exec.hpp"
 #include "rank9b.h"
 
 #include "IndexHeader.hpp"
@@ -81,7 +72,7 @@ using single_parser = fastx_parser::FastxParser<fastx_parser::ReadSeq>;
 using TranscriptID = uint32_t;
 using TranscriptIDVector = std::vector<TranscriptID>;
 using KmerIDMap = std::vector<TranscriptIDVector>;
-using MerMapT = jellyfish::cooperative::hash_counter<rapmap::utils::my_mer>;
+using namespace combinelib::kmers;
 
 bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
              std::vector<int64_t>& SA) {
@@ -157,7 +148,7 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
         if (currentKmer.length() == k and
             currentKmer.find_first_of('$') == std::string::npos) {
           mer = rapmap::utils::my_mer(currentKmer);
-          auto bits = mer.get_bits(0, 2 * k);
+          auto bits = mer.word(0);//get_bits(0, 2 * k);
           intervals.add(std::move(bits), {start, stop});
           // push_back(std::make_pair<uint64_t,
           // rapmap::utils::SAInterval<IndexT>>(std::move(bits), {start,
@@ -173,7 +164,7 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
       if (currentKmer.length() == k and
           currentKmer.find_first_of('$') == std::string::npos) {
         mer = rapmap::utils::my_mer(currentKmer);
-        auto bits = mer.get_bits(0, 2 * k);
+        auto bits = mer.word(0);//get_bits(0, 2 * k);
         // intervals.push_back(std::make_pair<uint64_t,
         // rapmap::utils::SAInterval<IndexT>>(std::move(bits), {start, stop}));
         intervals.add(std::move(bits), {start, stop});
@@ -192,7 +183,7 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
     if (currentKmer.length() == k and
         currentKmer.find_first_of('$') == std::string::npos) {
       mer = rapmap::utils::my_mer(currentKmer);
-      auto bits = mer.get_bits(0, 2 * k);
+      auto bits = mer.word(0);//get_bits(0, 2 * k);
       // intervals.push_back(std::make_pair<uint64_t,
       // rapmap::utils::SAInterval<IndexT>>(std::move(bits), {start, stop}));
       intervals.add(std::move(bits), {start, stop});
@@ -471,7 +462,6 @@ void indexTranscriptsSA(ParserT* parser,
   std::string polyA(polyAClipLength, 'A');
 
   using TranscriptList = std::vector<uint32_t>;
-  using eager_iterator = MerMapT::array::eager_iterator;
   using KmerBinT = uint64_t;
 
   bool clipPolyA = !noClipPolyA;
@@ -527,11 +517,11 @@ void indexTranscriptsSA(ParserT* parser,
         // First, replace non ATCG nucleotides
         for (size_t b = 0; b < readLen; ++b) {
           readStr[b] = ::toupper(readStr[b]);
-          int c = jellyfish::mer_dna::code(readStr[b]);
+          int c = codeForChar(readStr[b]);
           // Replace non-ACGT bases with pseudo-random bases
-          if (jellyfish::mer_dna::not_dna(c)) {
+          if (notValidNuc(c)) {
             char rbase = bases[dis(eng)];
-            c = jellyfish::mer_dna::code(rbase);
+            c = codeForChar(rbase);
             readStr[b] = rbase;
             ++numNucleotidesReplaced;
           }
