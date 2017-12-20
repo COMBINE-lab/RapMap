@@ -326,7 +326,12 @@ public:
 
   // NOTE: the template below should take care of this, but doesn't on gcc 4.8.2
   // try and figure this out.
-  bool fromChar(const char* iter) {
+  bool fromChars(const char* iter) {
+    return fromCharsIter_(iter);
+  }
+  // NOTE: the template below should take care of this, but doesn't on gcc 4.8.2
+  // try and figure this out.
+  bool fromChars(std::string::iterator iter) {
     return fromCharsIter_(iter);
   }
 
