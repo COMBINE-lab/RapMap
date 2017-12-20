@@ -301,6 +301,13 @@ public:
   Kmer& operator=(Kmer& other) = default;
   Kmer& operator=(Kmer&& other) = default;
 
+  // NOTE: the template below should take care of this, but doesn't on gcc 4.8.2
+  // try and figure this out.
+  Kmer& operator=(const char* iter) {
+    fromCharsIter_(iter);
+    return *this;
+  }
+
   template <
       typename IterT,
        typename = typename std::enable_if<!has_length<IterT>::value, void>::type>
@@ -315,6 +322,12 @@ public:
   Kmer& operator=(ViewT& v) {
     fromChars(v);
     return *this;
+  }
+
+  // NOTE: the template below should take care of this, but doesn't on gcc 4.8.2
+  // try and figure this out.
+  bool fromChar(const char* iter) {
+    return fromCharsIter_(iter);
   }
 
   /**
