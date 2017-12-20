@@ -328,23 +328,7 @@ public:
       typename IterT,
       typename = typename std::enable_if<!has_length<IterT>::value, void>::type>
   bool fromChars(IterT iter) {
-    // std::memset(&data_[0], 0, sizeof(data_));
-    data_[0] = 0;
-    auto toConsume = 1; // numWordsRequired(k_);
-    int64_t code{0};
-    bool success = true;
-    int32_t remK = static_cast<int32_t>(k_);
-    for (int32_t w = 0; w < toConsume; ++w) {
-      int32_t shift = std::min((2 * remK) - 2, 62);
-      auto& currWord = data_[w];
-      for (; remK > 0 and shift >= 0; ++iter, --remK, shift -= 2) {
-        // success &= encodeBinary(*iter, code);
-        if (!encodeBinary(*iter, code))
-          return false;
-        currWord |= (code << shift);
-      }
-    }
-    return success;
+    return fromCharsIter_(iter);
   }
 
   /**
@@ -505,6 +489,26 @@ public:
   friend bool operator>(const Kmer<KP, CIDP>& lhs, const Kmer<KP, CIDP>& rhs);
 
 private:
+  template <typename IterT>
+  bool fromCharsIter_(IterT iter) {
+    data_[0] = 0;
+    auto toConsume = 1; // numWordsRequired(k_);
+    int64_t code{0};
+    bool success = true;
+    int32_t remK = static_cast<int32_t>(k_);
+    for (int32_t w = 0; w < toConsume; ++w) {
+      int32_t shift = std::min((2 * remK) - 2, 62);
+      auto& currWord = data_[w];
+      for (; remK > 0 and shift >= 0; ++iter, --remK, shift -= 2) {
+        // success &= encodeBinary(*iter, code);
+        if (!encodeBinary(*iter, code))
+          return false;
+        currWord |= (code << shift);
+      }
+    }
+    return success;
+  }
+
   base_type data_[numWordsRequired(K)] = {};
   static uint16_t k_;
 };
