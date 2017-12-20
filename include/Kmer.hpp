@@ -292,7 +292,7 @@ public:
       typename IterT,
       typename = typename std::enable_if<!has_length<IterT>::value, void>::type>
   Kmer(IterT v) {
-    fromChars(v);
+    fromCharsIter_(v);
   }
 
   Kmer(const Kmer& other) = default;
@@ -305,7 +305,7 @@ public:
       typename IterT,
        typename = typename std::enable_if<!has_length<IterT>::value, void>::type>
   Kmer& operator=(IterT iter) {
-    fromChars(iter);
+    fromCharsIter_(iter);
     return *this;
   }
 
