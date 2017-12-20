@@ -288,6 +288,20 @@ public:
     fromChars(v);
   }
 
+
+  // NOTE: the template below should take care of this, but doesn't on gcc 4.8.2
+  // try and figure this out.
+  Kmer(const char* iter) {
+    fromCharsIter_(iter);
+  }
+
+  // NOTE: the template below should take care of this, but doesn't on gcc 4.8.2
+  // try and figure this out.
+  Kmer(std::string::iterator iter) {
+    fromCharsIter_(iter);
+  }
+
+
   template <
       typename IterT,
       typename = typename std::enable_if<!has_length<IterT>::value, void>::type>
