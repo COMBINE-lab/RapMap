@@ -263,7 +263,7 @@ public:
 
     // variant where we provide an existing mer object
     inline KeyT getKmerFromPos_(IndexT pos, rapmap::utils::my_mer& m) {
-        m.fromChars(txtPtr_ + (*saPtr_)[pos]);
+        m.fromChars(static_cast<decltype(txtPtr_)>(txtPtr_ + (*saPtr_)[pos]));
         return m.word(0);
     }
 
