@@ -807,12 +807,14 @@ private:
 		lb = oldlb;
 		ub = oldub;
 		auto newExtend =  std::min((uint32_t)matchedLen,(uint32_t) safeLength); 
-                if (newExtend > k+1) {
-                  matchedLen = newExtend;
-                } else {
-                  matchedLen = k+hybridSkip;
+                //if (newExtend > k+1) {
+                //  matchedLen = newExtend;
+                //} else {
+                //  matchedLen = k+hybridSkip;
+                //}
+                if(newExtend < readLen){
+                  matchedLen = std::min((uint32_t)readLen, (uint32_t)newExtend+k);
                 }
-                
                 /**auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt, safeLength);
                 if(newExtend > k){
                     matchedLen = newExtend ;
@@ -824,10 +826,13 @@ private:
             if(safeLength==k)
                 safeLength=k+1;
             auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt,safeLength );
-            if(newExtend > k){
-                matchedLen = newExtend;
-            }else{
-                matchedLen = k+hybridSkip;
+            //if(newExtend > k){
+            //    matchedLen = newExtend;
+            //}else{
+            //    matchedLen = k+hybridSkip;
+            //}
+            if(newExtend < readLen){
+                matchedLen = std::min((uint32_t)readLen, (uint32_t)newExtend+k);
             }
         }
 
