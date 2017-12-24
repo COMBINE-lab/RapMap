@@ -807,14 +807,22 @@ private:
 		lb = oldlb;
 		ub = oldub;
 		auto newExtend =  std::min((uint32_t)matchedLen,(uint32_t) safeLength); 
-                //if (newExtend > k+1) {
-                //  matchedLen = newExtend;
-                //} else {
-                //  matchedLen = k+hybridSkip;
-                //}
-                if(newExtend < readLen){
+
+		//Hybrid Skipping
+                /*if (newExtend > k+1) {
+                  matchedLen = newExtend;
+                } else {
+                  matchedLen = k+hybridSkip;
+                }*/
+
+		//Intelligent Skipping - approach1
+                /*if(newExtend < readLen){
                   matchedLen = std::min((uint32_t)readLen, (uint32_t)newExtend+k);
-                }
+                }*/
+
+		//Intelligent Skipping - approach2
+		matchedLen = newExtend;
+
                 /**auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt, safeLength);
                 if(newExtend > k){
                     matchedLen = newExtend ;
@@ -826,14 +834,21 @@ private:
             if(safeLength==k)
                 safeLength=k+1;
             auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt,safeLength );
-            //if(newExtend > k){
-            //    matchedLen = newExtend;
-            //}else{
-            //    matchedLen = k+hybridSkip;
-            //}
-            if(newExtend < readLen){
+
+	    //Hybrid Skipping
+            /*if(newExtend > k){
+                matchedLen = newExtend;
+            }else{
+                matchedLen = k+hybridSkip;
+            }*/
+
+	    //Intelligent Skipping - approach1
+            /*if(newExtend < readLen){
                 matchedLen = std::min((uint32_t)readLen, (uint32_t)newExtend+k);
-            }
+            }*/
+
+	    //Intelligent Skipping - approach2
+	    matchedLen = newExtend;
         }
 
 
@@ -925,7 +940,12 @@ private:
         auto skipLCE = rb + lce - skipOverlapNIP;
         // Pick the maximum of the two
         auto maxSkip = std::max(skipMatch, skipLCE);
-        rb = rb+matchedLen-k+1;
+
+	//Hybrid Skipping & Intelligent SKipping - approach1
+        //rb = rb+matchedLen-k+1;
+
+	//Intelligent Skipping - approach2
+	rb = std::min(rb+matchedLen+1,readEndIt);
 
         // If NIP skipping is *enabled*, and we got to the current position
         // by doing an LCE query, then we allow ourselves to *double check*
