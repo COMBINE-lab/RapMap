@@ -799,7 +799,6 @@ private:
             if(matchedLen == readLen){
                 matchedLen = readLen;
             } else {
-                if(safeLength==k) { safeLength=k+1; }
                 /** Assuming there isn't an OBO here, I think we can
                     replace the call to extendSafe in this block by
                     the code immediately below **/
@@ -809,7 +808,8 @@ private:
 		auto newExtend =  std::min((uint32_t)matchedLen,(uint32_t) safeLength); 
 
 		//Hybrid Skipping
-                /*if (newExtend > k+1) {
+                /*if(safeLength==k) { safeLength=k+1; }
+                if (newExtend > k+1) {
                   matchedLen = newExtend;
                 } else {
                   matchedLen = k+hybridSkip;
@@ -831,12 +831,11 @@ private:
                 }**/
             }
         } else {
-            if(safeLength==k)
-                safeLength=k+1;
             auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt,safeLength );
 
 	    //Hybrid Skipping
-            /*if(newExtend > k){
+            /*if(safeLength==k) {safeLength=k+1;}
+            if(newExtend > k){
                 matchedLen = newExtend;
             }else{
                 matchedLen = k+hybridSkip;
