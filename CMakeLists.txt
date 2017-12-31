@@ -207,28 +207,28 @@ if (NOT CEREAL_FOUND)
 endif()
 
 
-if (NOT JELLYFISH_ROOT)
-	set(JELLYFISH_ROOT ${GAT_SOURCE_DIR}/external/install)
-endif()
-
-find_package(Jellyfish 2.2.6)
-
-if (NOT JELLYFISH_FOUND)
-message("Build system will fetch and build Jellyfish")
-message("==================================================================")
-ExternalProject_Add(libjellyfish
-    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-    DOWNLOAD_COMMAND curl -k -L https://github.com/gmarcais/Jellyfish/releases/download/v2.2.6/jellyfish-2.2.6.tar.gz -o jellyfish-2.2.6.tgz &&
-    	rm -fr jellyfish-2.2.6 &&
-     	tar -xzvf jellyfish-2.2.6.tgz
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/jellyfish-2.2.6
-    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
-    CONFIGURE_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/external/jellyfish-2.2.6/configure --enable-shared=no --prefix=<INSTALL_DIR> CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
-    BUILD_COMMAND make CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
-    BUILD_IN_SOURCE 1
-    INSTALL_COMMAND make install
-)
-endif()
+#if (NOT JELLYFISH_ROOT)
+#	set(JELLYFISH_ROOT ${GAT_SOURCE_DIR}/external/install)
+#endif()
+#
+#find_package(Jellyfish 2.2.6)
+#
+#if (NOT JELLYFISH_FOUND)
+#message("Build system will fetch and build Jellyfish")
+#message("==================================================================")
+#ExternalProject_Add(libjellyfish
+#    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
+#    DOWNLOAD_COMMAND curl -k -L https://github.com/gmarcais/Jellyfish/releases/download/v2.2.6/jellyfish-2.2.6.tar.gz -o jellyfish-2.2.6.tgz &&
+#    	rm -fr jellyfish-2.2.6 &&
+#     	tar -xzvf jellyfish-2.2.6.tgz
+#    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/jellyfish-2.2.6
+#    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
+#    CONFIGURE_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/external/jellyfish-2.2.6/configure --enable-shared=no --prefix=<INSTALL_DIR> CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
+#    BUILD_COMMAND make CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
+#    BUILD_IN_SOURCE 1
+#    INSTALL_COMMAND make install
+#)
+#endif()
 
 set (FAST_MALLOC_LIB "")
 set (HAVE_FAST_MALLOC FALSE)

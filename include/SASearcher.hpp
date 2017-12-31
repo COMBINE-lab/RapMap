@@ -25,7 +25,8 @@
 #include <vector>
 #include <algorithm>
 #include <iterator>
-#include "jellyfish/mer_dna.hpp"
+//#include "jellyfish/mer_dna.hpp"
+#include "Kmer.hpp"
 
 #include "RapMapUtils.hpp"
 #include "RapMapSAIndex.hpp"
@@ -154,7 +155,8 @@ class SASearcher {
                     char queryChar = ::toupper(*(qb + i));
                     // If we're reverse complementing
                     if (complementBases) {
-                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        //queryChar = rapmap::utils::my_mer::complement(queryChar);
+			queryChar = combinelib::kmers::complement(queryChar);//rapmap::utils::my_mer::complement(queryChar);
                     }
                     if ( queryChar < *(sb + SA[lbIn] + i) ) {
                         break;
@@ -196,7 +198,8 @@ class SASearcher {
                     char queryChar = ::toupper(*(qb + i));
                     // If we're reverse complementing
                     if (complementBases) {
-                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        //queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        queryChar = combinelib::kmers::complement(queryChar);
                     }
 
                     if ( queryChar < *(sb + SA[c] + i) ) {
@@ -270,7 +273,8 @@ class SASearcher {
                     char queryChar = (i < m - 1) ? ::toupper(*(qb + i)) : sentinel;
                     // If we're reverse complementing
                     if (queryChar != sentinel and complementBases) {
-                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        //queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        queryChar = combinelib::kmers::complement(queryChar);
                     }
 
                     if ( queryChar < *(sb + SA[c] + i) ) {
@@ -316,7 +320,8 @@ class SASearcher {
                     char queryChar = (i < m - 1) ? ::toupper(*(qb + i)) : sentinel;
                     // If we're reverse complementing
                     if (queryChar != sentinel and complementBases) {
-                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        //queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        queryChar = combinelib::kmers::complement(queryChar);
                     }
 
                     if ( queryChar < *(sb + SA[c] + i) ) {

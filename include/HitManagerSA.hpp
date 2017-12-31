@@ -23,7 +23,7 @@
 #define __HIT_MANAGER_SA_HPP__
 
 #include "RapMapUtils.hpp"
-#include "RapMapIndex.hpp"
+//#include "RapMapIndex.hpp"
 #include "RapMapSAIndex.hpp"
 #include "FastxParser.hpp"
 //#include "eytzinger_array.h"

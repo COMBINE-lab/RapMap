@@ -25,7 +25,7 @@
 
 #include "RapMapUtils.hpp"
 #include "RapMapSAIndex.hpp"
-#include "RapMapIndex.hpp"
+//#include "RapMapIndex.hpp"
 #include "PairAlignmentFormatter.hpp"
 #include "SingleAlignmentFormatter.hpp"
 //#include "jellyfish/whole_sequence_parser.hpp"
@@ -645,7 +645,8 @@ template uint32_t rapmap::utils::writeAlignmentsToStream<fastx_parser::ReadSeq, 
                 fmt::MemoryWriter& sstream);
 
 
-template uint32_t rapmap::utils::writeAlignmentsToStream<fastx_parser::ReadPair, RapMapIndex*>(
+/*
+  template uint32_t rapmap::utils::writeAlignmentsToStream<fastx_parser::ReadPair, RapMapIndex*>(
                 fastx_parser::ReadPair& r,
                 PairAlignmentFormatter<RapMapIndex*>& formatter,
                 rapmap::utils::HitCounters& hctr,
@@ -660,3 +661,4 @@ template uint32_t rapmap::utils::writeAlignmentsToStream<fastx_parser::ReadSeq, 
                 std::vector<rapmap::utils::QuasiAlignment>& jointHits,
                 fmt::MemoryWriter& sstream
                 );
+		*/

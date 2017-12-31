@@ -1,13 +1,13 @@
 set (RAPMAP_MAIN_SRCS
     RapMap.cpp
-    RapMapIndexer.cpp
+    #RapMapIndexer.cpp
     RapMapSAIndexer.cpp
     RapMapUtils.cpp
-    RapMapMapper.cpp
+    #RapMapMapper.cpp
     RapMapSAMapper.cpp
     RapMapFileSystem.cpp
     RapMapSAIndex.cpp
-    RapMapIndex.cpp
+    #RapMapIndex.cpp
     HitManager.cpp
     HitManagerSA.cpp
     EditDistance.cpp
@@ -36,16 +36,16 @@ ${GAT_SOURCE_DIR}/include
 ${GAT_SOURCE_DIR}/external
 ${GAT_SOURCE_DIR}/external/cereal/include
 ${GAT_SOURCE_DIR}/external/install/include
-${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.6
+#${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.6
 ${ZLIB_INCLUDE_DIR}
 ${CEREAL_INCLUDE_DIRS}
 )
 
-if (JELLYFISH_FOUND)
-    include_directories(${JELLYFISH_INCLUDE_DIR})
-else()
-    include_directories(${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.6)
-endif()
+#if (JELLYFISH_FOUND)
+#    include_directories(${JELLYFISH_INCLUDE_DIR})
+#else()
+#    include_directories(${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.6)
+#endif()
 
 link_directories(
 ${GAT_SOURCE_DIR}/lib

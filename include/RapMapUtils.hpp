@@ -29,11 +29,12 @@
 #include "sparsepp/spp.h"
 #include "SparseHashSerializer.hpp"
 #include <cereal/archives/binary.hpp>
-#include "jellyfish/mer_dna.hpp"
+//#include "jellyfish/mer_dna.hpp"
+#include "Kmer.hpp"
 #include "spdlog/spdlog.h"
 #include "spdlog/fmt/ostr.h"
 #include "spdlog/fmt/fmt.h"
-#include "PairSequenceParser.hpp"
+//#include "PairSequenceParser.hpp"
 
 #ifdef RAPMAP_SALMON_SUPPORT
 #include "LibraryFormat.hpp"
@@ -54,7 +55,7 @@ template <typename IndexT>
 class SingleAlignmentFormatter;
 
 // Forward-declare because the C++ compiler is dumb
-class RapMapIndex;
+//class RapMapIndex;
 
 template<typename KeyT, typename ValT, typename HasherT>
 //using RegHashT = google::dense_hash_map<KeyT, ValT, HasherT>;
@@ -69,8 +70,10 @@ using PerfectHashT = FrugalBooMap<KeyT, ValT>;
 namespace rapmap {
     namespace utils {
 
-    using my_mer = jellyfish::mer_dna_ns::mer_base_static<uint64_t, 1>;
-    using my_mer9 = jellyfish::mer_dna_ns::mer_base_static<uint64_t, 2>;
+    //using my_mer = jellyfish::mer_dna_ns::mer_base_static<uint64_t, 1>;
+    //using my_mer9 = jellyfish::mer_dna_ns::mer_base_static<uint64_t, 2>;
+    using my_mer = combinelib::kmers::Kmer<32,1>;
+    using my_mer9 = combinelib::kmers::Kmer<32,2>;
 
     constexpr uint32_t newTxpSetMask = 0x80000000;
     constexpr uint32_t rcSetMask = 0x40000000;
@@ -264,7 +267,7 @@ namespace rapmap {
         public:
             size_t operator()(const my_mer& m) const {
                 auto k = rapmap::utils::my_mer::k();
-                auto v = m.get_bits(0, 2*k);
+		auto v = m.word(0); //auto v = m.get_bits(0, 2*k);
                 return XXH64(static_cast<void*>(&v), 8, 0);
             }
     };

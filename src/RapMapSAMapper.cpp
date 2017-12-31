@@ -59,7 +59,7 @@
 
 // Jellyfish 2 include
 #include "FastxParser.hpp"
-#include "jellyfish/mer_dna.hpp"
+//#include "jellyfish/mer_dna.hpp"
 
 #include "tclap/CmdLine.h"
 
@@ -69,9 +69,10 @@
 */
 
 #include "stringpiece.h"
+#include "RapMapUtils.hpp"
 #include "BooMap.hpp"
 #include "FrugalBooMap.hpp"
-#include "PairSequenceParser.hpp"
+//#include "PairSequenceParser.hpp"
 #include "PairAlignmentFormatter.hpp"
 #include "SingleAlignmentFormatter.hpp"
 #include "RapMapUtils.hpp"

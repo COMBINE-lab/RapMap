@@ -83,7 +83,7 @@ public:
       return kpos < other.kpos;
     }
     void print() {
-      std::cerr << "{ " << kmer.to_str() << ", " << kpos << ", "
+      std::cerr << "{ " << kmer.toStr() << ", " << kpos << ", "
                 << ((fwdScore) ? "PRESENT" : "ABSENT") << ", "
                 << ((rcScore) ? "PRESENT" : "ABSENT") << "}\t";
     }
@@ -220,7 +220,8 @@ public:
         */
         continue;
       }
-      rcMer = mer.get_reverse_complement();
+      //rcMer = mer.get_reverse_complement();
+      rcMer = mer.getRC();
 
       // See if we can find this k-mer in the hash
       //if (mer)
@@ -366,7 +367,8 @@ public:
 
             // If the rc k-mer is untested, then test it
             if (kms.rcScore == UNTESTED) {
-              rcMer = kms.kmer.get_reverse_complement();
+              //rcMer = kms.kmer.get_reverse_complement();
+	      rcMer = kms.kmer.getRC();
               auto rcMerIt = khash.find(rcMer.word(0));//get_bits(0, 2 * k));
               kms.rcScore = (rcMerIt != hashEnd_) ? PRESENT : ABSENT;
             }
@@ -599,7 +601,8 @@ private:
 
     //if(remap) std::cout << "k"
 
-    auto complementMer = mer.get_reverse_complement();
+    //auto complementMer = mer.get_reverse_complement();
+    auto complementMer = mer.getRC();
 
     if (merItPtr == nullptr) {
       // We haven't tested this, so do that here
@@ -725,7 +728,9 @@ private:
       // The distance from the beginning of the read to the
       // start of the k-mer
       pos = std::distance(readStartIt, rb);
-      validMer = mer.from_chars(read.c_str() + pos);
+      //validMer = mer.from_chars(read.c_str() + pos);
+      validMer = mer.fromChars(read.c_str() + pos);
+
       // Get the next valid k-mer at some position >= pos
       //validMer = getNextValidKmer_(read, pos, mer);
       //if (!validMer) { return; }
@@ -767,7 +772,8 @@ private:
 
       // If it's not a homopolymer, then get the complement
       // k-mer and query both in the hash.
-      complementMer = mer.get_reverse_complement();
+      //complementMer = mer.get_reverse_complement();
+      complementMer = mer.getRC();
       merIt = khash.find(mer.word(0));//get_bits(0, 2 * k));
 
 
@@ -866,7 +872,8 @@ private:
           if (rb + matchedLen < readEndIt) {
             uint32_t kmerPos = static_cast<uint32_t>(
                 std::distance(readStartIt, rb + matchedLen - skipOverlapMMP));
-            bool validNucs = mer.from_chars(read.c_str() + kmerPos);
+            //bool validNucs = mer.from_chars(read.c_str() + kmerPos);
+            bool validNucs = mer.fromChars(read.c_str() + kmerPos);
             if (validNucs) {
               /*
               // since the MMP *ended* before the end of the read, we assume
