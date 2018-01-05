@@ -111,7 +111,7 @@ public:
 	  auto readLen = read.length();
 
           //uint8_t editThreshold = readLen/2 ;
-	  int startEditDistance = 0;
+	  int32_t startEditDistance = 0;
 
           bool skipLCPOpt{false};
           bool currentValid{false};
@@ -119,6 +119,10 @@ public:
 
         //TODO check if lcp is really returning same sequences
           std::string firsttidString ;
+
+
+	  //debug
+	  //std::string testRead = "xGCGAGAGTCTGTCTCAAAAACAACAACCACCACCACCACCACCACAACAACAACGAAACTATCTGCAAACTTTGC";
 
     /*
             auto& readName = readT.name;
@@ -148,49 +152,102 @@ public:
 	  // sequence and read sequence
 	  // and position
 
-            if(!startHit.toAlign){
+          if(!startHit.toAlign){
                   uint32_t txpID = startHit.tid ;
                   int32_t pos = startHit.pos;
                   int32_t startOffset, endOffset ;
                   OffsetT globalPos = txpStarts[txpID];
                   OffsetT thisTxpLen = txpLens[txpID];
 
-                  auto overHangLeft = (pos < 0)?-(pos):0;
+                  /*auto overHangLeft = (pos < 0)?-(pos):0;
                   auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
 
                   globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
                   auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
-                  extend = (overHangRight > 0)?(extend-overHangRight):extend;
+                  extend = (overHangRight > 0)?(extend-overHangRight):extend;*/
 
                   /* ROB: get rid of the copy */
                   //auto thisTxpSeq = concatText.substr(globalPos, extend);
-                  const char* thisTxpSeq = concatText.data() + globalPos;
-                  int thisTargetLen = extend;
+                  //const char* thisTxpSeq = concatText.data() + globalPos;
+                  //int thisTargetLen = extend;
 
 
                   /* ROB : slight interface change */
                   //EdlibAlignResult startEdlibResult;
-                  if(startHit.fwd){
+
+                  /*if(startHit.fwd){
                     ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                   }else{
                     auto revRead = rapmap::utils::reverseComplement(read);
                     ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                   }
-                  auto& startEdlibResult = ae_.result();
+                  auto& startEdlibResult1 = ae_.result();
 
                   startHit.editD = startEdlibResult.editDistance;
 
-                  startEditDistance = startEdlibResult.editDistance;
+                  int32_t startEditDistance = startEdlibResult.editDistance;*/
+
 
                   //@debug purpose
                   auto readName = rapmap::utils::getReadName(readT) ;
+		  startEditDistance  = 0;
+                  startHit.editD = 0; ;
+		  for(int i=0;i<startHit.gapsBegin.size();++i){
+                    auto overHangLeft = (pos+startHit.gapsBegin[i] < 0)?-(pos+startHit.gapsBegin[i]):0;
+		    uint32_t gapLen = startHit.gapsEnd[i] - startHit.gapsBegin[i];
+                    auto overHangRight = (pos+startHit.gapsEnd[i] > thisTxpLen)?(pos+startHit.gapsEnd[i]-thisTxpLen):0;
 
+                    globalPos = (overHangLeft == 0)?(pos+startHit.gapsBegin[i]+txpStarts[txpID]):txpStarts[txpID];
+                    auto extend = (overHangLeft > 0)?(gapLen - overHangLeft):gapLen ;
+                    extend = (overHangRight > 0)?(extend-overHangRight):extend;
+
+		    //debug
+		    /*if(read == testRead){
+		      std::cout<<startHit.gapsBegin[i]<<"\t"<<startHit.gapsEnd[i]<<"\toverHangLeft: " << overHangLeft << "\t"<<"overHangRight: "<<overHangRight << "\t" << "gapLen: " << gapLen << "\t" <<"extend: " << extend <<"\t"<< "pos: " << pos <<"\tglobalPos: "<<globalPos<< "\t" <<rmi_->txpNames[txpID]<<"\n" << read.substr(startHit.gapsBegin[i],gapLen) << "\t" << read.substr(startHit.gapsBegin[i],gapLen).c_str() <<"\n";  
+ 		    }*/
+
+                    const char* thisTxpSeq = concatText.data() + globalPos;
+                    //uint32_t gapLen = startHit.gapsEnd[i] - startHit.gapsBegin[i];
+		    uint32_t thisTargetLen = extend;
+		    //std::cout<<read.substr(startHit.gapsBegin[i],gapLen).c_str()<<"\t"<<gapLen <<"\n";
+		    if(startHit.fwd){
+                      ae_(read.substr(startHit.gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+		    } else  {
+		      auto revRead = rapmap::utils::reverseComplement(read);
+                      ae_(revRead.substr(startHit.gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+		    }
+		    
+                    auto& startEdlibResult = ae_.result();
+
+	
+		    if(startEdlibResult.editDistance != -1 and startEditDistance!=-1) {
+                      startEditDistance += startEdlibResult.editDistance;
+                      startHit.editD += startEdlibResult.editDistance;
+	 	    } else {
+		      startEditDistance = -1;
+		      startHit.editD = -1;
+		    }
+	
+		    
+
+		  }
+
+
+		  //debug
+		  /*if (read == testRead and startEditDistance1!=-1 and startEditDistance != startEditDistance1){
+		    for(int i=0;i<startHit.gapsBegin.size();++i){
+		      std::cout<<startEditDistance1 <<"\t" << startEditDistance << "\t" <<startHit.gapsBegin[i]<<"\t"<<startHit.gapsEnd[i]<<"\n"<<startHit.fwd<<"\t"<<read<<"\t"<<globalPos<<"\n";
+                      auto txpID = rmi_->transcriptAtPosition(globalPos);auto& txpNames = rmi_->txpNames;
+                      std::cout << rmi_->txpNames[txpID] << "\n";
+		    }
+		  }*/
                   /*
                   if(readName == "15006_1_6022_314_181"){
                       std::cout << "\nIn selective Alignment start  edit distance: "<< startEditDistance << " length: "<< thisTxpLen << " pos " << pos << " fwd "<<  startHit.fwd << "\n";
                   }*/
 
-                  if(startEditDistance <= editThreshold ){
+
+                  if(startEditDistance <= editThreshold and startEditDistance>=0){
                     startHit.toAlign = true;
                     /* ROB: No CIGAR right now */
                     /*
@@ -248,16 +305,16 @@ public:
                 int32_t startOffset, endOffset ;
                 OffsetT globalPos = txpStarts[txpID];
                 OffsetT thisTxpLen = txpLens[txpID];
-                auto overHangLeft = (pos < 0)?-(pos):0;
-                auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
+                //auto overHangLeft = (pos < 0)?-(pos):0;
+                //auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
 
-                globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
+                //globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
 
                 if(hitsIt->toAlign){
                     continue;
                 }
                 if ( (!skipLCPOpt) && (search != tidset.end()) && (lcpLength >= readLen) && (tidPos[txpID] == globalPos)){
-                    if(startEditDistance <= editThreshold){
+                    if(startEditDistance <= editThreshold and startEditDistance>=0){
                                 hitsIt->editD = startEditDistance;
                                 hitsIt->toAlign = true;
                                 //std::cout << " LCP Length " << lcpLength << "\n";
@@ -269,32 +326,78 @@ public:
                                 hitsIt->toAlign = false ;
                           }
                 }else{
-                      auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
-                      extend = (overHangRight > 0)?(extend-overHangRight):extend;
+                      //auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
+                      //extend = (overHangRight > 0)?(extend-overHangRight):extend;
 
                       /* ROB: get rid of the copy */
                       //auto thisTxpSeq = concatText.substr(globalPos, extend);
-                      const char* thisTxpSeq = concatText.data() + globalPos;
-                      int thisTargetLen = extend;
+                      //const char* thisTxpSeq = concatText.data() + globalPos;
+                      //int thisTargetLen = extend;
 
                       //auto thisEditDistance = edit_distance(read, thisTxpSeq, 50) ;
                       /* ROB : slight interface change */
                       //EdlibAlignResult thisEdlibResult;
-                      if(hitsIt->fwd){
+                      /*if(hitsIt->fwd){
                         ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(1+editThreshold*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                       }else{
                         auto revRead = rapmap::utils::reverseComplement(read);
                         ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(1+editThreshold*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                       }
-                      auto& thisEdlibResult = ae_.result();
-                      auto thisEditDistance = thisEdlibResult.editDistance ;
+                      auto& thisEdlibResult1 = ae_.result();
+                      auto thisEditDistance1 = thisEdlibResult1.editDistance;*/
+
+		      int32_t thisEditDistance = 0;
+		      for(int i=0;i<hitsIt->gapsBegin.size();++i){
+                   
+   		        int overHangLeft = (pos+hitsIt->gapsBegin[i] < 0)?-(pos+hitsIt->gapsBegin[i]):0;
+		        uint32_t gapLen = hitsIt->gapsEnd[i] - hitsIt->gapsBegin[i];
+                        int32_t overHangRight = (pos+hitsIt->gapsEnd[i] > thisTxpLen)?(pos+hitsIt->gapsEnd[i]-thisTxpLen):0;
+
+                        globalPos = (overHangLeft == 0)?(pos+hitsIt->gapsBegin[i]+txpStarts[txpID]):txpStarts[txpID];
+                        int32_t extend = (overHangLeft > 0)?(gapLen - overHangLeft):gapLen ;
+                        extend = (overHangRight > 0)?(extend-overHangRight):extend;
+
+			//debug
+                        /*if(read == testRead){
+			  std::cout<<"pos+hitsIt->gapsBegin[i]: " << pos+hitsIt->gapsBegin[i]  <<"\n";
+		          std::cout<<hitsIt->gapsBegin[i]<<"\t"<<hitsIt->gapsEnd[i]<<"\toverHangLeft: " << overHangLeft << "\t"<<"overHangRight: "<<overHangRight << "\t" << "gapLen: " << gapLen << "\t" <<"extend: " << extend <<"\t"<< "pos: " << pos << "\tglobalPos: " << globalPos-txpStarts[txpID] << "\t"<<rmi_->txpNames[txpID]<< "\t" <<read.substr(startHit.gapsBegin[i],gapLen) << "\t" << read.substr(startHit.gapsBegin[i],gapLen).c_str() <<"\n";
+ 		        }*/
+
+                        const char* thisTxpSeq = concatText.data() + globalPos;
+                        uint32_t thisTargetLen = extend;
 
 
-                      if(hitsIt->toAlign and thisEditDistance!=0){
-                          std::cout<<"WTF\n";
-                      }
-                      if(thisEditDistance <= editThreshold){
-                              //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
+		        if(hitsIt->fwd){
+                          ae_(read.substr(hitsIt->gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+		        } else  {
+		          auto revRead = rapmap::utils::reverseComplement(read);
+                          ae_(revRead.substr(hitsIt->gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+		        }
+
+                        auto& thisEdlibResult = ae_.result();
+
+
+		        if(thisEdlibResult.editDistance!=-1 and thisEditDistance != -1){
+                          thisEditDistance += thisEdlibResult.editDistance;
+			} else {
+			   hitsIt->editD = -1;
+			   thisEditDistance = -1;
+		        }
+
+		      }
+
+		      //debug
+		      /*if(read==testRead and thisEditDistance1!=-1 and thisEditDistance1 != thisEditDistance ){
+		        for(int i=0;i<hitsIt->gapsBegin.size();++i){
+		          std::cout<<thisEditDistance1 <<"\t" << thisEditDistance << "\t" <<hitsIt->gapsBegin[i]<<"\t"<<hitsIt->gapsEnd[i]<<"\n"<<hitsIt->fwd<<"\t"<<read<<"\t"<<globalPos<<"\n";
+                          auto txpID = rmi_->transcriptAtPosition(globalPos);auto& txpNames = rmi_->txpNames;
+                          std::cout << rmi_->txpNames[txpID] << "\n";
+		        }
+		      }*/     
+
+
+                      if(thisEditDistance <= editThreshold and thisEditDistance>=0){
+                        //selectedHits.emplace_back(txpID,pos,startHit.fwd,hitsIt->readLen, thisEditDistance,"II");
                               hitsIt->editD = thisEditDistance;
                               hitsIt->toAlign = true;
                               /* ROB: No CIGAR right now */
@@ -331,6 +434,8 @@ public:
                 hit.fwd = hit.mateIsFwd;
                 hit.toAlign = hit.mateToAlign;
                 hit.editD = hit.mateEditD;
+		hit.gapsBegin = hit.mateGapsBegin;
+		hit.gapsEnd = hit.mateGapsEnd;
            }
 
            compute(rightReadT,rightHits,editThreshold);

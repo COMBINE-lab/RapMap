@@ -63,7 +63,14 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
     int endPos;
     bool rc;
     bool mmp;
-  };
+    std::vector<int32_t> gapsBegin;
+    std::vector<int32_t> gapsEnd;
+
+ };
+
+
+  //debug
+  //std::string testRead = "GCGAGAGTCTGTCTCAAAAACAACAACCACCACCACCACCACCACAACAACAACGAAACTATCTGCAAACTTTGC";
 
   constexpr const int32_t signedZero{0};
   //uint32_t maxInsertSize_{1000};
@@ -78,6 +85,7 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
     auto leftTid = phLeft.first;
     leftTids.insert(leftTid);
   }
+
   for (auto& phRight : rightMap) {
     auto rightTid = phRight.first;
     if (leftTids.find(rightTid) != leftTids.end()) {
@@ -127,19 +135,35 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
                             it->queryRC,
                             it->matchedLen == rpair.first.seq.length());
               leftHitCov[hitKey] = cInfo;
+	      if(it->queryPos>0){
+		leftHitCov[hitKey].gapsBegin.push_back(0);
+	        leftHitCov[hitKey].gapsEnd.push_back(it->queryPos);
+	      }
             } else {
               auto& curr = leftHitCov[hitKey];
               if (curr.endPos > it->pos) {
                 curr.cov += it->pos + it->matchedLen - curr.endPos;
                 curr.endPos = it->pos + it->matchedLen;
               } else {
+ 	        if(it->pos > curr.endPos){
+		  leftHitCov[hitKey].gapsBegin.push_back(curr.endPos-hitKey);
+	          leftHitCov[hitKey].gapsEnd.push_back(it->pos-hitKey);
+	        }
                 curr.cov += it->matchedLen;
                 curr.endPos = it->pos + it->matchedLen;
               }
             }
+
             ++it;
           }
+	  for(auto it = leftHitCov.begin(); it!=leftHitCov.end(); ++it){
+	    if(it->second.endPos - it->first < rpair.first.seq.length()){
+	      it->second.gapsBegin.push_back(it->second.endPos - it->first);
+	      it->second.gapsEnd.push_back(rpair.first.seq.length());
+	    }	
+	  }
         }
+	
 
         std::map<int32_t, covInfo> rightHitCov;
         {
@@ -153,18 +177,34 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
                             it->queryRC,
                             it->matchedLen == rpair.second.seq.length());
               rightHitCov[hitKey] = cInfo;
+	      if(it->queryPos>0){
+		rightHitCov[hitKey].gapsBegin.push_back(0);
+	        rightHitCov[hitKey].gapsEnd.push_back(it->queryPos);
+	      }
             } else {
               auto& curr = rightHitCov[hitKey];
               if (curr.endPos > it->pos) {
                 curr.cov += (it->pos + it->matchedLen - curr.endPos);
                 curr.endPos = it->pos + it->matchedLen;
               } else {
+                if(it->pos > curr.endPos){
+		  rightHitCov[hitKey].gapsBegin.push_back(curr.endPos-hitKey);
+	          rightHitCov[hitKey].gapsEnd.push_back(it->pos-hitKey);
+	        }
                 curr.cov += it->matchedLen;
                 curr.endPos = it->pos + it->matchedLen;
+	        
               }
-            }
+            }	
             ++it;
           }
+	  for(auto it = rightHitCov.begin(); it!=rightHitCov.end(); ++it){
+	    
+	    if(it->second.endPos - it->first < rpair.second.seq.length()){
+	      it->second.gapsBegin.push_back(it->second.endPos - it->first);
+	      it->second.gapsEnd.push_back(rpair.second.seq.length());
+	    }
+	  }
         }
 
         int maxCovScore = 0;
@@ -226,25 +266,17 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
           foundHit = true;
         }
 
-        /*
-        int maxCovScore = 0;
-        for(auto& vp : validPairs){
-
-          auto score = leftHitCov[(vp.first)].cov + rightHitCov[(vp.second)].cov
-        ;
-          if(maxCovScore < score){
-            maxCovScore = score;
-          }
-        }
-        */
         hits.clear();
         for (auto& vp : validPairs) {
           // I will try to make QuasiAlignment objects
           // real alignments and edit distance are not present
           // yet
 
+
           int32_t hitPos1 = vp.first;  // vp.first.pos - vp.first.queryPos ;
           int32_t hitPos2 = vp.second; // vp.second.pos - vp.second.queryPos ;
+	  
+
 
           if (leftHitCov[hitPos1].cov + rightHitCov[hitPos2].cov ==
               maxCovScore) {
@@ -276,6 +308,11 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
               qaln.mateToAlign = true;
               qaln.mateEditD = 0;
             }
+
+	    qaln.gapsBegin = leftHitCov[vp.first].gapsBegin;
+	    qaln.mateGapsBegin = rightHitCov[vp.second].gapsBegin;
+	    qaln.gapsEnd = leftHitCov[vp.first].gapsEnd;
+	    qaln.mateGapsEnd = rightHitCov[vp.second].gapsEnd;
             break;
           }
         }

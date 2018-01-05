@@ -482,6 +482,10 @@ namespace rapmap {
         MateStatus mateStatus;
         bool isLCPused{false};
         bool isMMPused{false};
+	std::vector<int32_t> gapsBegin;
+	std::vector<int32_t> mateGapsBegin;
+	std::vector<int32_t> gapsEnd;
+	std::vector<int32_t> mateGapsEnd;
     };
 
     struct HitInfo {
