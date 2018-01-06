@@ -60,10 +60,15 @@ int32_t SECollector::hammingDist(QuasiAlignment& qa, std::string& read, std::str
 template <typename RapMapIndexT> class SECollector{
 public:
   using OffsetT = typename RapMapIndexT::IndexType;
+  std::atomic<uint64_t> numCacheHits{0};
 
   /** Construct an SECollector given an index **/
     SECollector(RapMapIndexT* rmi)
         : rmi_(rmi) {}
+    
+    ~SECollector() {
+        std::cerr << "\n\n\n numCacheHits : " << numCacheHits << "\n\n\n";
+    }
 
     //int32_t hammingDist(QuasiAlignment& q, std::string& read, std::string& seq,  Offset trancriptLen, int maxDist);
     class SubAlignmentKey {
@@ -391,6 +396,7 @@ public:
                           } else {
                             useCached = true;
                             edist = edistIt->second;
+                            ++numCacheHits;
                           }
 		        } else  {
 		          auto revRead = rapmap::utils::reverseComplement(read);
@@ -402,6 +408,7 @@ public:
                          } else {
                            useCached = true;
                            edist = edistIt->second;
+                           ++numCacheHits;
                           }
 		        }
 
