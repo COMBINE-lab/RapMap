@@ -173,9 +173,9 @@ public:
       bool multiHit = hits.size() > 1;
       
       spp::sparse_hash_map<SubAlignmentKey, int, SubKeyHasher> edmap;
-            auto cacheResult = [&edmap](uint32_t gapStart, uint32_t gapLen, bool readFW, const char* refSeq, int edist) -> void  {
-                auto seqhash = XXH64(reinterpret_cast<const void*>(refSeq), gapLen, 314);
-                SubAlignmentKey k{gapStart, gapLen, readFW, seqhash};
+            auto cacheResult = [&edmap](uint32_t gapStart, uint32_t refGapLen, bool readFW, const char* refSeq, int edist) -> void  {
+                auto seqhash = XXH64(reinterpret_cast<const void*>(refSeq), refGapLen, 314);
+                SubAlignmentKey k{gapStart, refGapLen, readFW, seqhash};
                 edmap[k] = edist;
             };
 
