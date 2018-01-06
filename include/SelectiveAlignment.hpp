@@ -186,23 +186,23 @@ public:
                   OffsetT globalPos = txpStarts[txpID];
                   OffsetT thisTxpLen = txpLens[txpID];
 
-                  auto overHangLeft = (pos < 0)?-(pos):0;
+                  /*auto overHangLeft = (pos < 0)?-(pos):0;
                   auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
 
                   globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
                   auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
-                  extend = (overHangRight > 0)?(extend-overHangRight):extend;
+                  extend = (overHangRight > 0)?(extend-overHangRight):extend;*/
 
                   /* ROB: get rid of the copy */
                   //auto thisTxpSeq = concatText.substr(globalPos, extend);
-                  const char* thisTxpSeq = concatText.data() + globalPos;
-                  int thisTargetLen = extend;
+                  //const char* thisTxpSeq = concatText.data() + globalPos;
+                  //int thisTargetLen = extend;
 
 
                   /* ROB : slight interface change */
                   //EdlibAlignResult startEdlibResult;
 
-                  if(startHit.fwd){
+                  /*if(startHit.fwd){
                     ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                   }else{
                     auto revRead = rapmap::utils::reverseComplement(read);
@@ -212,11 +212,11 @@ public:
 
                   startHit.editD = startEdlibResult.editDistance;
 
-                  int32_t startEditDistance = startEdlibResult.editDistance;
+                  int32_t startEditDistance = startEdlibResult.editDistance;*/
 
                   //@debug purpose
                   auto readName = rapmap::utils::getReadName(readT) ;
-		  /*startEditDistance  = 0;
+		  startEditDistance  = 0;
                   startHit.editD = 0; ;
 		  for(int i=0;i<startHit.gapsBegin.size();++i){
                     auto overHangLeft = (pos+startHit.gapsBegin[i] < 0)?-(pos+startHit.gapsBegin[i]):0;
@@ -228,9 +228,7 @@ public:
                     extend = (overHangRight > 0)?(extend-overHangRight):extend;
 
 		    const char* thisTxpSeq = concatText.data() + globalPos;
-                    //uint32_t gapLen = startHit.gapsEnd[i] - startHit.gapsBegin[i];
 		    uint32_t thisTargetLen = extend;
-		    //std::cout<<read.substr(startHit.gapsBegin[i],gapLen).c_str()<<"\t"<<gapLen <<"\n";
 		    if(startHit.fwd){
                       ae_(read.substr(startHit.gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
 		    } else  {
@@ -252,7 +250,7 @@ public:
 	
 		    
 
-		  }*/
+		  }
 
 
 		  //debug
@@ -327,10 +325,10 @@ public:
                 int32_t startOffset, endOffset ;
                 OffsetT globalPos = txpStarts[txpID];
                 OffsetT thisTxpLen = txpLens[txpID];
-                auto overHangLeft = (pos < 0)?-(pos):0;
-                auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
+                //auto overHangLeft = (pos < 0)?-(pos):0;
+                //auto overHangRight = (pos+readLen > thisTxpLen)?(pos+readLen-thisTxpLen):0;
 
-                globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
+                //globalPos = (overHangLeft == 0)?(pos+globalPos):globalPos;
 
                 if(hitsIt->toAlign){
                     continue;
@@ -348,27 +346,27 @@ public:
                                 hitsIt->toAlign = false ;
                           }
                 }else{
-                      auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
-                      extend = (overHangRight > 0)?(extend-overHangRight):extend;
+                      //auto extend = (overHangLeft > 0)?(readLen - overHangLeft):readLen ;
+                      //extend = (overHangRight > 0)?(extend-overHangRight):extend;
 
                       /* ROB: get rid of the copy */
                       //auto thisTxpSeq = concatText.substr(globalPos, extend);
-                      const char* thisTxpSeq = concatText.data() + globalPos;
-                      int thisTargetLen = extend;
+                      //const char* thisTxpSeq = concatText.data() + globalPos;
+                      //int thisTargetLen = extend;
 
                       //auto thisEditDistance = edit_distance(read, thisTxpSeq, 50) ;
                       /* ROB : slight interface change */
                       //EdlibAlignResult thisEdlibResult;
-                      if(hitsIt->fwd){
+                      /*if(hitsIt->fwd){
                         ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(1+editThreshold*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                       }else{
                         auto revRead = rapmap::utils::reverseComplement(read);
                         ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(1+editThreshold*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                       }
                       auto& thisEdlibResult = ae_.result();
-                      auto thisEditDistance = thisEdlibResult.editDistance;
+                      auto thisEditDistance = thisEdlibResult.editDistance;*/
 
-		      /*int32_t thisEditDistance = 0;
+		      int32_t thisEditDistance = 0;
 		      for(int i=0;i<hitsIt->gapsBegin.size();++i){
                    
    		        int overHangLeft = (pos+hitsIt->gapsBegin[i] < 0)?-(pos+hitsIt->gapsBegin[i]):0;
@@ -423,7 +421,7 @@ public:
 			   thisEditDistance = -1;
 		        }
 
-		      }*/
+		      }
 
 		      //debug
 		      /*if(read==testRead and thisEditDistance1!=-1 and thisEditDistance1 != thisEditDistance ){
