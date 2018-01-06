@@ -144,13 +144,14 @@ public:
 
           //uint8_t editThreshold = readLen/2 ;
 	  int32_t startEditDistance = 0;
+	  uint32_t eDistScale = 2;
 
           bool skipLCPOpt{false};
           bool currentValid{false};
           stx::string_view currentKmer;
 
         //TODO check if lcp is really returning same sequences
-          stx::string_view firsttidString ;
+          //stx::string_view firsttidString ;
 
 
 	  //debug
@@ -216,10 +217,10 @@ public:
                   //EdlibAlignResult startEdlibResult;
 
                   /*if(startHit.fwd){
-                    ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                    ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*eDistScale, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                   }else{
                     auto revRead = rapmap::utils::reverseComplement(read);
-                    ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                    ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*eDistScale, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                   }
                   auto& startEdlibResult = ae_.result();
 
@@ -243,11 +244,11 @@ public:
 		    const char* thisTxpSeq = concatText.data() + globalPos;
 		    uint32_t thisTargetLen = extend;
 		    if(startHit.fwd){
-                      ae_(readView.substr(startHit.gapsBegin[i],gapLen).data(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                      ae_(readView.substr(startHit.gapsBegin[i],gapLen).data(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*eDistScale, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
 		    } else  {
 		      auto revRead = rapmap::utils::reverseComplement(read);
               stx::string_view revReadView(revRead);
-                      ae_(revReadView.substr(startHit.gapsBegin[i],gapLen).data(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                      ae_(revReadView.substr(startHit.gapsBegin[i],gapLen).data(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*eDistScale, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
 		    }
 		    
                     auto& startEdlibResult = ae_.result();
@@ -295,7 +296,7 @@ public:
 
                 /* Take the kmer from the transcript */
                 currentKmer = concatTextView.substr(globalPos, k);
-                firsttidString = concatTextView.substr(globalPos, 75);
+                //firsttidString = concatTextView.substr(globalPos, 75);
 
 
                 if(currentKmer.length() == k and currentKmer.find_first_of('$') == std::string::npos){
@@ -306,7 +307,8 @@ public:
                 }
           }
 
-          std::map<int,OffsetT> tidPos ;
+	  spp::sparse_hash_map<int,OffsetT> tidPos; 
+       
           if(currentValid){
               auto bits = mer.word(0);
               auto hashIt = khash.find(bits);
@@ -331,7 +333,7 @@ public:
 
 
 
-          if(hits.size() > 1){
+          if(multiHit){
             for(auto hitsIt= hits.begin()+1 ; hitsIt != hits.end() ; ++hitsIt){
                 uint32_t txpID = hitsIt->tid ;
                 auto search = tidset.find(txpID);
@@ -372,10 +374,10 @@ public:
                       /* ROB : slight interface change */
                       //EdlibAlignResult thisEdlibResult;
                       /*if(hitsIt->fwd){
-                        ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(1+editThreshold*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                        ae_(read.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold*+1)*eDistScale, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                       }else{
                         auto revRead = rapmap::utils::reverseComplement(read);
-                        ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig(1+editThreshold*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                        ae_(revRead.c_str(), read.length(), thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*eDistScale, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                       }
                       auto& thisEdlibResult = ae_.result();
                       auto thisEditDistance = thisEdlibResult.editDistance;*/
@@ -401,7 +403,7 @@ public:
                           SubAlignmentKey k{hitsIt->gapsBegin[i], thisTargetLen, true, seqhash};
                           auto edistIt = edmap.find(k);
                           if (edistIt == edmap.end())  {
-                            ae_(readView.substr(hitsIt->gapsBegin[i],gapLen).data(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                            ae_(readView.substr(hitsIt->gapsBegin[i],gapLen).data(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*eDistScale, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                           } else {
                             useCached = true;
                             edist = edistIt->second;
@@ -414,7 +416,7 @@ public:
                           SubAlignmentKey k{hitsIt->gapsBegin[i], thisTargetLen, false, seqhash};
                           auto edistIt = edmap.find(k);
                          if (edistIt == edmap.end())  {
-                           ae_(revReadView.substr(hitsIt->gapsBegin[i],gapLen).data(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                           ae_(revReadView.substr(hitsIt->gapsBegin[i],gapLen).data(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*eDistScale, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                          } else {
                            useCached = true;
                            edist = edistIt->second;

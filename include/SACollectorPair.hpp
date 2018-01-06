@@ -823,7 +823,7 @@ private:
                   matchedLen = std::min((uint32_t)readLen, (uint32_t)newExtend+k);
                 }*/
 
-		//Intelligent Skipping - approach2
+		//Intelligent Skipping - approach1
 		matchedLen = newExtend;
 
                 /**auto newExtend =  saSearcher.extendSafe(lb, ub, k, rb, readEndIt, safeLength);
@@ -948,7 +948,18 @@ private:
         //rb = rb+matchedLen-k+1;
 
 	//Intelligent Skipping - approach2
-	rb = std::min(rb+matchedLen+1,readEndIt);
+	uint32_t checkMissMatch = k/2;
+
+	rb = std::min(rb+matchedLen-checkMissMatch,readEndIt);
+
+        auto pos_ = std::distance(readStartIt, rb);
+	auto mer_ = MerT(read.c_str() + pos_);
+	auto complementMer_ = mer.getRC();
+	
+	if (khash.find(mer_.word(0))==hashEnd_ and khash.find(complementMer_.word(0))==hashEnd_){
+	  rb = std::min(rb+matchedLen+1,readEndIt);
+	}	
+
 
         // If NIP skipping is *enabled*, and we got to the current position
         // by doing an LCE query, then we allow ourselves to *double check*
