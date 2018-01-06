@@ -68,6 +68,9 @@ public:
     
     ~SECollector() {
         if (numCacheHits > 0) { std::cerr << "\n\n\n numCacheHits : " << numCacheHits << "\n\n\n"; }
+        else {
+            std::cerr  << "\n\n in SECollector destructor --- no cached hits!\n\n";
+        }
     }
 
     //int32_t hammingDist(QuasiAlignment& q, std::string& read, std::string& seq,  Offset trancriptLen, int maxDist);
@@ -220,7 +223,7 @@ public:
                   int32_t startEditDistance = startEdlibResult.editDistance;*/
 
                   //@debug purpose
-                  auto readName = rapmap::utils::getReadName(readT) ;
+                  //auto readName = rapmap::utils::getReadName(readT) ;
 		  startEditDistance  = 0;
                   startHit.editD = 0; ;
 		  for(int i=0;i<startHit.gapsBegin.size();++i){
