@@ -8,6 +8,7 @@
 #include "SASearcher.hpp"
 #include "EditDistance.hpp"
 #include "edlib.h"
+#include "sparsepp/spp.h"
 
 #include <algorithm>
 #include <iostream>
@@ -65,6 +66,24 @@ public:
         : rmi_(rmi) {}
 
     //int32_t hammingDist(QuasiAlignment& q, std::string& read, std::string& seq,  Offset trancriptLen, int maxDist);
+    class SubAlignmentKey {
+        public:
+        //SubAlignmentKey(const SubAlignmentKey&& o) = default;
+        //SubAlignmentKey& operator=(const SubAlignmentKey&& o) = default;
+        uint32_t qstart;
+        uint32_t qlen;
+        bool fwd;
+        uint64_t refhash;
+        std::size_t getHash() const { return XXH64(reinterpret_cast<const void*>(this), sizeof(this), 314); }
+        bool operator==(const SubAlignmentKey& o) const {
+            return o.qstart == qstart and o.qlen == qlen and o.fwd == fwd and o.refhash == refhash;
+        }
+    };
+
+    class SubKeyHasher {
+        public:
+        size_t operator()(const SubAlignmentKey& k) const { return k.getHash(); }
+    };
 
    template <typename ReadStructT>
        bool compute(ReadStructT& readT,
@@ -151,6 +170,14 @@ public:
 	  // get transcript id
 	  // sequence and read sequence
 	  // and position
+      bool multiHit = hits.size() > 1;
+      
+      spp::sparse_hash_map<SubAlignmentKey, int, SubKeyHasher> edmap;
+            auto cacheResult = [&edmap](uint32_t gapStart, uint32_t refGapLen, bool readFW, const char* refSeq, int edist) -> void  {
+                auto seqhash = XXH64(reinterpret_cast<const void*>(refSeq), refGapLen, 314);
+                SubAlignmentKey k{gapStart, refGapLen, readFW, seqhash};
+                edmap[k] = edist;
+            };
 
           if(!startHit.toAlign){
                   uint32_t txpID = startHit.tid ;
@@ -213,10 +240,11 @@ public:
 		    
                     auto& startEdlibResult = ae_.result();
 
-	
+
 		    if(startEdlibResult.editDistance != -1 and startEditDistance!=-1) {
                       startEditDistance += startEdlibResult.editDistance;
                       startHit.editD += startEdlibResult.editDistance;
+                      //if (multiHit) { cacheResult(startHit.gapsBegin[i], thisTargetLen, startHit.fwd, thisTxpSeq, startEdlibResult.editDistance); }
 	 	    } else {
 		      startEditDistance = -1;
 		      startHit.editD = -1;
@@ -354,19 +382,42 @@ public:
                         const char* thisTxpSeq = concatText.data() + globalPos;
                         uint32_t thisTargetLen = extend;
 
-
+                        int edist = -1;
+                        bool useCached = false;
 		        if(hitsIt->fwd){
-                          ae_(read.substr(hitsIt->gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                      //auto seqhash = XXH64(reinterpret_cast<const void*>(thisTxpSeq), thisTargetLen, 314);
+                      //SubAlignmentKey k{startHit.gapsBegin[i], thisTargetLen, true, seqhash};
+                      //auto edistIt = edmap.find(k);
+                      //if (edistIt == edmap.end())  {
+                      ae_(read.substr(startHit.gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                      //} else {
+                      //    useCached = true;
+                      //    edist = edistIt->second;
+                      //}
 		        } else  {
 		          auto revRead = rapmap::utils::reverseComplement(read);
-                          ae_(revRead.substr(hitsIt->gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                  //                  auto seqhash = XXH64(reinterpret_cast<const void*>(thisTxpSeq), thisTargetLen, 314);
+                  //    SubAlignmentKey k{startHit.gapsBegin[i], thisTargetLen, false, seqhash};
+                  //    auto edistIt = edmap.find(k);
+                  //    if (edistIt == edmap.end())  {
+                      ae_(revRead.substr(startHit.gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                  //    } else {
+                  //        useCached = true;
+                  //        edist = edistIt->second;
+                  //    }
 		        }
 
+                    if (!useCached) {
                         auto& thisEdlibResult = ae_.result();
+                        edist = thisEdlibResult.editDistance;
+                    }
 
 
-		        if(thisEdlibResult.editDistance!=-1 and thisEditDistance != -1){
-                          thisEditDistance += thisEdlibResult.editDistance;
+		        if(edist!=-1 and thisEditDistance != -1){
+                          thisEditDistance += edist;
+                          //if (!useCached) {
+                          //    cacheResult(startHit.gapsBegin[i], thisTargetLen, startHit.fwd, thisTxpSeq, edist); 
+                          //}
 			} else {
 			   hitsIt->editD = -1;
 			   thisEditDistance = -1;
