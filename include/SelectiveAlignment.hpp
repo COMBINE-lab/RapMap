@@ -242,7 +242,7 @@ public:
 		    if(startEdlibResult.editDistance != -1 and startEditDistance!=-1) {
                       startEditDistance += startEdlibResult.editDistance;
                       startHit.editD += startEdlibResult.editDistance;
-                      //if (multiHit) { cacheResult(startHit.gapsBegin[i], thisTargetLen, startHit.fwd, thisTxpSeq, startEdlibResult.editDistance); }
+                      if (multiHit) { cacheResult(startHit.gapsBegin[i], thisTargetLen, startHit.fwd, thisTxpSeq, startEdlibResult.editDistance); }
 	 	    } else {
 		      startEditDistance = -1;
 		      startHit.editD = -1;
@@ -383,39 +383,39 @@ public:
                         int edist = -1;
                         bool useCached = false;
 		        if(hitsIt->fwd){
-                      //auto seqhash = XXH64(reinterpret_cast<const void*>(thisTxpSeq), thisTargetLen, 314);
-                      //SubAlignmentKey k{startHit.gapsBegin[i], thisTargetLen, true, seqhash};
-                      //auto edistIt = edmap.find(k);
-                      //if (edistIt == edmap.end())  {
-                      ae_(read.substr(hitsIt->gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
-                      //} else {
-                      //    useCached = true;
-                      //    edist = edistIt->second;
-                      //}
+                          auto seqhash = XXH64(reinterpret_cast<const void*>(thisTxpSeq), thisTargetLen, 314);
+                          SubAlignmentKey k{hitsIt->gapsBegin[i], thisTargetLen, true, seqhash};
+                          auto edistIt = edmap.find(k);
+                          if (edistIt == edmap.end())  {
+                            ae_(read.substr(hitsIt->gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                          } else {
+                            useCached = true;
+                            edist = edistIt->second;
+                          }
 		        } else  {
 		          auto revRead = rapmap::utils::reverseComplement(read);
-                  //                  auto seqhash = XXH64(reinterpret_cast<const void*>(thisTxpSeq), thisTargetLen, 314);
-                  //    SubAlignmentKey k{startHit.gapsBegin[i], thisTargetLen, false, seqhash};
-                  //    auto edistIt = edmap.find(k);
-                  //    if (edistIt == edmap.end())  {
-                      ae_(revRead.substr(hitsIt->gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
-                  //    } else {
-                  //        useCached = true;
-                  //        edist = edistIt->second;
-                  //    }
+                          auto seqhash = XXH64(reinterpret_cast<const void*>(thisTxpSeq), thisTargetLen, 314);
+                          SubAlignmentKey k{hitsIt->gapsBegin[i], thisTargetLen, false, seqhash};
+                          auto edistIt = edmap.find(k);
+                         if (edistIt == edmap.end())  {
+                           ae_(revRead.substr(hitsIt->gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                         } else {
+                           useCached = true;
+                           edist = edistIt->second;
+                          }
 		        }
 
-                    if (!useCached) {
-                        auto& thisEdlibResult = ae_.result();
-                        edist = thisEdlibResult.editDistance;
-                    }
+                        if (!useCached) {
+                          auto& thisEdlibResult = ae_.result();
+                          edist = thisEdlibResult.editDistance;
+                        }
 
 
 		        if(edist!=-1 and thisEditDistance != -1){
                           thisEditDistance += edist;
-                          //if (!useCached) {
-                          //    cacheResult(startHit.gapsBegin[i], thisTargetLen, startHit.fwd, thisTxpSeq, edist); 
-                          //}
+                          if (!useCached) {
+                              cacheResult(hitsIt->gapsBegin[i], thisTargetLen, hitsIt->fwd, thisTxpSeq, edist); 
+                          }
 			} else {
 			   hitsIt->editD = -1;
 			   thisEditDistance = -1;
