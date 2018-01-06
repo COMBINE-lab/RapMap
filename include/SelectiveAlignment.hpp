@@ -9,6 +9,7 @@
 #include "EditDistance.hpp"
 #include "edlib.h"
 #include "sparsepp/spp.h"
+#include "string_view.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -117,6 +118,7 @@ public:
 	  auto& txpStarts = rmi_->txpOffsets ;
 	  auto& SA = rmi_->SA;
 	  auto& concatText = rmi_->seq;
+      stx::string_view concatTextView(concatText);
 	  auto& txpLens = rmi_->txpLens ;
           auto& khash = rmi_->khash ;
 
@@ -124,6 +126,7 @@ public:
 
 
           auto& read = readT.seq;
+          stx::string_view readView(read);
 
           rapmap::utils::my_mer mer;
 
@@ -135,17 +138,17 @@ public:
           //start hit information
 	  auto& startHit = hits.front();
 	  auto lcpLength = startHit.lcpLength ;
-	  auto readLen = read.length();
+	  auto readLen = readView.length();
 
           //uint8_t editThreshold = readLen/2 ;
 	  int32_t startEditDistance = 0;
 
           bool skipLCPOpt{false};
           bool currentValid{false};
-          std::string currentKmer;
+          stx::string_view currentKmer;
 
         //TODO check if lcp is really returning same sequences
-          std::string firsttidString ;
+          stx::string_view firsttidString ;
 
 
 	  //debug
@@ -238,10 +241,11 @@ public:
 		    const char* thisTxpSeq = concatText.data() + globalPos;
 		    uint32_t thisTargetLen = extend;
 		    if(startHit.fwd){
-                      ae_(read.substr(startHit.gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                      ae_(readView.substr(startHit.gapsBegin[i],gapLen).data(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
 		    } else  {
 		      auto revRead = rapmap::utils::reverseComplement(read);
-                      ae_(revRead.substr(startHit.gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+              stx::string_view revReadView(revRead);
+                      ae_(revReadView.substr(startHit.gapsBegin[i],gapLen).data(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
 		    }
 		    
                     auto& startEdlibResult = ae_.result();
@@ -288,8 +292,8 @@ public:
                  }
 
                 /* Take the kmer from the transcript */
-                currentKmer = concatText.substr(globalPos, k);
-                firsttidString = concatText.substr(globalPos, 75);
+                currentKmer = concatTextView.substr(globalPos, k);
+                firsttidString = concatTextView.substr(globalPos, 75);
 
 
                 if(currentKmer.length() == k and currentKmer.find_first_of('$') == std::string::npos){
@@ -395,7 +399,7 @@ public:
                           SubAlignmentKey k{hitsIt->gapsBegin[i], thisTargetLen, true, seqhash};
                           auto edistIt = edmap.find(k);
                           if (edistIt == edmap.end())  {
-                            ae_(read.substr(hitsIt->gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                            ae_(readView.substr(hitsIt->gapsBegin[i],gapLen).data(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                           } else {
                             useCached = true;
                             edist = edistIt->second;
@@ -403,11 +407,12 @@ public:
                           }
 		        } else  {
 		          auto revRead = rapmap::utils::reverseComplement(read);
+                  stx::string_view revReadView(revRead);
                           auto seqhash = XXH64(reinterpret_cast<const void*>(thisTxpSeq), thisTargetLen, 314);
                           SubAlignmentKey k{hitsIt->gapsBegin[i], thisTargetLen, false, seqhash};
                           auto edistIt = edmap.find(k);
                          if (edistIt == edmap.end())  {
-                           ae_(revRead.substr(hitsIt->gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                           ae_(revReadView.substr(hitsIt->gapsBegin[i],gapLen).data(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                          } else {
                            useCached = true;
                            edist = edistIt->second;
