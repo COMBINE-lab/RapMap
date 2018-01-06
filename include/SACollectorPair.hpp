@@ -65,6 +65,10 @@ public:
       : rmi_(rmi), hashEnd_(rmi->khash.end()), disableNIP_(false),
         covReq_(0.0), maxInterval_(1000),
         strictCheck_(false) {}
+  
+  ~SACollectorPair() {
+    std::cerr << "\n\n in SACollectorPair destructor!\n";
+  }
 
   enum HitStatus { ABSENT = -1, UNTESTED = 0, PRESENT = 1 };
   // Record if k-mers are hits in the
