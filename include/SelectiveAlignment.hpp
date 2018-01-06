@@ -387,7 +387,7 @@ public:
                       //SubAlignmentKey k{startHit.gapsBegin[i], thisTargetLen, true, seqhash};
                       //auto edistIt = edmap.find(k);
                       //if (edistIt == edmap.end())  {
-                      ae_(read.substr(startHit.gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                      ae_(read.substr(hitsIt->gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                       //} else {
                       //    useCached = true;
                       //    edist = edistIt->second;
@@ -398,7 +398,7 @@ public:
                   //    SubAlignmentKey k{startHit.gapsBegin[i], thisTargetLen, false, seqhash};
                   //    auto edistIt = edmap.find(k);
                   //    if (edistIt == edmap.end())  {
-                      ae_(revRead.substr(startHit.gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
+                      ae_(revRead.substr(hitsIt->gapsBegin[i],gapLen).c_str(), gapLen, thisTxpSeq, thisTargetLen, edlibNewAlignConfig((editThreshold+1)*3, EDLIB_MODE_NW, EDLIB_TASK_DISTANCE));
                   //    } else {
                   //        useCached = true;
                   //        edist = edistIt->second;
