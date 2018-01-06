@@ -67,7 +67,7 @@ public:
         : rmi_(rmi) {}
     
     ~SECollector() {
-        std::cerr << "\n\n\n numCacheHits : " << numCacheHits << "\n\n\n";
+        if (numCacheHits > 0) { std::cerr << "\n\n\n numCacheHits : " << numCacheHits << "\n\n\n"; }
     }
 
     //int32_t hammingDist(QuasiAlignment& q, std::string& read, std::string& seq,  Offset trancriptLen, int maxDist);
