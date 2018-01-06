@@ -76,7 +76,7 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
   //uint32_t maxInsertSize_{1000};
   bool foundHit{false};
 
-  SECollector<RapMapIndexT> hitSECollector(&rmi);
+//  SECollector<RapMapIndexT> hitSECollector(&rmi);
   std::vector<QuasiAlignment> hits;
 
   std::set<uint32_t> commonTids;
