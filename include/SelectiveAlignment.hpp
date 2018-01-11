@@ -306,6 +306,9 @@ public:
                     currentValid = false ;
                 }
           }
+	  // Removing vectors which are not needed any more
+	  startHit.gapsBegin.erase(startHit.gapsBegin.begin(),startHit.gapsBegin.end());
+	  startHit.gapsEnd.erase(startHit.gapsEnd.begin(),startHit.gapsEnd.end());
 
 	  spp::sparse_hash_map<int,OffsetT> tidPos; 
        
@@ -467,7 +470,9 @@ public:
                         hitsIt->toAlign = false;
                       }
                 }
-
+		// Removing vectors which are not needed any more
+		hitsIt->gapsBegin.erase(hitsIt->gapsBegin.begin(),hitsIt->gapsBegin.end());
+		hitsIt->gapsEnd.erase(hitsIt->gapsEnd.begin(),hitsIt->gapsEnd.end());
             }
         }
 

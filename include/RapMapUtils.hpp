@@ -468,20 +468,20 @@ namespace rapmap {
         uint32_t lcpLength;
         size_t coverage{0};
 
-        int32_t hamD{-1};
+        //int32_t hamD{-1};
         bool toAlign{false};
         int32_t editD{-1} ;
-        std::string cigar{"100M"};
+        //std::string cigar{"100M"};
 
         //same information for the matepair
         //which needs to be updated occasionally
         bool mateToAlign{false};
         int32_t mateEditD{-1};
-        std::string mateCigar{"100M"};
+        //std::string mateCigar{"100M"};
 
         MateStatus mateStatus;
-        bool isLCPused{false};
-        bool isMMPused{false};
+        //bool isLCPused{false};
+        //bool isMMPused{false};
 	std::vector<int32_t> gapsBegin;
 	std::vector<int32_t> mateGapsBegin;
 	std::vector<int32_t> gapsEnd;
@@ -886,11 +886,11 @@ namespace rapmap {
                                 // Fill in the mate info for alignment related information
                                 qaln.toAlign = leftIt->toAlign;
                                 qaln.editD = leftIt->editD;
-                                qaln.cigar = leftIt->cigar;
+                                //qaln.cigar = leftIt->cigar;
 
                                 qaln.mateToAlign = rightIt->toAlign;
                                 qaln.mateEditD = rightIt->editD;
-                                qaln.mateCigar = rightIt->cigar;
+                                //qaln.mateCigar = rightIt->cigar;
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
 
                                 ++numHits;
@@ -960,11 +960,11 @@ namespace rapmap {
                                 // Fill in the mate info for alignment related information
                                 qaln.toAlign = leftIt->toAlign;
                                 qaln.editD = leftIt->editD;
-                                qaln.cigar = leftIt->cigar;
+                                //qaln.cigar = leftIt->cigar;
 
                                 qaln.mateToAlign = rightIt->toAlign;
                                 qaln.mateEditD = rightIt->editD;
-                                qaln.mateCigar = rightIt->cigar;
+                                //qaln.mateCigar = rightIt->cigar;
 
 
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;

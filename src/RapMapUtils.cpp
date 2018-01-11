@@ -184,7 +184,7 @@ namespace rapmap {
 
                     //this is quality score and edit score
                     if(qa.toAlign){
-                    	currCigarStr = qa.cigar.c_str() ;
+                    	//currCigarStr = qa.cigar.c_str() ;
                     }
 
                     if (!qa.fwd) {
@@ -349,10 +349,10 @@ namespace rapmap {
                         auto currCigarStr1 = cigarStr1.c_str();
                         auto currCigarStr2 = cigarStr2.c_str();
                         if(qa.toAlign){
-                            currCigarStr1 = qa.cigar.c_str();
+                            //currCigarStr1 = qa.cigar.c_str();
                         }
                         if(qa.mateToAlign){
-                            currCigarStr2 = qa.mateCigar.c_str();
+                            //currCigarStr2 = qa.mateCigar.c_str();
                         }
 
                     //if(qa.toAlign){
@@ -412,7 +412,7 @@ namespace rapmap {
                         std::string* unalignedName{nullptr};
                         std::string* readTemp{nullptr};
                         bool toAlign;
-                        std::string cigar;
+                        //std::string cigar;
                         int32_t editD;
                         //std::string* qualTemp{nullptr};
 
@@ -430,7 +430,7 @@ namespace rapmap {
                             flags = flags1;
                             unalignedFlags = flags2;
 
-                            cigarStr = &cigarStr1;
+                            //cigarStr = &cigarStr1;
 
                             haveRev = &haveRev1;
                             readTemp = &read1Temp;
@@ -439,7 +439,7 @@ namespace rapmap {
                             //if left is aligned then
                             //toAlign is qa
                             toAlign = qa.toAlign;
-                            cigar = qa.cigar;
+                            //cigar = qa.cigar;
                             editD = qa.editD;
                         } else { // right read
                             alignedName = &mateName;
@@ -454,12 +454,12 @@ namespace rapmap {
                             flags = flags2;
                             unalignedFlags = flags1;
 
-                            cigarStr = &cigarStr2;
+                            //cigarStr = &cigarStr2;
                             haveRev = &haveRev2;
                             readTemp = &read2Temp;
                             //qualTemp = &qual2Temp;
                             toAlign = qa.mateToAlign;
-                            cigar = qa.mateCigar;
+                            //cigar = qa.mateCigar;
                             editD = qa.mateEditD;
                         }
 
