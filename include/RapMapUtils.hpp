@@ -486,6 +486,9 @@ namespace rapmap {
 	std::vector<int32_t> mateGapsBegin;
 	std::vector<int32_t> gapsEnd;
 	std::vector<int32_t> mateGapsEnd;
+
+      bool resOrphan{false} ; // don't align if it is true 
+
     };
 
     struct HitInfo {

@@ -224,7 +224,7 @@ public:
         }
         if ( !FileExists_(dataFN.c_str()) ) {
             std::cerr << "BooM: Looking for key-value file [" << dataFN << "], which doesn't exist! exiting.\n";
-            std::exit(1);
+            std:exit(1);
         }
 
         // load the perfect hash function

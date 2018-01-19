@@ -50,6 +50,13 @@ namespace rapmap {
         using SAHitMap = std::map<int, rapmap::utils::ProcessedSAHit>;
         using ProcessedSAHit = rapmap::utils::ProcessedSAHit;
 
+      enum class MateSAStatus : uint8_t {
+        LEFT_END_FWD = 0,
+          LEFT_END_RC = 1,
+          RIGHT_END_FWD = 2,
+          RIGHT_END_RC = 3
+          } ;
+
         //previously used methods
 
         // This function is called from
@@ -71,7 +78,19 @@ namespace rapmap {
                        std::vector<QuasiAlignment>& jointHits,
                        uint32_t editDistance, RapMapIndexT& rmi, uint32_t maxInsertSize_);*/
 
-	bool mergeMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
+      /*
+      bool rescueOrphan(fastx_parser::ReadPair& rpair,
+                        SAHitMap& alignedMap,
+                        rapmap::hit_manager_sa::MateSASt atus& str,
+                        std::vector<QuasiAlignment>& jointHits,
+                        RapMapIndexT& rmi) ;*/
+
+
+      
+      bool mergeMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
+                    std::vector<QuasiAlignment>& jointHits);
+
+      bool mergeMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
                        std::vector<QuasiAlignment>& jointHits);
 
 

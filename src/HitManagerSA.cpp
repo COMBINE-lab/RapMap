@@ -6,12 +6,15 @@
 #include "SelectiveAlignment.hpp"
 
 #include "edlib.h"
+//#include "ssw_cpp.h"
 #include <algorithm>
 #include <iostream>
 #include <iterator>
 #include <set>
 
 #include <type_traits>
+
+#define FRAG_LEN 1000 //assume fragment length of 1000
 
 namespace rapmap {
 namespace hit_manager_sa {
@@ -32,7 +35,288 @@ int32_t alignRead(std::string& read,
 
 }*/
 
+template <typename RapMapIndexT>
+bool rescueOrphan(fastx_parser::ReadPair& rpair,
+                  SAHitMap& alignedMap,
+                  rapmap::hit_manager_sa::MateSAStatus str,
+                  std::vector<QuasiAlignment>& jointHits,
+                  RapMapIndexT& rmi){
 
+  bool flag = (rpair.first.name == "10000007_1_4452_4695_155/1") ;
+
+  using OffsetT = typename RapMapIndexT::IndexType;
+  SAHitMap mateMap ;
+
+  if(flag) std::cerr << "\nWe are in Orphan Rescue map size: "<<alignedMap.size() <<"\n" ;
+
+  constexpr const int32_t signedZero{0};
+  //constexpr const int32_t COV_THRESHOLD = rpair.first.seq.length() + rpair.second.seq.length() - 31 ;
+
+  typedef struct covInfo {
+  public:
+    covInfo() {
+      cov = 0;
+      endPos = 0;
+      rc = false;
+      mmp = false;
+    };
+    // covInfo(SATxpQueryPos s,int c, int e,bool r) : saTxpQp(s), cov(c),
+    // endPos(e) {rc = r;};
+    covInfo(int c, int e, bool r, bool m) : cov(c), endPos(e), rc(r), mmp(m){};
+    // SATxpQueryPos saTxpQp ;
+    void operator=(const covInfo& CV) {
+      cov = CV.cov;
+      endPos = CV.endPos;
+      rc = CV.rc;
+      mmp = CV.mmp;
+    }
+
+    int cov;
+    int endPos;
+    bool rc;
+    bool mmp;
+    bool orphanActive{false} ;
+    int32_t matePos{0} ;
+    bool mateDir;
+
+  };
+
+
+  bool orphanRes{false} ;
+  //AlignerEngine ae ;
+  //find out transcripts from alignedMap end
+
+
+
+  for(auto& ph : alignedMap){
+    auto tid = ph.first ;
+    if(alignedMap[tid].active){
+
+      if(flag)std::cerr << "\nThis transcript is active\n" ;
+
+      auto& tqvec = alignedMap[tid].tqvec ;
+      //take the leftmost position within transcript
+      std::sort(tqvec.begin(), tqvec.end(),
+                [](const SATxpQueryPos& a, const SATxpQueryPos& b) -> bool {
+                  return a.pos < b.pos;
+                });
+      //find the covered one
+      std::map<int32_t, covInfo> hitCov ;
+      for(auto& tq : tqvec){
+        int numCov = 0 ;
+        int32_t hitKey = tq.pos - tq.queryPos ;
+        //not in dict
+        if(hitCov.count(hitKey) == 0){
+          covInfo cInfo(tq.matchedLen, tq.pos + tq.matchedLen,
+                        tq.queryRC,
+                        tq.matchedLen == rpair.first.seq.length());
+          hitCov[hitKey] = cInfo ;
+        }else{
+          auto& curr = hitCov[hitKey] ;
+          if(curr.endPos > tq.pos){
+            curr.cov += tq.pos + tq.matchedLen - curr.endPos ;
+          }else{
+            curr.cov += tq.matchedLen ;
+            curr.endPos = tq.pos + tq.matchedLen ;
+          }
+        }
+      }//hash values for this transcript, now align
+      using pair_type = typename decltype(hitCov)::value_type  ;
+      //left most hit with most coverage
+      /*
+      auto pr = std::max_element
+        (
+         std::begin(hitCov), std::end(hitCov),
+         [] (const pair_type & p1, const pair_type & p2) {
+           return ((p1.second.cov < p2.second.cov) || ((p1.second.cov == p2.second.cov) && (p1.first < p2.first)));
+         }
+         );*/
+
+
+      //test without string_view
+      for(auto& pr : hitCov){
+
+        auto aligneStartPos = pr.first ;
+
+        auto mateStartPos = pr.first + 1 ;
+        auto mateEndPos = mateStartPos + FRAG_LEN ;
+
+        auto& txpStarts = rmi.txpOffsets ;
+
+        auto& concatText = rmi.seq;
+        //stx::string_view concatTextView(concatText);
+        auto& txpLens = rmi.txpLens ;
+
+        OffsetT globalPos = txpStarts[tid] ;
+        OffsetT thisTxpLen = txpLens[tid] ;
+
+
+
+
+        std::string readToAlign;
+        bool mateDir{false} ;
+        switch(str){
+        case rapmap::hit_manager_sa::MateSAStatus::LEFT_END_FWD :
+          readToAlign = rapmap::utils::reverseComplement(rpair.second.seq) ;
+          mateEndPos = std::min(static_cast<int32_t>(thisTxpLen) , mateEndPos) ;
+          hitCov[aligneStartPos].mateDir = false ;
+          break ;
+        case rapmap::hit_manager_sa::MateSAStatus::LEFT_END_RC :
+          mateStartPos = std::max(aligneStartPos - FRAG_LEN + static_cast<int32_t>(rpair.second.seq.length()), 0) ;
+          mateEndPos = std::min(aligneStartPos + static_cast<int32_t>(rpair.second.seq.length()) - 1, static_cast<int32_t>(thisTxpLen)) ;
+          readToAlign = rpair.second.seq ;
+          hitCov[aligneStartPos].mateDir = true;
+          break ;
+        case rapmap::hit_manager_sa::MateSAStatus::RIGHT_END_FWD :
+          mateEndPos = std::min(static_cast<int32_t>(thisTxpLen), mateEndPos) ;
+          readToAlign = rapmap::utils::reverseComplement(rpair.first.seq) ;
+          hitCov[aligneStartPos].mateDir = true ;
+          break ;
+        case rapmap::hit_manager_sa::MateSAStatus::RIGHT_END_RC :
+          mateStartPos = std::max(aligneStartPos - FRAG_LEN + static_cast<int32_t>(rpair.first.seq.length()), 0) ;
+          mateEndPos = std::min(aligneStartPos + static_cast<int32_t>(rpair.first.seq.length()) - 1, static_cast<int32_t>(thisTxpLen)) ;
+          readToAlign = rpair.first.seq ;
+          hitCov[aligneStartPos].mateDir = false ;
+          break ;
+
+        }
+
+
+        const char* thisTxpSeq = concatText.data() + globalPos + mateStartPos;
+
+
+        auto thisEdlibResult = edlibAlign(readToAlign.c_str(), readToAlign.length(), thisTxpSeq,
+        (mateEndPos-mateStartPos+1) , edlibNewAlignConfig(10, EDLIB_MODE_HW, EDLIB_TASK_LOC)); // hardcoded for now
+
+        auto thisEditDistance = thisEdlibResult.editDistance ;
+        int* startLocations = thisEdlibResult.startLocations ;
+
+        if(startLocations != NULL){
+          hitCov[aligneStartPos].cov += (readToAlign.length() - thisEditDistance) ;
+          hitCov[aligneStartPos].matePos = startLocations[0] + mateStartPos ;
+          hitCov[aligneStartPos].orphanActive = true ;
+        }
+
+
+        /*
+        //Using https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library/
+        //instead of edlib
+
+        int32_t maskLen = rpair.first.seq.length()/2 ;
+        maskLen = maskLen < 15 ? 15 : maskLen ;
+        // Declares a default Aligner
+        StripedSmithWaterman::Aligner aligner;
+        // Declares a default filter
+        StripedSmithWaterman::Filter filter;
+        // Declares an alignment that stores the result
+        StripedSmithWaterman::Alignment alignment;
+        // Aligns the query to the ref
+        bool success = aligner.Align(readToAlign.c_str(),
+                                    thisTxpSeq,
+                                    (mateEndPos - mateStartPos + 1),
+                                    filter,
+                                    &alignment,
+                                    maskLen);
+        */
+
+
+        if(flag) std::cerr << "\nAbout to rescue orphan\t"<< thisEditDistance << "\n" ;
+        if(flag) std::cerr << "\naligned end maps to\ttranscript: "<<tid<<"\tAligned Pos: "
+                          <<pr.first<<"\tmate maps from: "
+                          <<mateStartPos<<"\t"
+                          <<"ends at: "<<mateEndPos
+                          <<"\ttxpLen "<<thisTxpLen<<"\n"
+                          <<rpair.first.seq<<"\n"
+                          <<rpair.second.seq<<"\n"
+                          <<readToAlign<<"\n"
+                          <<std::string(thisTxpSeq,1000)<<"\n";
+
+
+
+      }
+
+      //take out the active and most covered candidate, if there is a tie take the left most
+      //first erase the parts that are non active
+      auto maxIt = hitCov.begin() ;
+      for(auto it = hitCov.begin() ; it != hitCov.end() ; ++it){
+        if(!maxIt->second.orphanActive){
+          maxIt = it ;
+        }else if(it->second.orphanActive and it->second.cov > maxIt->second.cov){
+          maxIt = it ;
+        }
+      }
+
+      //fill in jointHits
+      if(maxIt->second.orphanActive){
+        if(flag) std::cerr << "\nOrphan rescued\n" ;
+        //orphan rescued
+        orphanRes = true ;
+
+        auto hitPos1 = maxIt->first  ;
+        auto hitPos2 = maxIt->second.matePos ;
+        int32_t startRead1 = std::max(hitPos1, signedZero);
+        int32_t startRead2 = std::max(hitPos2, signedZero);
+
+        bool read1First{(startRead1 < startRead2)};
+        int32_t fragStartPos = read1First ? startRead1 : startRead2;
+        int32_t fragEndPos = read1First
+                                  ? (startRead2 + rpair.second.seq.length())
+                                  : (startRead1 + rpair.first.seq.length());
+        uint32_t fragLen = fragEndPos - fragStartPos;
+        if(str == rapmap::hit_manager_sa::MateSAStatus::LEFT_END_FWD || str == rapmap::hit_manager_sa::MateSAStatus::LEFT_END_RC){
+          jointHits.emplace_back(tid, hitPos1, !hitCov[hitPos1].rc,
+                                rpair.first.seq.length(),
+                                0, // leftHitCov[vp.first].saTxpQp.lcpLength,
+                                fragLen, true);
+          auto& qaln = jointHits.back();
+
+          qaln.mateLen = rpair.second.seq.length();
+          qaln.matePos = hitPos2;
+
+          qaln.mateIsFwd = !(hitCov[hitPos1].mateDir); //! vp.second.queryRC ;
+          qaln.mateStatus = rapmap::utils::MateStatus::PAIRED_END_PAIRED;
+          qaln.editD = 0;
+          qaln.mateEditD = 0;
+          qaln.resOrphan = true ;
+
+        }else{
+          jointHits.emplace_back(tid, hitPos2, !hitCov[hitPos1].mateDir,
+                                  rpair.first.seq.length(),
+                                  0, // leftHitCov[vp.first].saTxpQp.lcpLength,
+                                  fragLen, true);
+
+          auto& qaln = jointHits.back();
+
+          qaln.mateLen = rpair.second.seq.length();
+          qaln.matePos = hitPos2;
+
+          qaln.mateIsFwd = !(hitCov[hitPos1].rc); //! vp.second.queryRC ;
+          qaln.mateStatus = rapmap::utils::MateStatus::PAIRED_END_PAIRED;
+          qaln.editD = 0;
+          qaln.mateEditD = 0;
+          qaln.resOrphan = true ;
+        }
+
+      }//edit distance checked
+
+
+    } //end active check
+    else{
+      if(flag) std::cerr << "\nThis transcript is not active\n" ;
+    }
+
+  } // for loop
+
+  if(jointHits.size() > 0){
+    std::sort(jointHits.begin(), jointHits.end(),
+              [](const QuasiAlignment& a, const QuasiAlignment& b)-> bool {
+                return a.tid < b.tid;
+              } );
+  }
+
+  return orphanRes ;
+
+}
 
 template <typename RapMapIndexT>
 bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
@@ -98,6 +382,7 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
   // default value (false) listed above.
   //if (commonTids.size() > 0) {
 
+
     // for each common tid check
     // if both the end tell us
     // something
@@ -160,10 +445,10 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
 	    if(it->second.endPos - it->first < rpair.first.seq.length()){
 	      it->second.gapsBegin.push_back(it->second.endPos - it->first);
 	      it->second.gapsEnd.push_back(rpair.first.seq.length());
-	    }	
+	    }
 	  }
         }
-	
+
 
         std::map<int32_t, covInfo> rightHitCov;
         {
@@ -193,13 +478,13 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
 	        }
                 curr.cov += it->matchedLen;
                 curr.endPos = it->pos + it->matchedLen;
-	        
+
               }
-            }	
+            }
             ++it;
           }
 	  for(auto it = rightHitCov.begin(); it!=rightHitCov.end(); ++it){
-	    
+
 	    if(it->second.endPos - it->first < rpair.second.seq.length()){
 	      it->second.gapsBegin.push_back(it->second.endPos - it->first);
 	      it->second.gapsEnd.push_back(rpair.second.seq.length());
@@ -275,7 +560,7 @@ bool mergeLeftRightMap(fastx_parser::ReadPair& rpair, SAHitMap& leftMap,
 
           int32_t hitPos1 = vp.first;  // vp.first.pos - vp.first.queryPos ;
           int32_t hitPos2 = vp.second; // vp.second.pos - vp.second.queryPos ;
-	  
+
 
 
           if (leftHitCov[hitPos1].cov + rightHitCov[hitPos2].cov ==
@@ -391,7 +676,7 @@ bool mergeMap(fastx_parser::ReadSeq& rp, SAHitMap& leftMap,
 		int32_t hitPos = maxCov->first;
 		bool isFwd = !hitRC;
 		jointHits.emplace_back(tid, hitPos, isFwd, rp.seq.length(), 0,0,true);
-	
+
                 auto& qaln = jointHits.back();
                 // qaln.fwd = !leftHitCov[vp.first].rc;
                 qaln.mateStatus = rapmap::utils::MateStatus::SINGLE_END;
@@ -532,6 +817,60 @@ bool mergeLeftRightSAInts(
                      [](const QuasiAlignment& l, const QuasiAlignment& r)->bool {
                        return l.tid < r.tid;
                      });
+
+
+  //manage orphans here
+  bool orphanRes{false} ;
+
+  bool flag = (rpair.first.name == "10000007_1_4452_4695_155/1") ;
+
+  if(flag)std::cerr << "\n Status of foundHit "<<leftFwdMap.size() << "\t" << leftRcMap.size() << "\t"
+            << rightFwdMap.size() << "\t" << rightRcMap.size() << "\n" ;
+
+  if(!foundHit){
+
+
+    if(leftFwdMap.size() != 0 or rightRcMap.size() != 0){
+      //rescue right end
+      if(leftFwdMap.size() > 0){
+        //code here
+        orphanRes = rescueOrphan(rpair, leftFwdMap,
+                                rapmap::hit_manager_sa::MateSAStatus::LEFT_END_FWD,
+                                 jointHits,
+                                rmi) ;
+      }else{
+        //code here
+        orphanRes = rescueOrphan(rpair,
+                                rightRcMap,
+                                rapmap::hit_manager_sa::MateSAStatus::RIGHT_END_RC,
+                                jointHits,
+                                rmi) ;
+      }
+    }
+
+    if(leftRcMap.size() != 0 or rightFwdMap.size() != 0){
+      //rescue right end
+      if(leftRcMap.size() > 0){
+        //code here
+        orphanRes = rescueOrphan(rpair, leftRcMap,
+                                rapmap::hit_manager_sa::MateSAStatus::LEFT_END_RC,
+                                 jointHits,
+                                rmi) ;
+      }else{
+        //code here
+        orphanRes = rescueOrphan(rpair, rightFwdMap,
+                                rapmap::hit_manager_sa::MateSAStatus::RIGHT_END_FWD,
+                                 jointHits,
+                                rmi) ;
+      }
+    }
+  }
+
+  if(orphanRes){
+    foundHit = true ;
+  }
+
+
   /*
   uint32_t i = 0;
   uint32_t j = 0;
@@ -761,5 +1100,42 @@ template bool mergeLeftRightMap<SAIndex64BitPerfect>(
     fastx_parser::ReadPair& rpair, SAHitMap& leftMap, SAHitMap& rightMap,
     std::vector<QuasiAlignment>& jointHits, uint32_t editDistance,
     SAIndex64BitPerfect& rmi, uint32_t maxInsertSize_);
+
+
+
+
+  template bool rescueOrphan<SAIndex32BitDense>(
+                                                fastx_parser::ReadPair& rpair,
+                                                SAHitMap& alignedMap,
+                                                rapmap::hit_manager_sa::MateSAStatus str,
+                                                std::vector<QuasiAlignment>& jointHits,
+                                                SAIndex32BitDense& rmi) ;
+
+  template bool rescueOrphan<SAIndex64BitDense>(
+                                                     fastx_parser::ReadPair& rpair,
+                                                     SAHitMap& alignedMap,
+                                                     rapmap::hit_manager_sa::MateSAStatus str,
+                                                     std::vector<QuasiAlignment>& jointHits,
+                                                     SAIndex64BitDense& rmi) ;
+
+  template bool rescueOrphan<SAIndex32BitPerfect>(
+                                                       fastx_parser::ReadPair& rpair,
+                                                       SAHitMap& alignedMap,
+                                                       rapmap::hit_manager_sa::MateSAStatus str,
+                                                       std::vector<QuasiAlignment>& jointHits,
+                                                       SAIndex32BitPerfect& rmi) ;
+
+  template bool rescueOrphan<SAIndex64BitPerfect>(
+                                                       fastx_parser::ReadPair& rpair,
+                                                       SAHitMap& alignedMap,
+                                                       rapmap::hit_manager_sa::MateSAStatus str,
+                                                       std::vector<QuasiAlignment>& jointHits,
+                                                       SAIndex64BitPerfect& rmi) ;
+
+
+
+
+
+
 }
 }
