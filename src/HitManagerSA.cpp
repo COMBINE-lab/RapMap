@@ -35,6 +35,22 @@ int32_t alignRead(std::string& read,
 
 }*/
 
+std::string printOrient(rapmap::hit_manager_sa::MateSAStatus str){
+  switch(str){
+
+  case rapmap::hit_manager_sa::MateSAStatus::LEFT_END_FWD:
+    return "LEFT_END_FWD" ;
+  case rapmap::hit_manager_sa::MateSAStatus::LEFT_END_RC:
+    return "LEFT_END_RC" ;
+  case rapmap::hit_manager_sa::MateSAStatus::RIGHT_END_FWD:
+    return "RIGHT_END_FWD" ;
+  case rapmap::hit_manager_sa::MateSAStatus::RIGHT_END_RC:
+    return "RIGHT_END_RC" ;
+  
+  }
+  return "don't know" ;
+}
+
 template <typename RapMapIndexT>
 bool rescueOrphan(fastx_parser::ReadPair& rpair,
                   SAHitMap& alignedMap,
@@ -42,7 +58,8 @@ bool rescueOrphan(fastx_parser::ReadPair& rpair,
                   std::vector<QuasiAlignment>& jointHits,
                   RapMapIndexT& rmi){
 
-  bool flag = (rpair.first.name == "10000007_1_4452_4695_155/1") ;
+  bool flag = (rpair.first.name == "SRR2912443.678362") ;
+  //std::cerr << rpair.first.name << "\n" ;
 
   using OffsetT = typename RapMapIndexT::IndexType;
   SAHitMap mateMap ;
@@ -151,13 +168,22 @@ bool rescueOrphan(fastx_parser::ReadPair& rpair,
         OffsetT thisTxpLen = txpLens[tid] ;
 
 
+        if(flag) std::cout << "Before arithmatic "<< rpair.first.name << "\t" << rpair.first.seq.length() << "\t" << rpair.second.seq.length() <<"\t mateEndPos: "
+                  << mateEndPos << "\t mateStartPos: "
+                  << mateStartPos  << "\t" << thisTxpLen <<"\t" << printOrient(str) <<"\n" ;
 
 
         std::string readToAlign;
         bool mateDir{false} ;
+        // If LEFT_END_RC is already hanging
+        // skip it
+        // If RIGHT_END_FWD is hanging
+        bool skip{false};
+
         switch(str){
         case rapmap::hit_manager_sa::MateSAStatus::LEFT_END_FWD :
           readToAlign = rapmap::utils::reverseComplement(rpair.second.seq) ;
+          mateStartPos = std::max(0, mateStartPos) ;
           mateEndPos = std::min(static_cast<int32_t>(thisTxpLen) , mateEndPos) ;
           hitCov[aligneStartPos].mateDir = false ;
           break ;
@@ -168,6 +194,7 @@ bool rescueOrphan(fastx_parser::ReadPair& rpair,
           hitCov[aligneStartPos].mateDir = true;
           break ;
         case rapmap::hit_manager_sa::MateSAStatus::RIGHT_END_FWD :
+          mateStartPos = std::max(0,mateStartPos) ;
           mateEndPos = std::min(static_cast<int32_t>(thisTxpLen), mateEndPos) ;
           readToAlign = rapmap::utils::reverseComplement(rpair.first.seq) ;
           hitCov[aligneStartPos].mateDir = true ;
@@ -181,21 +208,35 @@ bool rescueOrphan(fastx_parser::ReadPair& rpair,
 
         }
 
+        if(mateEndPos - mateStartPos + 1 < static_cast<int32_t>(readToAlign.length()/2)){
+          continue ;
+        }
 
         const char* thisTxpSeq = concatText.data() + globalPos + mateStartPos;
+        bool localOrphanActive{false} ;
 
-
+        if(flag) std::cout << "After arithmatic \t"<< readToAlign.length() << "\t mateEndPos: " << mateEndPos << "\t mateStartPos: "
+                           << mateStartPos  <<"\t" <<(mateEndPos - mateStartPos + 1) << "\t" << thisTxpLen << "\t skip " << skip << "\n" ;
         auto thisEdlibResult = edlibAlign(readToAlign.c_str(), readToAlign.length(), thisTxpSeq,
         (mateEndPos-mateStartPos+1) , edlibNewAlignConfig(10, EDLIB_MODE_HW, EDLIB_TASK_LOC)); // hardcoded for now
 
         auto thisEditDistance = thisEdlibResult.editDistance ;
         int* startLocations = thisEdlibResult.startLocations ;
 
-        if(startLocations != NULL){
+        if(startLocations != NULL and thisEditDistance != -1){
           hitCov[aligneStartPos].cov += (readToAlign.length() - thisEditDistance) ;
           hitCov[aligneStartPos].matePos = startLocations[0] + mateStartPos ;
           hitCov[aligneStartPos].orphanActive = true ;
+          localOrphanActive = true ;
         }
+
+        /*
+        if(thisEditDistance == -1 and startLocations == NULL){
+          std::cerr << "\n What the hell\n" ;
+        }else{
+          std::cerr << "\n working " << thisEditDistance <<"\n" ;
+          }*/
+        
 
 
         /*
@@ -221,7 +262,8 @@ bool rescueOrphan(fastx_parser::ReadPair& rpair,
 
 
         if(flag) std::cerr << "\nAbout to rescue orphan\t"<< thisEditDistance << "\n" ;
-        if(flag) std::cerr << "\naligned end maps to\ttranscript: "<<tid<<"\tAligned Pos: "
+       
+        if(flag and localOrphanActive) std::cerr << "\naligned end maps to\ttranscript: "<<tid<<"\tAligned Pos: "
                           <<pr.first<<"\tmate maps from: "
                           <<mateStartPos<<"\t"
                           <<"ends at: "<<mateEndPos
