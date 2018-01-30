@@ -218,7 +218,7 @@ bool rescueOrphan(fastx_parser::ReadPair& rpair,
         if(flag) std::cout << "After arithmatic \t"<< readToAlign.length() << "\t mateEndPos: " << mateEndPos << "\t mateStartPos: "
                            << mateStartPos  <<"\t" <<(mateEndPos - mateStartPos + 1) << "\t" << thisTxpLen << "\t skip " << skip << "\n" ;
         auto thisEdlibResult = edlibAlign(readToAlign.c_str(), readToAlign.length(), thisTxpSeq,
-        (mateEndPos-mateStartPos+1) , edlibNewAlignConfig(10, EDLIB_MODE_HW, EDLIB_TASK_LOC)); // hardcoded for now
+        (mateEndPos-mateStartPos+1) , edlibNewAlignConfig(4, EDLIB_MODE_HW, EDLIB_TASK_LOC)); // hardcoded for now
 
         auto thisEditDistance = thisEdlibResult.editDistance ;
         int* startLocations = thisEdlibResult.startLocations ;
