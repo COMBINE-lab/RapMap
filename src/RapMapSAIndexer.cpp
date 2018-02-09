@@ -86,7 +86,7 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
   {
     ScopedTimer timer;
     SA.resize(tlen, 0);
-    IndexT textLen = static_cast<IndexT>(tlen);
+    //IndexT textLen = static_cast<IndexT>(tlen);
     std::cerr << "Building suffix array . . . ";
     auto ret = divsufsort64(
         reinterpret_cast<unsigned char*>(const_cast<char*>(concatText.data())),
@@ -129,11 +129,11 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
   // The start and stop of the current interval
   IndexT start = 0, stop = 0;
   // An iterator to the beginning of the text
-  auto textB = concatText.begin();
-  auto textE = concatText.end();
+  //auto textB = concatText.begin();
+  //auto textE = concatText.end();
   // The current k-mer as a string
   rapmap::utils::my_mer mer;
-  bool currentValid{false};
+  //bool currentValid{false};
   std::string currentKmer;
   std::string nextKmer;
   while (stop < tlen) {
@@ -216,7 +216,7 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
   {
     ScopedTimer timer;
     SA.resize(tlen, 0);
-    IndexT textLen = static_cast<IndexT>(tlen);
+    //IndexT textLen = static_cast<IndexT>(tlen);
     std::cerr << "Building suffix array . . . ";
     auto ret = divsufsort(
         reinterpret_cast<unsigned char*>(const_cast<char*>(concatText.data())),
@@ -261,11 +261,11 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
   // The start and stop of the current interval
   IndexT start = 0, stop = 0;
   // An iterator to the beginning of the text
-  auto textB = concatText.begin();
-  auto textE = concatText.end();
+  //auto textB = concatText.begin();
+  //auto textE = concatText.end();
   // The current k-mer as a string
   rapmap::utils::my_mer mer;
-  bool currentValid{false};
+  //bool currentValid{false};
   std::string currentKmer;
   std::string nextKmer;
   while (stop < tlen) {
@@ -477,8 +477,8 @@ void indexTranscriptsSA(ParserT* parser,
   // leeway before
   // we issue any warning.
   size_t tooLong = 200000;
-  size_t numDistinctKmers{0};
-  size_t numKmers{0};
+  //size_t numDistinctKmers{0};
+  //size_t numKmers{0};
   size_t currIndex{0};
   size_t numDups{0};
   std::map<XXH64_hash_t, std::vector<DupInfo>> potentialDuplicates;

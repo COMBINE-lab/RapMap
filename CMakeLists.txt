@@ -46,7 +46,7 @@ endif()
 if (QUIET_BUILD)
   set(WALL "")
 else()
-  set(WALL "-Wall")
+  set(WALL "-Wall -Wno-unused-function -Wno-unused-local-typedef")
 endif()
 
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM ${WALL} -std=c++11")

@@ -39,19 +39,22 @@
 #include "LibraryFormat.hpp"
 #endif
 
+#ifndef __DEFINE_LIKELY_MACRO__
+#define __DEFINE_LIKELY_MACRO__
 #ifdef __GNUC__
-#define LIKELY(x) __builtin_expect((x),1)
-#define UNLIKELY(x) __builtin_expect((x),0)
+#define LIKELY(x) __builtin_expect((x), 1)
+#define UNLIKELY(x) __builtin_expect((x), 0)
 #else
 #define LIKELY(x) (x)
 #define UNLIKELY(x) (x)
 #endif
+#endif
 
 // Must be forward-declared
 template <typename IndexT>
-class PairAlignmentFormatter;
+struct PairAlignmentFormatter;
 template <typename IndexT>
-class SingleAlignmentFormatter;
+struct SingleAlignmentFormatter;
 
 // Forward-declare because the C++ compiler is dumb
 // class RapMapIndex;
@@ -204,7 +207,6 @@ namespace rapmap {
     class JFMerKeyHasher{
         public:
             size_t operator()(const my_mer& m) const {
-                auto k = rapmap::utils::my_mer::k();
                 auto v = m.word(0);//get_bits(0, 2*k);
                 return XXH64(static_cast<void*>(&v), 8, 0);
             }
@@ -319,8 +321,8 @@ namespace rapmap {
 		tid(std::numeric_limits<uint32_t>::max()),
 		pos(std::numeric_limits<int32_t>::max()),
 		fwd(true),
-		readLen(std::numeric_limits<uint32_t>::max()),
 		fragLen(std::numeric_limits<uint32_t>::max()),
+		readLen(std::numeric_limits<uint32_t>::max()),
 		isPaired(false)
 #ifdef RAPMAP_SALMON_SUPPORT
         ,format(LibraryFormat::formatFromID(0))
@@ -576,7 +578,7 @@ namespace rapmap {
     inline void adjustOverhang(int32_t& pos, uint32_t readLen,
 		    uint32_t txpLen, FixedWriter& cigarStr) {
 	    cigarStr.clear();
-	    if (pos + readLen < 0) {
+	    if (pos + static_cast<int32_t>(readLen) < 0) {
             cigarStr.write("{}S", readLen);
             pos = 0;
         } else if (pos < 0) {
@@ -623,11 +625,14 @@ namespace rapmap {
         // the sam flags for mate 1 are written into flags1 and for mate2 into flags2
         inline void getSamFlags(const QuasiAlignment& qaln,
                 uint16_t& flags) {
+          /*
             constexpr uint16_t pairedInSeq = 0x1;
             constexpr uint16_t mappedInProperPair = 0x2;
             constexpr uint16_t unmapped = 0x4;
             constexpr uint16_t mateUnmapped = 0x8;
+          */
             constexpr uint16_t isRC = 0x10;
+            /*
             constexpr uint16_t mateIsRC = 0x20;
             constexpr uint16_t isRead1 = 0x40;
             constexpr uint16_t isRead2 = 0x80;
@@ -635,6 +640,7 @@ namespace rapmap {
             constexpr uint16_t failedQC = 0x200;
             constexpr uint16_t isPCRDup = 0x400;
             constexpr uint16_t supplementaryAln = 0x800;
+            */
 
             flags = 0;
             // Not paired in sequencing
