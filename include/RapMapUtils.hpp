@@ -358,11 +358,12 @@ namespace rapmap {
                 return 0;
             }
             int32_t p1 = fwd ? pos : matePos;
+            int32_t sTxpLen = static_cast<int32_t>(txpLen);
             p1 = (p1 < 0) ? 0 : p1;
-            p1 = (p1 > txpLen) ? txpLen : p1;
+            p1 = (p1 > sTxpLen) ? sTxpLen : p1;
             int32_t p2 = fwd ? matePos + mateLen : pos + readLen;
             p2 = (p2 < 0) ? 0 : p2;
-            p2 = (p2 > txpLen) ? txpLen : p2;
+            p2 = (p2 > sTxpLen) ? sTxpLen : p2;
 
             return (p1 > p2) ? p1 - p2 : p2 - p1;
         }
@@ -473,7 +474,7 @@ namespace rapmap {
                 int32_t lastQueryPos{std::numeric_limits<int32_t>::min()};
                 bool firstHit{true};
                 //int32_t maxDistortion{0};
-                for (size_t i = 0; i < numToCheck; ++i) {
+                for (int32_t i = 0; i < numToCheck; ++i) {
                     int32_t refPos = static_cast<int32_t>(tqvec[i].pos);
                     int32_t queryPos = static_cast<int32_t>(tqvec[i].queryPos);
                     if (refPos > lastRefPos) {
@@ -577,6 +578,7 @@ namespace rapmap {
     //
     inline void adjustOverhang(int32_t& pos, uint32_t readLen,
 		    uint32_t txpLen, FixedWriter& cigarStr) {
+      int32_t sTxpLen = static_cast<int32_t>(txpLen);
 	    cigarStr.clear();
 	    if (pos + static_cast<int32_t>(readLen) < 0) {
             cigarStr.write("{}S", readLen);
@@ -587,10 +589,10 @@ namespace rapmap {
 		    cigarStr.write("{}S{}M", clipLen, matchLen);
 		    // Now adjust the mapping position
 		    pos = 0;
-	    } else if (pos > txpLen) {
+	    } else if (pos > sTxpLen) {
             cigarStr.write("{}S", readLen);
-        } else if (pos + readLen > txpLen) {
-		    int32_t matchLen = txpLen - pos;
+        } else if (pos + readLen > sTxpLen) {
+		    int32_t matchLen = sTxpLen - pos;
 		    int32_t clipLen = readLen - matchLen;
 		    cigarStr.write("{}M{}S", matchLen, clipLen);
 	    } else {

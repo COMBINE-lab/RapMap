@@ -102,7 +102,7 @@ class SASearcher {
             size_t n = seq.length();
 
             auto sb = seq.begin();
-            auto se = seq.end();
+            //auto se = seq.end();
 
             // If the bounds are already trivial, just figure how long
             // of a prefix we share and return the interval.

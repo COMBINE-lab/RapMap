@@ -567,7 +567,7 @@ private:
 
     rapmap::utils::my_mer mer, complementMer;
     auto merIt = hashEnd_;
-    auto complementMerIt = hashEnd_;
+    //auto complementMerIt = hashEnd_;
     size_t pos{0};
     size_t sampFactor{1};
     bool lastSearch{false};
