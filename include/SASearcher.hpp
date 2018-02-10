@@ -99,7 +99,7 @@ class SASearcher {
             std::string& seq = *seq_;
 
             int64_t m = std::distance(qb, qe);
-            size_t n = seq.length();
+            int64_t n = static_cast<int64_t>(seq.length());
 
             auto sb = seq.begin();
             //auto se = seq.end();
