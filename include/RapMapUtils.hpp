@@ -579,6 +579,7 @@ namespace rapmap {
     inline void adjustOverhang(int32_t& pos, uint32_t readLen,
 		    uint32_t txpLen, FixedWriter& cigarStr) {
       int32_t sTxpLen = static_cast<int32_t>(txpLen);
+      int32_t sReadLen = static_cast<int32_t>(readLen);
 	    cigarStr.clear();
 	    if (pos + static_cast<int32_t>(readLen) < 0) {
             cigarStr.write("{}S", readLen);
@@ -591,7 +592,7 @@ namespace rapmap {
 		    pos = 0;
 	    } else if (pos > sTxpLen) {
             cigarStr.write("{}S", readLen);
-        } else if (pos + readLen > sTxpLen) {
+        } else if (pos + sReadLen > sTxpLen) {
 		    int32_t matchLen = sTxpLen - pos;
 		    int32_t clipLen = readLen - matchLen;
 		    cigarStr.write("{}M{}S", matchLen, clipLen);
