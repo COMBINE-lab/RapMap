@@ -119,7 +119,7 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
 // int64_t for "large" ones
 template <typename IndexT>
 bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
-                      size_t tlen, uint32_t k, std::vector<IndexT>& SA,
+                      size_t tlenIn, uint32_t k, std::vector<IndexT>& SA,
                       uint32_t numHashThreads) {
   //BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
   PerfectHashT<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
@@ -128,6 +128,7 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
 
   // The start and stop of the current interval
   IndexT start = 0, stop = 0;
+  IndexT tlen = static_cast<IndexT>(tlenIn);
   // An iterator to the beginning of the text
   //auto textB = concatText.begin();
   //auto textE = concatText.end();
@@ -249,7 +250,7 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
 // int64_t for "large" ones
 template <typename IndexT>
 bool buildHash(const std::string& outputDir, std::string& concatText,
-               size_t tlen, uint32_t k, std::vector<IndexT>& SA) {
+               size_t tlenIn, uint32_t k, std::vector<IndexT>& SA) {
   // Now, build the k-mer lookup table
     // The base type should always be uint64_t
     using WordT = rapmap::utils::my_mer::base_type;
@@ -260,6 +261,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
     //khash.set_empty_key(std::numeric_limits<uint64_t>::max());
   // The start and stop of the current interval
   IndexT start = 0, stop = 0;
+  IndexT tlen = static_cast<IndexT>(tlenIn);
   // An iterator to the beginning of the text
   //auto textB = concatText.begin();
   //auto textE = concatText.end();
