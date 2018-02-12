@@ -975,7 +975,7 @@ we need this 2-functors scheme because HashFunctors won't work with unordered_ma
 			uint64_t non_minimal_hp,minimal_hp;
 
 
-			hash_pair_t bbhash;  int level;
+			hash_pair_t bbhash{};  int level;
 			uint64_t level_hash = getLevel(bbhash,elem,&level);
 
 			if( level == (_nb_levels-1))
@@ -1065,7 +1065,7 @@ we need this 2-functors scheme because HashFunctors won't work with unordered_ma
 					//printf("processing %llu  level %i\n",val, i);
 
 					//auto hashes = _hasher(val);
-					hash_pair_t bbhash;  int level;
+					hash_pair_t bbhash{};  int level;
 					uint64_t level_hash;
 					if(_writeEachLevel)
 						getLevel(bbhash,val,&level, i,i-1);
