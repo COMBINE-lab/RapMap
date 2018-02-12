@@ -326,7 +326,7 @@ namespace rapmap {
                         int32_t read2Pos = qa.matePos;
                         const bool read1First{read1Pos < read2Pos};
                         const int32_t minPos = read1First ? read1Pos : read2Pos;
-                        if (minPos + qa.fragLen > static_cast<int32_t>(txpLen)) { qa.fragLen = txpLen - minPos; }
+                        if ((minPos + static_cast<int32_t>(qa.fragLen)) > static_cast<int32_t>(txpLen)) { qa.fragLen = txpLen - minPos; }
                         
                         // get the fragment length as a signed int
                         const int32_t fragLen = static_cast<int32_t>(qa.fragLen);
