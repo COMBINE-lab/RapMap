@@ -33,6 +33,9 @@
 #include <map>
 #include <vector>
 
+// avoid duplicate definition
+#ifdef HAVE_SSTREAM
+#undef HAVE_SSTREAM
 #include "tclap/CmdLine.h"
 
 #include <cereal/archives/binary.hpp>
