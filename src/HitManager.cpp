@@ -132,7 +132,7 @@ namespace rapmap {
         // entries in outHits that are labeled by the transcripts in
         // which h2 appears will have an iterator to the beginning of
         // the position list for h2.
-        void intersectWithOutput(HitInfo& h2, RapMapIndex& rmi,
+        /*void intersectWithOutput(HitInfo& h2, RapMapIndex& rmi,
                 std::vector<ProcessedHit>& outHits) {
 
             // Convenient bindings for variables we'll use
@@ -188,6 +188,7 @@ namespace rapmap {
             }
 
         }
+        */
 
         /** from http://en.cppreference.com/w/cpp/algorithm/lower_bound **/
         template <typename ForwardIt>
@@ -397,7 +398,7 @@ namespace rapmap {
           }
 
 
-
+          /*
         std::vector<ProcessedHit> intersectHits(
                 std::vector<HitInfo>& inHits,
                 RapMapIndex& rmi
@@ -470,39 +471,12 @@ namespace rapmap {
                     // should never really be greater.
                     return (ph.tqvec.size() >= requiredNumHits);
                     });
-            /*
-               bool didDrop = false;
-               for (auto it = newEnd; it != outHits.end(); ++it) {
-               std::cerr << "Dropped hit for txp " << it->tid << "\n";
-               didDrop = true;
-               }
-               if (didDrop) {
-               auto& eqClass = eqClasses[inHits[0].kinfo->eqId];
-               auto txpIt = eqClassLabels.begin() + eqClass.txpListStart;
-               auto txpListLen = eqClass.txpListLen;
-               auto txpEnd = txpIt + txpListLen;
-               std::cerr << "hits1: {";
-               while (txpIt != txpEnd) {
-               std::cerr << *txpIt << ", ";
-               ++txpIt;
-               }
-               std::cerr << "}\n";
-               auto& eqClass2 = eqClasses[inHits[1].kinfo->eqId];
-               txpIt = eqClassLabels.begin() + eqClass2.txpListStart;
-               txpListLen = eqClass2.txpListLen;
-               txpEnd = txpIt + txpListLen;
-               std::cerr << "hits2: {";
-               while (txpIt != txpEnd) {
-               std::cerr << *txpIt << ", ";
-               ++txpIt;
-               }
-               std::cerr << "}\n";
-               }
-               */
+d
             // return only the valid hits
             outHits.resize(std::distance(outHits.begin(), newEnd));
             return outHits;
         }
+        */
 
         template <typename RapMapIndexT>
         std::vector<ProcessedSAHit> intersectSAHits2(

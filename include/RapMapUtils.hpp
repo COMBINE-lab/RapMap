@@ -29,33 +29,35 @@
 #include "sparsepp/spp.h"
 #include "SparseHashSerializer.hpp"
 #include <cereal/archives/binary.hpp>
-#include "jellyfish/mer_dna.hpp"
+#include "Kmer.hpp"
 #include "spdlog/spdlog.h"
 #include "spdlog/fmt/ostr.h"
 #include "spdlog/fmt/fmt.h"
 #include "RapMapConfig.hpp"
-#include "PairSequenceParser.hpp"
 
 #ifdef RAPMAP_SALMON_SUPPORT
 #include "LibraryFormat.hpp"
 #endif
 
+#ifndef __DEFINE_LIKELY_MACRO__
+#define __DEFINE_LIKELY_MACRO__
 #ifdef __GNUC__
-#define LIKELY(x) __builtin_expect((x),1)
-#define UNLIKELY(x) __builtin_expect((x),0)
+#define LIKELY(x) __builtin_expect((x), 1)
+#define UNLIKELY(x) __builtin_expect((x), 0)
 #else
 #define LIKELY(x) (x)
 #define UNLIKELY(x) (x)
 #endif
+#endif
 
 // Must be forward-declared
 template <typename IndexT>
-class PairAlignmentFormatter;
+struct PairAlignmentFormatter;
 template <typename IndexT>
-class SingleAlignmentFormatter;
+struct SingleAlignmentFormatter;
 
 // Forward-declare because the C++ compiler is dumb
-class RapMapIndex;
+// class RapMapIndex;
 
 template<typename KeyT, typename ValT, typename HasherT>
 //using RegHashT = google::dense_hash_map<KeyT, ValT, HasherT>;
@@ -70,7 +72,7 @@ using PerfectHashT = FrugalBooMap<KeyT, ValT>;
 namespace rapmap {
     namespace utils {
 
-    using my_mer = jellyfish::mer_dna_ns::mer_base_static<uint64_t, 1>;
+    using my_mer = combinelib::kmers::Kmer<32,1>;
 
     constexpr uint32_t newTxpSetMask = 0x80000000;
     constexpr uint32_t rcSetMask = 0x40000000;
@@ -205,8 +207,7 @@ namespace rapmap {
     class JFMerKeyHasher{
         public:
             size_t operator()(const my_mer& m) const {
-                auto k = rapmap::utils::my_mer::k();
-                auto v = m.get_bits(0, 2*k);
+                auto v = m.word(0);//get_bits(0, 2*k);
                 return XXH64(static_cast<void*>(&v), 8, 0);
             }
     };
@@ -320,8 +321,8 @@ namespace rapmap {
 		tid(std::numeric_limits<uint32_t>::max()),
 		pos(std::numeric_limits<int32_t>::max()),
 		fwd(true),
-		readLen(std::numeric_limits<uint32_t>::max()),
 		fragLen(std::numeric_limits<uint32_t>::max()),
+		readLen(std::numeric_limits<uint32_t>::max()),
 		isPaired(false)
 #ifdef RAPMAP_SALMON_SUPPORT
         ,format(LibraryFormat::formatFromID(0))
@@ -357,11 +358,12 @@ namespace rapmap {
                 return 0;
             }
             int32_t p1 = fwd ? pos : matePos;
+            int32_t sTxpLen = static_cast<int32_t>(txpLen);
             p1 = (p1 < 0) ? 0 : p1;
-            p1 = (p1 > txpLen) ? txpLen : p1;
+            p1 = (p1 > sTxpLen) ? sTxpLen : p1;
             int32_t p2 = fwd ? matePos + mateLen : pos + readLen;
             p2 = (p2 < 0) ? 0 : p2;
-            p2 = (p2 > txpLen) ? txpLen : p2;
+            p2 = (p2 > sTxpLen) ? sTxpLen : p2;
 
             return (p1 > p2) ? p1 - p2 : p2 - p1;
         }
@@ -472,7 +474,7 @@ namespace rapmap {
                 int32_t lastQueryPos{std::numeric_limits<int32_t>::min()};
                 bool firstHit{true};
                 //int32_t maxDistortion{0};
-                for (size_t i = 0; i < numToCheck; ++i) {
+                for (int32_t i = 0; i < numToCheck; ++i) {
                     int32_t refPos = static_cast<int32_t>(tqvec[i].pos);
                     int32_t queryPos = static_cast<int32_t>(tqvec[i].queryPos);
                     if (refPos > lastRefPos) {
@@ -576,8 +578,10 @@ namespace rapmap {
     //
     inline void adjustOverhang(int32_t& pos, uint32_t readLen,
 		    uint32_t txpLen, FixedWriter& cigarStr) {
+      int32_t sTxpLen = static_cast<int32_t>(txpLen);
+      int32_t sReadLen = static_cast<int32_t>(readLen);
 	    cigarStr.clear();
-	    if (pos + readLen < 0) {
+	    if (pos + static_cast<int32_t>(readLen) < 0) {
             cigarStr.write("{}S", readLen);
             pos = 0;
         } else if (pos < 0) {
@@ -586,10 +590,10 @@ namespace rapmap {
 		    cigarStr.write("{}S{}M", clipLen, matchLen);
 		    // Now adjust the mapping position
 		    pos = 0;
-	    } else if (pos > txpLen) {
+	    } else if (pos > sTxpLen) {
             cigarStr.write("{}S", readLen);
-        } else if (pos + readLen > txpLen) {
-		    int32_t matchLen = txpLen - pos;
+        } else if (pos + sReadLen > sTxpLen) {
+		    int32_t matchLen = sTxpLen - pos;
 		    int32_t clipLen = readLen - matchLen;
 		    cigarStr.write("{}M{}S", matchLen, clipLen);
 	    } else {
@@ -624,11 +628,14 @@ namespace rapmap {
         // the sam flags for mate 1 are written into flags1 and for mate2 into flags2
         inline void getSamFlags(const QuasiAlignment& qaln,
                 uint16_t& flags) {
+          /*
             constexpr uint16_t pairedInSeq = 0x1;
             constexpr uint16_t mappedInProperPair = 0x2;
             constexpr uint16_t unmapped = 0x4;
             constexpr uint16_t mateUnmapped = 0x8;
+          */
             constexpr uint16_t isRC = 0x10;
+            /*
             constexpr uint16_t mateIsRC = 0x20;
             constexpr uint16_t isRead1 = 0x40;
             constexpr uint16_t isRead2 = 0x80;
@@ -636,6 +643,7 @@ namespace rapmap {
             constexpr uint16_t failedQC = 0x200;
             constexpr uint16_t isPCRDup = 0x400;
             constexpr uint16_t supplementaryAln = 0x800;
+            */
 
             flags = 0;
             // Not paired in sequencing

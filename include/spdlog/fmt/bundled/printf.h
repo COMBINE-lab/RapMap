@@ -13,7 +13,7 @@
 #include <algorithm>  // std::fill_n
 #include <limits>     // std::numeric_limits
 
-#include "fmt/format.h"
+#include "ostream.h"
 
 namespace fmt
 {
@@ -80,6 +80,43 @@ public:
     }
 };
 
+// returns the default type for format specific "%s"
+class DefaultType : public ArgVisitor<DefaultType, char>
+{
+public:
+    char visit_char(int)
+    {
+        return 'c';
+    }
+
+    char visit_bool(bool)
+    {
+        return 's';
+    }
+
+    char visit_pointer(const void *)
+    {
+        return 'p';
+    }
+
+    template <typename T>
+    char visit_any_int(T)
+    {
+        return 'd';
+    }
+
+    template <typename T>
+    char visit_any_double(T)
+    {
+        return 'g';
+    }
+
+    char visit_unhandled_arg()
+    {
+        return 's';
+    }
+};
+
 template <typename T, typename U>
 struct is_same
 {
@@ -115,10 +152,21 @@ public:
             visit_any_int(value);
     }
 
+    void visit_char(char value)
+    {
+        if (type_ != 's')
+            visit_any_int(value);
+    }
+
     template <typename U>
     void visit_any_int(U value)
     {
         bool is_signed = type_ == 'd' || type_ == 'i';
+        if (type_ == 's')
+        {
+            is_signed = std::numeric_limits<U>::is_signed;
+        }
+
         using internal::Arg;
         typedef typename internal::Conditional<
         is_same<T, void>::value, U, T>::type TargetType;
@@ -228,8 +276,9 @@ public:
   superclass will be called.
   \endrst
  */
-template <typename Impl, typename Char>
-class BasicPrintfArgFormatter : public internal::ArgFormatterBase<Impl, Char>
+template <typename Impl, typename Char, typename Spec>
+class BasicPrintfArgFormatter :
+    public internal::ArgFormatterBase<Impl, Char, Spec>
 {
 private:
     void write_null_pointer()
@@ -238,7 +287,7 @@ private:
         this->write("(nil)");
     }
 
-    typedef internal::ArgFormatterBase<Impl, Char> Base;
+    typedef internal::ArgFormatterBase<Impl, Char, Spec> Base;
 
 public:
     /**
@@ -248,13 +297,13 @@ public:
       specifier information for standard argument types.
       \endrst
      */
-    BasicPrintfArgFormatter(BasicWriter<Char> &writer, FormatSpec &spec)
-        : internal::ArgFormatterBase<Impl, Char>(writer, spec) {}
+    BasicPrintfArgFormatter(BasicWriter<Char> &w, Spec &s)
+        : internal::ArgFormatterBase<Impl, Char, Spec>(w, s) {}
 
     /** Formats an argument of type ``bool``. */
     void visit_bool(bool value)
     {
-        FormatSpec &fmt_spec = this->spec();
+        Spec &fmt_spec = this->spec();
         if (fmt_spec.type_ != 's')
             return this->visit_any_int(value);
         fmt_spec.type_ = 0;
@@ -264,7 +313,7 @@ public:
     /** Formats a character. */
     void visit_char(int value)
     {
-        const FormatSpec &fmt_spec = this->spec();
+        const Spec &fmt_spec = this->spec();
         BasicWriter<Char> &w = this->writer();
         if (fmt_spec.type_ && fmt_spec.type_ != 'c')
             w.write_int(value, fmt_spec);
@@ -323,13 +372,13 @@ public:
 
 /** The default printf argument formatter. */
 template <typename Char>
-class PrintfArgFormatter
-    : public BasicPrintfArgFormatter<PrintfArgFormatter<Char>, Char>
+class PrintfArgFormatter :
+    public BasicPrintfArgFormatter<PrintfArgFormatter<Char>, Char, FormatSpec>
 {
 public:
     /** Constructs an argument formatter object. */
     PrintfArgFormatter(BasicWriter<Char> &w, FormatSpec &s)
-        : BasicPrintfArgFormatter<PrintfArgFormatter<Char>, Char>(w, s) {}
+        : BasicPrintfArgFormatter<PrintfArgFormatter<Char>, Char, FormatSpec>(w, s) {}
 };
 
 /** This template formats data and writes the output to a writer. */
@@ -358,11 +407,11 @@ public:
      appropriate lifetimes.
      \endrst
      */
-    explicit PrintfFormatter(const ArgList &args, BasicWriter<Char> &w)
-        : FormatterBase(args), writer_(w) {}
+    explicit PrintfFormatter(const ArgList &al, BasicWriter<Char> &w)
+        : FormatterBase(al), writer_(w) {}
 
     /** Formats stored arguments and writes the output to the writer. */
-    FMT_API void format(BasicCStringRef<Char> format_str);
+    void format(BasicCStringRef<Char> format_str);
 };
 
 template <typename Char, typename AF>
@@ -399,7 +448,7 @@ internal::Arg PrintfFormatter<Char, AF>::get_arg(const Char *s,
         unsigned arg_index)
 {
     (void)s;
-    const char *error = 0;
+    const char *error = FMT_NULL;
     internal::Arg arg = arg_index == std::numeric_limits<unsigned>::max() ?
                         next_arg(error) : FormatterBase::get_arg(arg_index - 1, error);
     if (error)
@@ -486,6 +535,10 @@ void PrintfFormatter<Char, AF>::format(BasicCStringRef<Char> format_str)
                 ++s;
                 spec.precision_ = internal::PrecisionHandler().visit(get_arg(s));
             }
+            else
+            {
+                spec.precision_ = 0;
+            }
         }
 
         using internal::Arg;
@@ -538,6 +591,13 @@ void PrintfFormatter<Char, AF>::format(BasicCStringRef<Char> format_str)
         if (!*s)
             FMT_THROW(FormatError("invalid format string"));
         spec.type_ = static_cast<char>(*s++);
+
+        if (spec.type_ == 's')
+        {
+            // set the format type to the default if 's' is specified
+            spec.type_ = internal::DefaultType().visit(arg);
+        }
+
         if (arg.type <= Arg::LAST_INTEGER_TYPE)
         {
             // Normalize type.
@@ -562,11 +622,17 @@ void PrintfFormatter<Char, AF>::format(BasicCStringRef<Char> format_str)
     write(writer_, start, s);
 }
 
-template <typename Char>
-void printf(BasicWriter<Char> &w, BasicCStringRef<Char> format, ArgList args)
+inline void printf(Writer &w, CStringRef format, ArgList args)
 {
-    PrintfFormatter<Char>(args, w).format(format);
+    PrintfFormatter<char>(args, w).format(format);
 }
+FMT_VARIADIC(void, printf, Writer &, CStringRef)
+
+inline void printf(WWriter &w, WCStringRef format, ArgList args)
+{
+    PrintfFormatter<wchar_t>(args, w).format(format);
+}
+FMT_VARIADIC(void, printf, WWriter &, WCStringRef)
 
 /**
   \rst
@@ -619,6 +685,28 @@ inline int printf(CStringRef format, ArgList args)
     return fprintf(stdout, format, args);
 }
 FMT_VARIADIC(int, printf, CStringRef)
+
+/**
+  \rst
+  Prints formatted data to the stream *os*.
+
+  **Example**::
+
+    fprintf(cerr, "Don't %s!", "panic");
+  \endrst
+ */
+inline int fprintf(std::ostream &os, CStringRef format_str, ArgList args)
+{
+    MemoryWriter w;
+    printf(w, format_str, args);
+    internal::write(os, w);
+    return static_cast<int>(w.size());
+}
+FMT_VARIADIC(int, fprintf, std::ostream &, CStringRef)
 }  // namespace fmt
+
+#ifdef FMT_HEADER_ONLY
+# include "printf.cc"
+#endif
 
 #endif  // FMT_PRINTF_H_

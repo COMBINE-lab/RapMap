@@ -1104,6 +1104,8 @@ int rapMapMap(int argc, char* argv[]) {
 		}
 
 		for (auto& t : threads) { t.join(); }
+		pairParserPtr->stop();
+
 	    } else {
 		std::vector<std::thread> threads;
 		std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(unmatedReads.getValue(), ',');
@@ -1141,6 +1143,8 @@ int rapMapMap(int argc, char* argv[]) {
 		    }
 		}
 		for (auto& t : threads) { t.join(); }
+		singleParserPtr->stop();
+
 	    }
 	    consoleLog->info("Done mapping reads.");
         consoleLog->info("In total saw {} reads.", hctrs.numReads);

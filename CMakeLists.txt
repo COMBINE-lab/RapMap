@@ -4,15 +4,15 @@ enable_testing()
 
 project (RapMap)
 
-set(CPACK_PACKAGE_VERSION "0.5.0")
+set(CPACK_PACKAGE_VERSION "0.6.0")
 SET(CPACK_PACKAGE_VERSION_MAJOR "0")
-set(CPACK_PACKAGE_VERSION_MINOR "5")
+set(CPACK_PACKAGE_VERSION_MINOR "6")
 set(CPACK_PACKAGE_VERSION_PATCH "0")
 set(PROJECT_VERSION ${CPACK_PACKAGE_VERSION})
 set(CPACK_GENERATOR "TGZ")
 set(CPACK_SOURCE_GENERATOR "TGZ")
 set(CPACK_PACKAGE_VENDOR "Stony Brook University")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "RapMap - Wicked-fast qasi-mapping")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "RapMap - Wicked-fast quasi-mapping")
 set(CPACK_PACKAGE_NAME
   "${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME
@@ -46,7 +46,7 @@ endif()
 if (QUIET_BUILD)
   set(WALL "")
 else()
-  set(WALL "-Wall")
+  set(WALL "-Wall -Wno-unused-function -Wno-unused-local-typedef")
 endif()
 
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM ${WALL} -std=c++11")
@@ -207,30 +207,6 @@ if (NOT CEREAL_FOUND)
 
 	set(CEREAL_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/external/install/include)
 
-endif()
-
-
-if (NOT JELLYFISH_ROOT)
-	set(JELLYFISH_ROOT ${GAT_SOURCE_DIR}/external/install)
-endif()
-
-find_package(Jellyfish 2.2.6)
-
-if (NOT JELLYFISH_FOUND)
-message("Build system will fetch and build Jellyfish")
-message("==================================================================")
-ExternalProject_Add(libjellyfish
-    DOWNLOAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external
-    DOWNLOAD_COMMAND curl -k -L https://github.com/gmarcais/Jellyfish/releases/download/v2.2.6/jellyfish-2.2.6.tar.gz -o jellyfish-2.2.6.tgz &&
-    	rm -fr jellyfish-2.2.6 &&
-     	tar -xzvf jellyfish-2.2.6.tgz
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/jellyfish-2.2.6
-    INSTALL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/install
-    CONFIGURE_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/external/jellyfish-2.2.6/configure --enable-shared=no --prefix=<INSTALL_DIR> CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
-    BUILD_COMMAND make CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} CXXFLAGS=${JELLYFISH_CXX_FLAGS}
-    BUILD_IN_SOURCE 1
-    INSTALL_COMMAND make install
-)
 endif()
 
 set (FAST_MALLOC_LIB "")

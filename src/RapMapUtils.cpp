@@ -25,7 +25,6 @@
 
 #include "RapMapUtils.hpp"
 #include "RapMapSAIndex.hpp"
-#include "RapMapIndex.hpp"
 #include "PairAlignmentFormatter.hpp"
 #include "SingleAlignmentFormatter.hpp"
 //#include "jellyfish/whole_sequence_parser.hpp"
@@ -327,7 +326,7 @@ namespace rapmap {
                         int32_t read2Pos = qa.matePos;
                         const bool read1First{read1Pos < read2Pos};
                         const int32_t minPos = read1First ? read1Pos : read2Pos;
-                        if (minPos + qa.fragLen > txpLen) { qa.fragLen = txpLen - minPos; }
+                        if ((minPos + static_cast<int32_t>(qa.fragLen)) > static_cast<int32_t>(txpLen)) { qa.fragLen = txpLen - minPos; }
                         
                         // get the fragment length as a signed int
                         const int32_t fragLen = static_cast<int32_t>(qa.fragLen);
@@ -597,14 +596,16 @@ template uint32_t rapmap::utils::writeAlignmentsToStream<fastx_parser::ReadSeq, 
                 fmt::MemoryWriter& sstream);
 
 
-template uint32_t rapmap::utils::writeAlignmentsToStream<fastx_parser::ReadPair, RapMapIndex*>(
+/*template uint32_t rapmap::utils::writeAlignmentsToStream<fastx_parser::ReadPair, RapMapIndex*>(
                 fastx_parser::ReadPair& r,
                 PairAlignmentFormatter<RapMapIndex*>& formatter,
                 rapmap::utils::HitCounters& hctr,
                 std::vector<rapmap::utils::QuasiAlignment>& jointHits,
                 fmt::MemoryWriter& sstream
                 );
+                */
 
+/*
 template uint32_t rapmap::utils::writeAlignmentsToStream<fastx_parser::ReadSeq, RapMapIndex*>(
                 fastx_parser::ReadSeq& r,
                 SingleAlignmentFormatter<RapMapIndex*>& formatter,
@@ -612,3 +613,4 @@ template uint32_t rapmap::utils::writeAlignmentsToStream<fastx_parser::ReadSeq, 
                 std::vector<rapmap::utils::QuasiAlignment>& jointHits,
                 fmt::MemoryWriter& sstream
                 );
+                */

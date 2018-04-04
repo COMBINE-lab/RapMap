@@ -56,11 +56,10 @@
 #include "spdlog/fmt/ostr.h"
 #include "spdlog/fmt/fmt.h"
 
-// Jellyfish 2 include
 #include "FastxParser.hpp"
-#include "jellyfish/mer_dna.hpp"
 
 #include "tclap/CmdLine.h"
+#include "zstr/zstr.hpp"
 
 /*extern "C" {
 #include "kseq.h"
@@ -70,7 +69,6 @@
 #include "stringpiece.h"
 #include "BooMap.hpp"
 #include "FrugalBooMap.hpp"
-#include "PairSequenceParser.hpp"
 #include "PairAlignmentFormatter.hpp"
 #include "SingleAlignmentFormatter.hpp"
 #include "RapMapUtils.hpp"
@@ -127,6 +125,7 @@ struct MappingOpts {
     bool strictCheck{false};
     bool fuzzy{false};
     bool consistentHits{false};
+    bool compressedOutput{false};
     bool quiet{false};
 };
 
@@ -430,85 +429,95 @@ bool mapReads(RapMapIndexT& rmi,
 	// set either a file or cout as the output stream
 	std::streambuf* outBuf;
 	std::ofstream outFile;
+  std::unique_ptr<std::ostream> outStream{nullptr};
 	bool haveOutputFile{false};
-	if (mopts->outname == "") {
-	    outBuf = std::cout.rdbuf();
-	} else {
-	    outFile.open(mopts->outname);
-	    outBuf = outFile.rdbuf();
-	    haveOutputFile = true;
-	}
-	// Now set the output stream to the buffer, which is
-	// either std::cout, or a file.
-	std::ostream outStream(outBuf);
+  std::shared_ptr<spdlog::logger> outLog{nullptr};
+  if (!mopts->noOutput) {
+    if (mopts->outname == "") {
+      outBuf = std::cout.rdbuf();
+    } else {
+      outFile.open(mopts->outname);
+      outBuf = outFile.rdbuf();
+      haveOutputFile = true;
+    }
+    // Now set the output stream to the buffer, which is
+    // either std::cout, or a file.
 
-	// Must be a power of 2
-	size_t queueSize{268435456};
-	spdlog::set_async_mode(queueSize);
-	auto outputSink = std::make_shared<spdlog::sinks::ostream_sink_mt>(outStream);
-	std::shared_ptr<spdlog::logger> outLog = std::make_shared<spdlog::logger>("rapmap::outLog", outputSink);
-	outLog->set_pattern("%v");
+    if (mopts->compressedOutput) {
+      outStream.reset(new zstr::ostream(outBuf));
+    } else {
+      outStream.reset(new std::ostream(outBuf));
+    }
+    //std::ostream outStream(outBuf);
+
+    // Must be a power of 2
+    size_t queueSize{268435456};
+    spdlog::set_async_mode(queueSize);
+    auto outputSink = std::make_shared<spdlog::sinks::ostream_sink_mt>(*outStream);
+    outLog = std::make_shared<spdlog::logger>("rapmap::outLog", outputSink);
+    outLog->set_pattern("%v");
+
+    rapmap::utils::writeSAMHeader(rmi, outLog);
+  }
 
 	uint32_t nthread = mopts->numThreads;
 	std::unique_ptr<paired_parser> pairParserPtr{nullptr};
 	std::unique_ptr<single_parser> singleParserPtr{nullptr};
-
-	if (!mopts->noOutput) {
-	  rapmap::utils::writeSAMHeader(rmi, outLog);
-	}
-
     //for the parser
     size_t chunkSize{10000};
 	SpinLockT iomutex;
-	{
-	    ScopedTimer timer(!mopts->quiet);
-	    HitCounters hctrs;
-	    consoleLog->info("mapping reads . . . \n\n\n");
-        if (pairedEnd) {
-            std::vector<std::string> read1Vec = rapmap::utils::tokenize(mopts->read1, ',');
-            std::vector<std::string> read2Vec = rapmap::utils::tokenize(mopts->read2, ',');
+  {
+    ScopedTimer timer(!mopts->quiet);
+    HitCounters hctrs;
+    consoleLog->info("mapping reads . . . \n\n\n");
+    if (pairedEnd) {
+      std::vector<std::string> read1Vec = rapmap::utils::tokenize(mopts->read1, ',');
+      std::vector<std::string> read2Vec = rapmap::utils::tokenize(mopts->read2, ',');
 
-            if (read1Vec.size() != read2Vec.size()) {
-                consoleLog->error("The number of provided files for "
-                                  "-1 and -2 must be the same!");
-                std::exit(1);
-            }
+      if (read1Vec.size() != read2Vec.size()) {
+        consoleLog->error("The number of provided files for "
+                          "-1 and -2 must be the same!");
+        std::exit(1);
+      }
 
-	    uint32_t nprod = (read1Vec.size() > 1) ? 2 : 1; 
-	    pairParserPtr.reset(new paired_parser(read1Vec, read2Vec, nthread, nprod, chunkSize));
-	    pairParserPtr->start();
-            spawnProcessReadsThreads(nthread, pairParserPtr.get(), rmi, iomutex,
-                                     outLog, hctrs, mopts);
-        } else {
-            std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(mopts->unmatedReads, ',');
+      uint32_t nprod = (read1Vec.size() > 1) ? 2 : 1; 
+      pairParserPtr.reset(new paired_parser(read1Vec, read2Vec, nthread, nprod, chunkSize));
+      pairParserPtr->start();
+      spawnProcessReadsThreads(nthread, pairParserPtr.get(), rmi, iomutex,
+                               outLog, hctrs, mopts);
+      pairParserPtr->stop();
+    } else {
+      std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(mopts->unmatedReads, ',');
 
 
-	    uint32_t nprod = (unmatedReadVec.size() > 1) ? 2 : 1; 
-	    singleParserPtr.reset(new single_parser(unmatedReadVec, nthread, nprod, chunkSize));
-	    singleParserPtr->start();
-            /** Create the threads depending on the collector type **/
-            spawnProcessReadsThreads(nthread, singleParserPtr.get(), rmi, iomutex,
-                                      outLog, hctrs, mopts);
-        }
-	if (!mopts->quiet) { std::cerr << "\n\n"; }
+      uint32_t nprod = (unmatedReadVec.size() > 1) ? 2 : 1; 
+      singleParserPtr.reset(new single_parser(unmatedReadVec, nthread, nprod, chunkSize));
+      singleParserPtr->start();
+      /** Create the threads depending on the collector type **/
+      spawnProcessReadsThreads(nthread, singleParserPtr.get(), rmi, iomutex,
+                               outLog, hctrs, mopts);
+      singleParserPtr->stop();
+
+    }
+    if (!mopts->quiet) { std::cerr << "\n\n"; }
 
 
     consoleLog->info("Done mapping reads.");
     consoleLog->info("In total saw {} reads.", hctrs.numReads);
     consoleLog->info("Final # hits per read = {}", hctrs.totHits / static_cast<float>(hctrs.numReads));
-	consoleLog->info("flushing output queue.");
-	outLog->flush();
-	/*
-	    consoleLog->info("Discarded {} reads because they had > {} alignments",
-		    hctrs.tooManyHits, maxNumHits.getValue());
-		    */
+    consoleLog->info("flushing output queue.");
+    outLog->flush();
+    /*
+      consoleLog->info("Discarded {} reads because they had > {} alignments",
+      hctrs.tooManyHits, maxNumHits.getValue());
+    */
 
-	}
+  }
 
-	if (haveOutputFile) {
-	    outFile.close();
-	}
-	return true;
+  if (haveOutputFile) {
+      outFile.close();
+  }
+  return true;
 }
 
 void displayOpts(MappingOpts& mopts, spdlog::logger* log) {
@@ -557,6 +566,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::SwitchArg noStrict("", "noStrictCheck", "Don't perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
   TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
   TCLAP::SwitchArg consistent("c", "consistentHits", "Ensure that the hits collected are consistent (co-linear)", false);
+  TCLAP::SwitchArg compressedOutput("x", "compressed", "Compress the output SAM file using zlib", false);
   TCLAP::SwitchArg quiet("q", "quiet", "Disable all console output apart from warnings and errors", false);
   cmd.add(index);
   cmd.add(noout);
@@ -572,13 +582,12 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(noStrict);
   cmd.add(fuzzy);
   cmd.add(consistent);
+  cmd.add(compressedOutput);
   cmd.add(quiet);
   
-  auto rawConsoleSink = std::make_shared<spdlog::sinks::stderr_sink_mt>();
-  auto consoleSink =
-      std::make_shared<spdlog::sinks::ansicolor_sink>(rawConsoleSink);
+  auto consoleSink = std::make_shared<spdlog::sinks::ansicolor_stderr_sink_mt>();
   auto consoleLog = spdlog::create("stderrLog", {consoleSink});
-  
+
   try {
 
     cmd.parse(argc, argv);
@@ -634,6 +643,7 @@ int rapMapSAMap(int argc, char* argv[]) {
     mopts.sensitive = sensitive.getValue();
     mopts.strictCheck = !noStrict.getValue();
     mopts.consistentHits = consistent.getValue();
+    mopts.compressedOutput = compressedOutput.getValue();
     mopts.fuzzy = fuzzy.getValue();
     mopts.quiet = quiet.getValue();
 

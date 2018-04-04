@@ -295,7 +295,7 @@ void processTranscripts(ParserT* parser,
         }
         std::cerr << "\n";
     }
-
+    parser->stop();
     std::cerr << "Clipped poly-A tails from " << numPolyAsClipped << " transcripts\n";
 
     std::ofstream txpLenStream(outputDir + "txplens.bin", std::ios::binary);
