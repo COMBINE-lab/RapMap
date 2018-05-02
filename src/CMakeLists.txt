@@ -30,6 +30,7 @@ set (RAPMAP_LIB_SRCS
 
 include_directories(
 ${GAT_SOURCE_DIR}/include
+${GAT_SOURCE_DIR}/digestpp
 ${GAT_SOURCE_DIR}/external
 ${GAT_SOURCE_DIR}/external/cereal/include
 ${GAT_SOURCE_DIR}/external/install/include
