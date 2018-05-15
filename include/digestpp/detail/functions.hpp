@@ -38,6 +38,12 @@ inline uint64_t byteswap(uint64_t val)
 			((val & 0x00000000000000ffull) << 56));
 }
 
+// Byte-swap a 64-bit unsigned integer.
+inline size_t byteswap(size_t val)
+{
+  return byteswap(static_cast<uint64_t>(val));
+}
+
 // Rotate 32-bit unsigned integer to the right.
 inline uint32_t rotate_right(uint32_t x, unsigned n)
 {
