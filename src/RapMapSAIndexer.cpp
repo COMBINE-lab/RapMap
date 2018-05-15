@@ -68,7 +68,8 @@
 
 #include "xxhash.h"
 // sha functionality
-#include "picosha2.h"
+// #include "picosha2.h"
+#include "digestpp/digestpp.hpp"
 
 #include <chrono>
 
@@ -453,8 +454,12 @@ void indexTranscriptsSA(ParserT* parser,
   std::uniform_int_distribution<> dis(0, 3);
 
   // Hashers for getting txome signature
-  picosha2::hash256_one_by_one seqHasher; seqHasher.init();
-  picosha2::hash256_one_by_one nameHasher; nameHasher.init();
+  digestpp::sha256 seqHasher256;
+  digestpp::sha256 nameHasher256;
+  digestpp::sha512 seqHasher512;
+  digestpp::sha512 nameHasher512;
+  //picosha2::hash256_one_by_one seqHasher; seqHasher.init();
+  //picosha2::hash256_one_by_one nameHasher; nameHasher.init();
 
   uint32_t n{0};
   uint32_t k = rapmap::utils::my_mer::k();
@@ -512,7 +517,8 @@ void indexTranscriptsSA(ParserT* parser,
                            [](const char a) -> bool { return !(isprint(a)); }),
             readStr.end());
 
-        seqHasher.process(readStr.begin(), readStr.end());
+        seqHasher256.absorb(readStr.begin(), readStr.end());
+        seqHasher512.absorb(readStr.begin(), readStr.end());
 
         uint32_t readLen = readStr.size();
         uint32_t completeLen = readLen;
@@ -603,7 +609,8 @@ void indexTranscriptsSA(ParserT* parser,
 
           // If there was no collision, then add the transcript
           transcriptNames.emplace_back(processedName);
-          nameHasher.process(processedName.begin(), processedName.end());
+          nameHasher256.absorb(processedName.begin(), processedName.end());
+          nameHasher512.absorb(processedName.begin(), processedName.end());
 
           // The position at which this transcript starts
           transcriptStarts.push_back(currIndex);
@@ -772,8 +779,8 @@ void indexTranscriptsSA(ParserT* parser,
     }
   }
 
-  seqHasher.finish();
-  nameHasher.finish();
+  //seqHasher.finish();
+  //nameHasher.finish();
 
   std::string indexVersion = "q5";
   IndexHeader header(IndexType::QUASI,
@@ -781,12 +788,20 @@ void indexTranscriptsSA(ParserT* parser,
                      true, k, largeIndex,
                      usePerfectHash);
   // Set the hash info
-  std::string seqHash;
-  std::string nameHash;
-  picosha2::get_hash_hex_string(seqHasher, seqHash);
-  picosha2::get_hash_hex_string(nameHasher, nameHash);
-  header.setSeqHash(seqHash);
-  header.setNameHash(nameHash);
+  std::string seqHash256 = seqHasher256.hexdigest();
+  std::string nameHash256 = nameHasher256.hexdigest();
+  std::string seqHash512 = seqHasher512.hexdigest();
+  std::string nameHash512 = nameHasher512.hexdigest();
+  header.setSeqHash256(seqHash256);
+  header.setNameHash256(nameHash256);
+  header.setSeqHash512(seqHash512);
+  header.setNameHash512(nameHash512);
+  //std::string seqHash;
+  //std::string nameHash;
+  //picosha2::get_hash_hex_string(seqHasher, seqHash);
+  //picosha2::get_hash_hex_string(nameHasher, nameHash);
+  //header.setSeqHash(seqHash);
+  //header.setNameHash(nameHash);
 
   // Finally (since everything presumably succeeded) write the header
   std::ofstream headerStream(outputDir + "header.json");
