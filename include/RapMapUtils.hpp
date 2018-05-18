@@ -349,7 +349,8 @@ namespace rapmap {
         // Some convenience functions to allow salmon interop
 #ifdef RAPMAP_SALMON_SUPPORT
         inline uint32_t transcriptID() const { return tid; }
-        inline double score() { return 1.0; }
+        inline double score() { return score_; }
+        inline void score(double scoreIn) { score_ = scoreIn; }
         inline uint32_t fragLength() const { return fragLen; }
 
         inline uint32_t fragLengthPedantic(uint32_t txpLen) const {
@@ -396,6 +397,8 @@ namespace rapmap {
         // Is this a paired *alignment* or not
         bool isPaired;
         MateStatus mateStatus;
+        // Numeric score associated with this mapping
+        double score_{1.0};
     };
 
     struct HitInfo {
