@@ -424,20 +424,21 @@ namespace rapmap {
         bool queryRC;
     };
 
-    struct SATxpQueryPos {
-	SATxpQueryPos(uint32_t posIn, uint32_t qposIn, bool queryRCIn, bool activeIn = false) :
-		pos(posIn), queryPos(qposIn), queryRC(queryRCIn), active(activeIn) {}
-	uint32_t pos, queryPos;
-	bool queryRC, active;
-    };
+      struct SATxpQueryPos {
+        SATxpQueryPos(uint32_t posIn, uint32_t qposIn, bool queryRCIn, /*bool activeIn = false,*/ int32_t lenIn = -1) :
+          pos(posIn), queryPos(qposIn), queryRC(queryRCIn), /*active(activeIn),*/ len(lenIn){}
+        uint32_t pos, queryPos;
+        bool queryRC;//, active;
+        int32_t len;
+      };
 
     struct ProcessedSAHit {
 	    ProcessedSAHit() : tid(std::numeric_limits<uint32_t>::max()), active(false), numActive(1) {}
 
-	    ProcessedSAHit(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t queryPosIn, bool queryRCIn) :
+	    ProcessedSAHit(uint32_t txpIDIn, uint32_t txpPosIn, uint32_t queryPosIn, bool queryRCIn, uint32_t lenIn) :
 		    tid(txpIDIn), active(false), numActive(1)
 	    {
-		tqvec.emplace_back(txpPosIn, queryPosIn, queryRCIn);
+        tqvec.emplace_back(txpPosIn, queryPosIn, queryRCIn, lenIn);
 	    }
 
         /**
@@ -499,8 +500,8 @@ namespace rapmap {
 
 	    uint32_t tid;
 	    std::vector<SATxpQueryPos> tqvec;
-        bool active;
-	    uint32_t numActive;
+      bool active;
+      uint32_t numActive;
     };
 
     struct SAHitInfo {

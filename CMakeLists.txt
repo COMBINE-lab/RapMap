@@ -49,7 +49,7 @@ else()
   set(WALL "-Wall -Wno-unused-function -Wno-unused-local-typedef")
 endif()
 
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM ${WALL} -std=c++11")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM ${WALL} -std=c++14")
 
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
@@ -89,11 +89,11 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
     execute_process(
         COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
     # If we're on OSX
-    if (APPLE AND NOT (GCC_VERSION VERSION_GREATER 4.8.2 OR GCC_VERSION VERSION_EQUAL 4.8.2))
+    if (APPLE AND NOT (GCC_VERSION VERSION_GREATER 5.2 OR GCC_VERSION VERSION_EQUAL 5.2))
         message(FATAL_ERROR "When building under OSX, ${PROJECT_NAME} requires "
-                            "either clang or g++ >= 4.8.2")
-    elseif (NOT (GCC_VERSION VERSION_GREATER 4.7 OR GCC_VERSION VERSION_EQUAL 4.7))
-        message(FATAL_ERROR "${PROJECT_NAME} requires g++ 4.7 or greater.")
+                            "either clang or g++ >= 5.2")
+    elseif (NOT (GCC_VERSION VERSION_GREATER 5.2 OR GCC_VERSION VERSION_EQUAL 5.2))
+        message(FATAL_ERROR "${PROJECT_NAME} requires g++ 5.2 or greater.")
     endif ()
 
     set (GCC TRUE)
@@ -134,7 +134,7 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
         set (PTHREAD_LIB "pthread")
     endif()
 else ()
-    message(FATAL_ERROR "Your C++ compiler does not support C++11.")
+    message(FATAL_ERROR "Your C++ compiler does not support C++14.")
 endif ()
 
 include(ExternalProject)

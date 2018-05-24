@@ -58,11 +58,16 @@ public:
   bool getStrictCheck() const { return strictCheck_; };
   void setStrictCheck(bool sc) { strictCheck_ = sc; }
 
+  /** Get/Set usage of MMP chain scoring **/
+  void enableChainScoring() { doChaining_ = true; }
+  void disableChainScoring() { doChaining_ = false; }
+  bool getChainScoring() const { return doChaining_; }
+
   /** Construct an SACollector given an index **/
   SACollector(RapMapIndexT* rmi)
       : rmi_(rmi), hashEnd_(rmi->khash.end()), disableNIP_(false), 
         covReq_(0.0), maxInterval_(1000),
-        strictCheck_(false) {}
+        strictCheck_(false), doChaining_(false) {}
 
   enum HitStatus { ABSENT = -1, UNTESTED = 0, PRESENT = 1 };
   // Record if k-mers are hits in the
@@ -108,7 +113,7 @@ public:
     auto salen = SA.size();
     //auto hashEnd_ = khash.end();
     auto readLen = read.length();
-    auto maxDist = 1.5 * readLen;
+    auto maxDist = static_cast<int32_t>(readLen);
 
     auto k = rapmap::utils::my_mer::k();
     auto readStartIt = read.begin();
@@ -363,7 +368,7 @@ public:
       auto processedHits = rapmap::hit_manager::intersectSAHits(
           fwdSAInts, *rmi_, readLen, consistentHits);
       rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
-                                               hits, mateStatus);
+                                               hits, mateStatus, doChaining_);
     } else if (fwdSAInts.size() == 1) { // only 1 hit!
       auto& saIntervalHit = fwdSAInts.front();
       auto initialSize = hits.size();
@@ -403,7 +408,7 @@ public:
       auto processedHits = rapmap::hit_manager::intersectSAHits(
           rcSAInts, *rmi_, readLen, consistentHits);
       rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
-                                               hits, mateStatus);
+                                               hits, mateStatus, doChaining_);
     } else if (rcSAInts.size() == 1) { // only 1 hit!
       auto& saIntervalHit = rcSAInts.front();
       auto initialSize = hits.size();
@@ -759,6 +764,7 @@ private:
   double covReq_;
   OffsetT maxInterval_;
   bool strictCheck_;
+  bool doChaining_;
   std::string rcBuffer_;
 };
 

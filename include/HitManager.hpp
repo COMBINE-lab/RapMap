@@ -46,8 +46,8 @@ namespace rapmap {
 
         template <typename T>
         using SAIntervalHit = rapmap::utils::SAIntervalHit<T>;
-        using SAHitMap = std::map<int, rapmap::utils::ProcessedSAHit>;
         using ProcessedSAHit = rapmap::utils::ProcessedSAHit;
+        using SAHitMap = std::map<int, ProcessedSAHit>;
 
         class SAProcessedHitVec {
             public:
@@ -70,9 +70,10 @@ namespace rapmap {
         // match maxDist
         bool collectHitsSimpleSA(SAHitMap& processedHits,
                 uint32_t readLen,
-                uint32_t maxDist,
+                int32_t maxDist,
                 std::vector<QuasiAlignment>& hits,
-                MateStatus mateStatus);
+                MateStatus mateStatus,
+                bool doChaining);
 
         // Return hits from processedHits where position constraints
         // match maxDist

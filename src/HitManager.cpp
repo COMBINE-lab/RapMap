@@ -60,36 +60,136 @@ namespace rapmap {
         // match maxDist
         bool collectHitsSimpleSA(SAHitMap& processedHits,
                         uint32_t readLen,
-                        uint32_t maxDist,
+                        int32_t maxDist,
                         std::vector<QuasiAlignment>& hits,
-                        MateStatus mateStatus){
-                //bool foundHit{false};
-                // One processed hit per transcript
-	            //auto startOffset = hits.size();
-                for (auto& ph : processedHits) {
-                        // If this is an *active* position list
-                        if (ph.second.active) {
-                                auto tid = ph.first;
-				auto minPosIt = std::min_element(ph.second.tqvec.begin(),
-						ph.second.tqvec.end(),
-						[](const SATxpQueryPos& a, const SATxpQueryPos& b) -> bool {
-						    return a.pos < b.pos;
-						});
-                                bool hitRC = minPosIt->queryRC;
-                                int32_t hitPos = minPosIt->pos - minPosIt->queryPos;
-                                bool isFwd = !hitRC;
-                                hits.emplace_back(tid, hitPos, isFwd, readLen);
-                                hits.back().mateStatus = mateStatus;
-                        }
+                        MateStatus mateStatus,
+                        bool findBestChain){
+
+          //bool foundHit{false};
+          // One processed hit per transcript
+          //auto startOffset = hits.size();
+
+          std::vector<double> f;
+          std::vector<int32_t> p;
+          for (auto& ph : processedHits) {
+            // If this is an *active* position list
+            if (ph.second.active) {
+              auto tid = ph.first;
+
+              if (findBestChain) {
+                // IF WE ARE GOING TO VALIDATE THE MAPPING LATER
+                auto& hitVector = ph.second.tqvec;
+                auto minPosIt = hitVector.begin();
+                // sort the hits within this transcript, first by query position and then reference position.
+                std::sort(hitVector.begin(), hitVector.end(),
+                          [](const SATxpQueryPos& p1, const SATxpQueryPos& p2) -> bool {
+                            auto r1 = p1.pos + p1.len;
+                            auto r2 = p2.pos + p2.len;
+                            auto q1 = p1.queryPos + p1.len;
+                            auto q2 = p2.queryPos + p2.len;
+
+                            return (r1 < r2) ? true :    // p1 ref < p2 ref
+                                   ((r2 < r1 ) ? false : // p2 ref < p1 ref
+                                    (q1 <= q2));         // p1 ref == p2 ref (so sort by query pos)
+                          });
+                // find the valid chains
+                // Use variant of minimap2 scoring (Li 2018) 
+                // https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/bty191/4994778
+                auto alpha = [](int32_t qdiff, int32_t rdiff, int32_t ilen) -> double {
+                  double score = ilen;
+                  double mindiff = (qdiff < rdiff) ? qdiff : rdiff;
+                  return (score < mindiff) ? score : mindiff;
+                };
+
+                auto beta = [maxGap=maxDist](int32_t qdiff, int32_t rdiff, double avgseed) -> double {
+                  if (qdiff < 0 or (std::max(qdiff, rdiff) > maxGap)) {
+                    return std::numeric_limits<double>::infinity();
+                  }
+                  double l = qdiff - rdiff;
+                  int32_t al = std::abs(l);
+                  return (l == 0) ? 0.0 : (0.01 * avgseed * al + 0.5 * std::log2(al));
+                };
+
+                double bottomScore = std::numeric_limits<double>::lowest();
+                double bestScore = bottomScore;
+                int32_t bestChainEnd = -1;
+                double avgseed = 31.0;
+                f.clear();
+                p.clear();
+                for (int32_t i = 0; i < hitVector.size(); ++i) {
+                  auto& hi = hitVector[i];
+
+                  auto qposi = hi.queryPos;
+                  auto rposi = hi.pos;
+
+                  double baseScore = static_cast<double>(hi.len);
+                  p.push_back(i);
+                  f.push_back(baseScore);
+
+                  // possible predecessors in the chain
+                  for (int32_t j = i-1; j > 0; --j) {
+                    auto& hj = hitVector[j];
+
+                    auto qposj = hj.queryPos;
+                    auto rposj = hj.pos;
+
+                    auto qdiff = qposi - qposj;
+                    auto rdiff = rposi - rposj;
+
+                    auto extensionScore = f[j] + alpha(qdiff, rdiff, hi.len) - beta(qdiff, rdiff, avgseed);
+                    p[i] = (extensionScore > f[i]) ? j : p[i];
+                    f[i] = (extensionScore > f[i]) ? extensionScore : f[i];
+                    // HEURISTIC : early exit
+                    if (p[i] >= 0) { break; }
+                  }
+                  if (f[i] > bestScore) {
+                    bestScore = f[i];
+                    bestChainEnd = i;
+                  }
                 }
-                // if SAHitMap is sorted, no need to sort here
-                /*
-                std::sort(hits.begin() + startOffset, hits.end(),
-                                [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                                return a.tid < b.tid;
-                                });
-                                */
-                return true;
+
+                // Do backtracking
+                if (bestChainEnd > 0) {
+                  auto lastPtr = p[bestChainEnd];
+                  while (lastPtr < bestChainEnd) {
+                    lastPtr = bestChainEnd;
+                    bestChainEnd = p[bestChainEnd];
+                  }
+                  minPosIt += lastPtr;
+                } else {
+                  // should not happen
+                  std::cerr << "oh no! why no valid chain!\n";
+                  std::exit(1);
+                }
+
+                bool hitRC = minPosIt->queryRC;
+                int32_t hitPos = minPosIt->pos - minPosIt->queryPos;
+                bool isFwd = !hitRC;
+                hits.emplace_back(tid, hitPos, isFwd, readLen);
+                hits.back().mateStatus = mateStatus;
+                // END OF VALIDATE MAPPING VALIDATION
+              } else {
+                auto minPosIt = std::min_element(ph.second.tqvec.begin(),
+                                            ph.second.tqvec.end(),
+                                            [](const SATxpQueryPos& a, const SATxpQueryPos& b) -> bool {
+                                              return a.pos < b.pos;
+                                            });
+                bool hitRC = minPosIt->queryRC;
+                int32_t hitPos = minPosIt->pos - minPosIt->queryPos;
+                bool isFwd = !hitRC;
+                hits.emplace_back(tid, hitPos, isFwd, readLen);
+                hits.back().mateStatus = mateStatus;
+              }
+            }
+          }
+          // if SAHitMap is sorted, no need to sort here
+          /*
+            std::sort(hits.begin() + startOffset, hits.end(),
+            [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+            return a.tid < b.tid;
+            });
+          */
+          return true;
         }
 
 
@@ -391,7 +491,7 @@ namespace rapmap {
                 if (txpListIt->second.numActive == intervalCounter) {
                   auto globalPos = SA[i];
                   auto localPos = globalPos - txpStarts[txpID];
-                  txpListIt->second.tqvec.emplace_back(localPos, h.queryPos, h.queryRC);
+                  txpListIt->second.tqvec.emplace_back(localPos, h.queryPos, h.queryRC, h.len);
                 }
               }
             }
@@ -574,71 +674,70 @@ d
                 std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi,
                 size_t readLen,
-                bool strictFilter 
-                ) {
-            using OffsetT = typename RapMapIndexT::IndexType;
-            // Each inHit is a SAIntervalHit structure that contains
-            // an SA interval with all hits for a particuar query location
-            // on the read.
-            //
-            // We want to find the transcripts that appear in *every*
-            // interavl.  Further, for each transcript, we want to
-            // know the positions within this txp.
+                bool strictFilter) {
+          using OffsetT = typename RapMapIndexT::IndexType;
+          // Each inHit is a SAIntervalHit structure that contains
+          // an SA interval with all hits for a particuar query location
+          // on the read.
+          //
+          // We want to find the transcripts that appear in *every*
+          // interavl.  Further, for each transcript, we want to
+          // know the positions within this txp.
 
-            // Check this --- we should never call this function
-            // with less than 2 hits.
-            SAHitMap outHits;
-            if (inHits.size() < 2) {
-                std::cerr << "intersectHitsSA() called with < 2 hits "
-                    " hits; this shouldn't happen\n";
-                return outHits;
-            }
-
-            auto& SA = rmi.SA;
-            auto& txpStarts = rmi.txpOffsets;
-            //auto& txpIDs = rmi.positionIDs;
-
-            // Start with the smallest interval
-            // i.e. interval with the fewest hits.
-            SAIntervalHit<OffsetT>* minHit = &inHits[0];
-            for (auto& h : inHits) {
-                if (h.span() < minHit->span()) {
-                    minHit = &h;
-                }
-            }
-
-            //outHits.reserve(minHit->span());
-            // =========
-            { // Add the info from minHit to outHits
-                for (OffsetT i = minHit->begin; i < minHit->end; ++i) {
-                    auto globalPos = SA[i];
-                    //auto tid = txpIDs[globalPos];
-                    auto tid = rmi.transcriptAtPosition(globalPos);
-                    auto txpPos = globalPos - txpStarts[tid];
-                    outHits[tid].tqvec.emplace_back(txpPos, minHit->queryPos, minHit->queryRC);
-                }
-            }
-            // =========
-
-            // Now intersect everything in inHits (apart from minHits)
-            // to get the final set of mapping info.
-            size_t intervalCounter{2};
-            for (auto& h : inHits) {
-                if (&h != minHit) { // don't intersect minHit with itself
-                    intersectSAIntervalWithOutput(h, rmi, intervalCounter, outHits);
-                    ++intervalCounter;
-                }
-            }
-
-            size_t requiredNumHits = inHits.size();
-            // Mark as active any transcripts with the required number of hits.
-            for (auto it = outHits.begin(); it != outHits.end(); ++it) {
-                bool enoughHits = (it->second.numActive >= requiredNumHits);
-                it->second.active = (strictFilter) ? 
-                    (enoughHits and it->second.checkConsistent(readLen, requiredNumHits)) :
-                    (enoughHits);
-            }
+          // Check this --- we should never call this function
+          // with less than 2 hits.
+          SAHitMap outHits;
+          if (inHits.size() < 2) {
+            std::cerr << "intersectHitsSA() called with < 2 hits "
+              " hits; this shouldn't happen\n";
             return outHits;
+          }
+
+          auto& SA = rmi.SA;
+          auto& txpStarts = rmi.txpOffsets;
+          //auto& txpIDs = rmi.positionIDs;
+
+          // Start with the smallest interval
+          // i.e. interval with the fewest hits.
+          SAIntervalHit<OffsetT>* minHit = &inHits[0];
+          for (auto& h : inHits) {
+            if (h.span() < minHit->span()) {
+              minHit = &h;
+            }
+          }
+
+          //outHits.reserve(minHit->span());
+          // =========
+          { // Add the info from minHit to outHits
+            for (OffsetT i = minHit->begin; i < minHit->end; ++i) {
+              auto globalPos = SA[i];
+              auto tid = rmi.transcriptAtPosition(globalPos);
+              auto txpPos = globalPos - txpStarts[tid];
+              auto& oh = outHits[tid];
+              oh.tqvec.emplace_back(txpPos, minHit->queryPos, minHit->queryRC, minHit->len);
+            }
+          }
+          // =========
+
+          // Now intersect everything in inHits (apart from minHits)
+          // to get the final set of mapping info.
+          size_t intervalCounter{2};
+          for (auto& h : inHits) {
+            if (&h != minHit) { // don't intersect minHit with itself
+              intersectSAIntervalWithOutput(h, rmi, intervalCounter, outHits);
+              ++intervalCounter;
+            }
+          }
+
+          size_t requiredNumHits = inHits.size();
+          // Mark as active any transcripts with the required number of hits.
+          for (auto it = outHits.begin(); it != outHits.end(); ++it) {
+            bool enoughHits = (it->second.numActive >= requiredNumHits);
+            it->second.active = (strictFilter) ? 
+              (enoughHits and it->second.checkConsistent(readLen, requiredNumHits)) :
+              (enoughHits);
+          }
+          return outHits;
         }
 
 
