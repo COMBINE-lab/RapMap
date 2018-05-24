@@ -116,7 +116,7 @@ namespace rapmap {
                 double avgseed = 31.0;
                 f.clear();
                 p.clear();
-                for (int32_t i = 0; i < hitVector.size(); ++i) {
+                for (int32_t i = 0; i < static_cast<int32_t>(hitVector.size()); ++i) {
                   auto& hi = hitVector[i];
 
                   auto qposi = hi.queryPos;
@@ -158,6 +158,9 @@ namespace rapmap {
                   minPosIt += lastPtr;
                 } else {
                   // should not happen
+                  std::cerr << "num hits = " << hitVector.size() << "\n";
+                  std::cerr << "bestChainEnd = " << bestChainEnd << "\n";
+                  std::cerr << "bestChainScore = " << bestScore << "\n";
                   std::cerr << "oh no! why no valid chain!\n";
                   std::exit(1);
                 }
