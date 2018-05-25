@@ -127,6 +127,7 @@ namespace rapmap {
                   f.push_back(baseScore);
 
                   // possible predecessors in the chain
+                  int32_t numRounds{1};
                   for (int32_t j = i-1; j > 0; --j) {
                     auto& hj = hitVector[j];
 
@@ -140,7 +141,7 @@ namespace rapmap {
                     p[i] = (extensionScore > f[i]) ? j : p[i];
                     f[i] = (extensionScore > f[i]) ? extensionScore : f[i];
                     // HEURISTIC : early exit
-                    if (p[i] >= 0) { break; }
+                    if (p[i] < i) { break; }
                   }
                   if (f[i] > bestScore) {
                     bestScore = f[i];
@@ -158,10 +159,10 @@ namespace rapmap {
                   minPosIt += lastPtr;
                 } else {
                   // should not happen
+                  std::cerr << "[FATAL] : Cannot find any valid chain for quasi-mapping\n";
                   std::cerr << "num hits = " << hitVector.size() << "\n";
                   std::cerr << "bestChainEnd = " << bestChainEnd << "\n";
                   std::cerr << "bestChainScore = " << bestScore << "\n";
-                  std::cerr << "oh no! why no valid chain!\n";
                   std::exit(1);
                 }
 
