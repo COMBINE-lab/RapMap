@@ -149,7 +149,7 @@ namespace rapmap {
                 }
 
                 // Do backtracking
-                if (bestChainEnd > 0) {
+                if (bestChainEnd >= 0) {
                   auto lastPtr = p[bestChainEnd];
                   while (lastPtr < bestChainEnd) {
                     lastPtr = bestChainEnd;
