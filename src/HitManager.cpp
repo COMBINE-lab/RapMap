@@ -128,7 +128,8 @@ namespace rapmap {
 
                   // possible predecessors in the chain
                   int32_t numRounds{1};
-                  for (int32_t j = i-1; j > 0; --j) {
+                  (void)numRounds;
+                  for (int32_t j = i-1; j >= 0; --j) {
                     auto& hj = hitVector[j];
 
                     auto qposj = hj.queryPos;
@@ -140,7 +141,16 @@ namespace rapmap {
                     auto extensionScore = f[j] + alpha(qdiff, rdiff, hi.len) - beta(qdiff, rdiff, avgseed);
                     p[i] = (extensionScore > f[i]) ? j : p[i];
                     f[i] = (extensionScore > f[i]) ? extensionScore : f[i];
-                    // HEURISTIC : early exit
+                    // HEURISTIC : if we connected this match to an earlier one
+                    // i.e. if we extended the chain.
+                    // This implements Heng Li's heuristic ---
+                    // "
+                    // We note that if anchor i is chained to j, chaining i to a predecessor of j
+                    // is likely to yield a lower score.
+                    // "
+                    // here we take this to the extreme, and stop at the first j to which we chain.
+                    // we can add a parameter "h" as in the minimap paper.  But here we expect the
+                    // chains of matches in short reads to be short enough that this may not be worth it.
                     if (p[i] < i) { break; }
                   }
                   if (f[i] > bestScore) {
