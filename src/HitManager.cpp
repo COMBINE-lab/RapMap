@@ -139,8 +139,9 @@ namespace rapmap {
                     auto rdiff = rposi - rposj;
 
                     auto extensionScore = f[j] + alpha(qdiff, rdiff, hi.len) - beta(qdiff, rdiff, avgseed);
-                    p[i] = (extensionScore > f[i]) ? j : p[i];
-                    f[i] = (extensionScore > f[i]) ? extensionScore : f[i];
+                    bool extendWithJ = (extensionScore > f[i]);
+                    p[i] = extendWithJ ? j : p[i];
+                    f[i] = extendWithJ ? extensionScore : f[i];
                     // HEURISTIC : if we connected this match to an earlier one
                     // i.e. if we extended the chain.
                     // This implements Heng Li's heuristic ---
