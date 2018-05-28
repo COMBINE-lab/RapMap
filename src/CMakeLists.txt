@@ -1,19 +1,19 @@
 set (RAPMAP_MAIN_SRCS
     RapMap.cpp
-    RapMapIndexer.cpp
     RapMapSAIndexer.cpp
     RapMapUtils.cpp
-    RapMapMapper.cpp
     RapMapSAMapper.cpp
     RapMapFileSystem.cpp
     RapMapSAIndex.cpp
-    RapMapIndex.cpp
     HitManager.cpp
     FastxParser.cpp
     rank9b.cpp
     stringpiece.cc
     xxhash.c
     bit_array.c
+    #RapMapIndex.cpp
+    #RapMapMapper.cpp
+    #RapMapIndexer.cpp
 )
 
 set (RAPMAP_ALIGN_SRCS
@@ -22,35 +22,19 @@ set (RAPMAP_ALIGN_SRCS
 set (RAPMAP_LIB_SRCS
 )
 
-#set (RSDICT_LIB_SRCS
-#    EnumCoder.cpp
-#    RSDic.cpp
-#    RSDicBuilder.cpp
-#)
-
 include_directories(
 ${GAT_SOURCE_DIR}/include
+${GAT_SOURCE_DIR}/digestpp
 ${GAT_SOURCE_DIR}/external
 ${GAT_SOURCE_DIR}/external/cereal/include
 ${GAT_SOURCE_DIR}/external/install/include
-${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.6
 ${ZLIB_INCLUDE_DIR}
 ${CEREAL_INCLUDE_DIRS}
 )
 
-if (JELLYFISH_FOUND)
-    include_directories(${JELLYFISH_INCLUDE_DIR})
-else()
-    include_directories(${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.6)
-endif()
-
 link_directories(
 ${GAT_SOURCE_DIR}/lib
 ${GAT_SOURCE_DIR}/external/install/lib
-#${Boost_LIBRARY_DIRS}
-#${TBB_LIBRARY_DIRS}
-#${LAPACK_LIBRARY_DIR}
-#${BLAS_LIBRARY_DIR}
 )
 
 # Set the RPATH
@@ -86,12 +70,12 @@ target_link_libraries(rapmap
     ${ZLIB_LIBRARY}
     ${SUFFARRAY_LIB}
     ${SUFFARRAY64_LIB}
-    ${GAT_SOURCE_DIR}/external/install/lib/libjellyfish-2.0.a
     m
-    #${LIBLZMA_LIBRARIES}
     ${NON_APPLECLANG_LIBS}
     ${FAST_MALLOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
+    #${GAT_SOURCE_DIR}/external/install/lib/libjellyfish-2.0.a
+    #${LIBLZMA_LIBRARIES}
 )
 
 

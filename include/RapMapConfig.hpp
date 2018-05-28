@@ -26,9 +26,9 @@
 
 namespace rapmap {
     constexpr char majorVersion[] = "0";
-    constexpr char minorVersion[] = "5";
+    constexpr char minorVersion[] = "6";
     constexpr char patchVersion[] = "0";
-    constexpr char version [] = "0.5.0";
+    constexpr char version [] = "0.6.0";
     constexpr uint32_t indexVersion = 3;
 }
 

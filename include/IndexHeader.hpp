@@ -50,8 +50,10 @@ class IndexHeader {
                 ar( cereal::make_nvp("KmerLen", kmerLen_) );
                 ar( cereal::make_nvp("BigSA", bigSA_) );
                 ar( cereal::make_nvp("PerfectHash", perfectHash_) );
-                ar( cereal::make_nvp("SeqHash", seqHash_) );
-                ar( cereal::make_nvp("NameHash", nameHash_) );
+                ar( cereal::make_nvp("SeqHash", seqHash256_) );
+                ar( cereal::make_nvp("NameHash", nameHash256_) );
+                ar( cereal::make_nvp("SeqHash512", seqHash512_) );
+                ar( cereal::make_nvp("NameHash512", nameHash512_) );
             }
 
         template <typename Archive>
@@ -63,8 +65,10 @@ class IndexHeader {
                 ar( cereal::make_nvp("KmerLen", kmerLen_) );
                 ar( cereal::make_nvp("BigSA", bigSA_) );
                 ar( cereal::make_nvp("PerfectHash", perfectHash_) );
-                ar( cereal::make_nvp("SeqHash", seqHash_) );
-                ar( cereal::make_nvp("NameHash", nameHash_) );
+                ar( cereal::make_nvp("SeqHash", seqHash256_) );
+                ar( cereal::make_nvp("NameHash", nameHash256_) );
+                ar( cereal::make_nvp("SeqHash512", seqHash512_) );
+                ar( cereal::make_nvp("NameHash512", nameHash512_) );
             } catch (const cereal::Exception& e) {
                 auto cerrLog = spdlog::get("stderrLog");
                 cerrLog->error("Encountered exception [{}] when loading index.", e.what());
@@ -82,11 +86,15 @@ class IndexHeader {
         bool bigSA() const { return bigSA_; }
         bool perfectHash() const { return perfectHash_; }
 
-        void setSeqHash(const std::string& seqHash) { seqHash_ = seqHash; }
-        void setNameHash(const std::string& nameHash) { nameHash_ = nameHash; }
-        std::string seqHash() const { return seqHash_; }
-        std::string nameHash() const { return nameHash_; }
+        void setSeqHash256(const std::string& seqHash) { seqHash256_ = seqHash; }
+        void setNameHash256(const std::string& nameHash) { nameHash256_ = nameHash; }
+        std::string seqHash256() const { return seqHash256_; }
+        std::string nameHash256() const { return nameHash256_; }
 
+        void setSeqHash512(const std::string& seqHash) { seqHash512_ = seqHash; }
+        void setNameHash512(const std::string& nameHash) { nameHash512_ = nameHash; }
+        std::string seqHash512() const { return seqHash512_; }
+        std::string nameHash512() const { return nameHash512_; }
     private:
         // The type of index we have
         IndexType type_;
@@ -102,9 +110,13 @@ class IndexHeader {
         // Are we using a perfect hash in the index or not?
         bool perfectHash_;
         // Hash of sequences in txome
-        std::string seqHash_;
+        std::string seqHash256_;
         // Hash of sequence names in txome
-        std::string nameHash_;
+        std::string nameHash256_;
+        // Hash of sequences in txome
+        std::string seqHash512_;
+        // Hash of sequence names in txome
+        std::string nameHash512_;
 };
 
 

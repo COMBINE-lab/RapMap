@@ -58,11 +58,16 @@ public:
   bool getStrictCheck() const { return strictCheck_; };
   void setStrictCheck(bool sc) { strictCheck_ = sc; }
 
+  /** Get/Set usage of MMP chain scoring **/
+  void enableChainScoring() { doChaining_ = true; }
+  void disableChainScoring() { doChaining_ = false; }
+  bool getChainScoring() const { return doChaining_; }
+
   /** Construct an SACollector given an index **/
   SACollector(RapMapIndexT* rmi)
       : rmi_(rmi), hashEnd_(rmi->khash.end()), disableNIP_(false), 
         covReq_(0.0), maxInterval_(1000),
-        strictCheck_(false) {}
+        strictCheck_(false), doChaining_(false) {}
 
   enum HitStatus { ABSENT = -1, UNTESTED = 0, PRESENT = 1 };
   // Record if k-mers are hits in the
@@ -80,7 +85,7 @@ public:
       return kpos < other.kpos;
     }
     void print() {
-      std::cerr << "{ " << kmer.to_str() << ", " << kpos << ", "
+      std::cerr << "{ " << kmer.toStr() << ", " << kpos << ", "
                 << ((fwdScore) ? "PRESENT" : "ABSENT") << ", "
                 << ((rcScore) ? "PRESENT" : "ABSENT") << "}\t";
     }
@@ -108,7 +113,7 @@ public:
     auto salen = SA.size();
     //auto hashEnd_ = khash.end();
     auto readLen = read.length();
-    auto maxDist = 1.5 * readLen;
+    auto maxDist = static_cast<int32_t>(readLen);
 
     auto k = rapmap::utils::my_mer::k();
     auto readStartIt = read.begin();
@@ -190,7 +195,7 @@ public:
         */
         continue;
       }
-      rcMer = mer.get_reverse_complement();
+      rcMer = mer.getRC();
 
       // See if we can find this k-mer in the hash
       merIt = khash.find(mer.word(0));//get_bits(0, 2 * k));
@@ -315,7 +320,7 @@ public:
 
             // If the rc k-mer is untested, then test it
             if (kms.rcScore == UNTESTED) {
-              rcMer = kms.kmer.get_reverse_complement();
+              rcMer = kms.kmer.getRC();
               auto rcMerIt = khash.find(rcMer.word(0));//get_bits(0, 2 * k));
               kms.rcScore = (rcMerIt != hashEnd_) ? PRESENT : ABSENT;
             }
@@ -363,7 +368,7 @@ public:
       auto processedHits = rapmap::hit_manager::intersectSAHits(
           fwdSAInts, *rmi_, readLen, consistentHits);
       rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
-                                               hits, mateStatus);
+                                               hits, mateStatus, doChaining_);
     } else if (fwdSAInts.size() == 1) { // only 1 hit!
       auto& saIntervalHit = fwdSAInts.front();
       auto initialSize = hits.size();
@@ -403,7 +408,7 @@ public:
       auto processedHits = rapmap::hit_manager::intersectSAHits(
           rcSAInts, *rmi_, readLen, consistentHits);
       rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
-                                               hits, mateStatus);
+                                               hits, mateStatus, doChaining_);
     } else if (rcSAInts.size() == 1) { // only 1 hit!
       auto& saIntervalHit = rcSAInts.front();
       auto initialSize = hits.size();
@@ -477,7 +482,7 @@ private:
     //auto hashEnd_ = khash.end();
     auto k = rapmap::utils::my_mer::k();
 
-    auto complementMer = mer.get_reverse_complement();
+    auto complementMer = mer.getRC();
 
     if (merItPtr == nullptr) {
       // We haven't tested this, so do that here
@@ -530,7 +535,7 @@ private:
   // Attempts to find the next valid k-mer (a k-mer that doesn't contain an 'N' and is 
   // not a homopolymer).  If no such k-mer exists within the read, then it returns false. 
   inline bool getNextValidKmer_(std, size_t& pos, rapmap::utils::my_mer& mer) {
-      bool validMer = mer.from_chars(read + pos);
+      bool validMer = mer.fromChars(read + pos);
       // if this kmer contains an 'N' then validMer is false, else true
   }
   */
@@ -567,7 +572,7 @@ private:
 
     rapmap::utils::my_mer mer, complementMer;
     auto merIt = hashEnd_;
-    auto complementMerIt = hashEnd_;
+    //auto complementMerIt = hashEnd_;
     size_t pos{0};
     size_t sampFactor{1};
     bool lastSearch{false};
@@ -592,7 +597,7 @@ private:
       // The distance from the beginning of the read to the
       // start of the k-mer
       pos = std::distance(readStartIt, rb);
-      validMer = mer.from_chars(read.c_str() + pos);
+      validMer = mer.fromChars(read.c_str() + pos);
       // Get the next valid k-mer at some position >= pos
       //validMer = getNextValidKmer_(read, pos, mer);
       //if (!validMer) { return; }
@@ -634,7 +639,7 @@ private:
       
       // If it's not a homopolymer, then get the complement
       // k-mer and query both in the hash.
-      complementMer = mer.get_reverse_complement();
+      complementMer = mer.getRC();
       merIt = khash.find(mer.word(0));//get_bits(0, 2 * k));
 
       // If we found the k-mer
@@ -676,7 +681,7 @@ private:
           if (rb + matchedLen < readEndIt) {
             uint32_t kmerPos = static_cast<uint32_t>(
                 std::distance(readStartIt, rb + matchedLen - skipOverlapMMP));
-            bool validNucs = mer.from_chars(read.c_str() + kmerPos);
+            bool validNucs = mer.fromChars(read.c_str() + kmerPos);
             if (validNucs) {
               /*
               // since the MMP *ended* before the end of the read, we assume
@@ -759,6 +764,7 @@ private:
   double covReq_;
   OffsetT maxInterval_;
   bool strictCheck_;
+  bool doChaining_;
   std::string rcBuffer_;
 };
 

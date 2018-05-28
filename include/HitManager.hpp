@@ -23,7 +23,7 @@
 #define __HIT_MANAGER_HPP__
 
 #include "RapMapUtils.hpp"
-#include "RapMapIndex.hpp"
+//#include "RapMapIndex.hpp"
 #include "RapMapSAIndex.hpp"
 
 //#include "eytzinger_array.h"
@@ -46,8 +46,8 @@ namespace rapmap {
 
         template <typename T>
         using SAIntervalHit = rapmap::utils::SAIntervalHit<T>;
-        using SAHitMap = std::map<int, rapmap::utils::ProcessedSAHit>;
         using ProcessedSAHit = rapmap::utils::ProcessedSAHit;
+        using SAHitMap = std::map<int, ProcessedSAHit>;
 
         class SAProcessedHitVec {
             public:
@@ -70,9 +70,10 @@ namespace rapmap {
         // match maxDist
         bool collectHitsSimpleSA(SAHitMap& processedHits,
                 uint32_t readLen,
-                uint32_t maxDist,
+                int32_t maxDist,
                 std::vector<QuasiAlignment>& hits,
-                MateStatus mateStatus);
+                MateStatus mateStatus,
+                bool doChaining);
 
         // Return hits from processedHits where position constraints
         // match maxDist
@@ -88,8 +89,8 @@ namespace rapmap {
         // entries in outHits that are labeled by the transcripts in
         // which h2 appears will have an iterator to the beginning of
         // the position list for h2.
-        void intersectWithOutput(HitInfo& h2, RapMapIndex& rmi,
-                std::vector<ProcessedHit>& outHits);
+        //void intersectWithOutput(HitInfo& h2, RapMapIndex& rmi,
+        //        std::vector<ProcessedHit>& outHits);
 
         template <typename RapMapIndexT>
         void intersectSAIntervalWithOutput(SAIntervalHit<typename RapMapIndexT::IndexType>& h,
@@ -109,9 +110,9 @@ namespace rapmap {
                 SAProcessedHitVec& outHits);
                 */
 
-        std::vector<ProcessedHit> intersectHits(
-                std::vector<HitInfo>& inHits,
-                RapMapIndex& rmi);
+        //std::vector<ProcessedHit> intersectHits(
+        //        std::vector<HitInfo>& inHits,
+         //       RapMapIndex& rmi);
 
         template <typename RapMapIndexT>
         SAHitMap intersectSAHits(

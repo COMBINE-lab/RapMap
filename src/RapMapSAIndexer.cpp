@@ -33,6 +33,10 @@
 #include <map>
 #include <vector>
 
+// avoid duplicate definition
+#ifdef HAVE_SSTREAM
+#undef HAVE_SSTREAM
+#endif //HAVE_SSTREAM
 #include "tclap/CmdLine.h"
 
 #include <cereal/archives/binary.hpp>
@@ -42,6 +46,7 @@
 #include <cereal/types/utility.hpp>
 #include <cereal/types/vector.hpp>
 
+#include "RapMapUtils.hpp"
 #include "BooMap.hpp"
 #include "FrugalBooMap.hpp"
 #include "xxhash.h"
@@ -49,31 +54,22 @@
 #include "spdlog/spdlog.h"
 
 #include "FastxParser.hpp"
-// Jellyfish 2 include
-#include "jellyfish/mer_dna.hpp"
 
 #include "divsufsort.h"
 #include "divsufsort64.h"
 
 #include "RapMapFileSystem.hpp"
-#include "RapMapUtils.hpp"
 #include "ScopedTimer.hpp"
 #include "bit_array.h"
 
-#include "JFRaw.hpp"
-#include "jellyfish/binary_dumper.hpp"
-#include "jellyfish/file_header.hpp"
-#include "jellyfish/hash_counter.hpp"
-#include "jellyfish/mer_iterator.hpp"
-#include "jellyfish/mer_overlap_sequence_parser.hpp"
-#include "jellyfish/thread_exec.hpp"
 #include "rank9b.h"
 
 #include "IndexHeader.hpp"
 
 #include "xxhash.h"
 // sha functionality
-#include "picosha2.h"
+// #include "picosha2.h"
+#include "digestpp/digestpp.hpp"
 
 #include <chrono>
 
@@ -81,7 +77,7 @@ using single_parser = fastx_parser::FastxParser<fastx_parser::ReadSeq>;
 using TranscriptID = uint32_t;
 using TranscriptIDVector = std::vector<TranscriptID>;
 using KmerIDMap = std::vector<TranscriptIDVector>;
-using MerMapT = jellyfish::cooperative::hash_counter<rapmap::utils::my_mer>;
+using namespace combinelib::kmers;
 
 bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
              std::vector<int64_t>& SA) {
@@ -95,7 +91,7 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
   {
     ScopedTimer timer;
     SA.resize(tlen, 0);
-    IndexT textLen = static_cast<IndexT>(tlen);
+    //IndexT textLen = static_cast<IndexT>(tlen);
     std::cerr << "Building suffix array . . . ";
     auto ret = divsufsort64(
         reinterpret_cast<unsigned char*>(const_cast<char*>(concatText.data())),
@@ -128,7 +124,7 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
 // int64_t for "large" ones
 template <typename IndexT>
 bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
-                      size_t tlen, uint32_t k, std::vector<IndexT>& SA,
+                      size_t tlenIn, uint32_t k, std::vector<IndexT>& SA,
                       uint32_t numHashThreads) {
   //BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
   PerfectHashT<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
@@ -137,12 +133,13 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
 
   // The start and stop of the current interval
   IndexT start = 0, stop = 0;
+  IndexT tlen = static_cast<IndexT>(tlenIn);
   // An iterator to the beginning of the text
-  auto textB = concatText.begin();
-  auto textE = concatText.end();
+  //auto textB = concatText.begin();
+  //auto textE = concatText.end();
   // The current k-mer as a string
   rapmap::utils::my_mer mer;
-  bool currentValid{false};
+  //bool currentValid{false};
   std::string currentKmer;
   std::string nextKmer;
   while (stop < tlen) {
@@ -157,7 +154,7 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
         if (currentKmer.length() == k and
             currentKmer.find_first_of('$') == std::string::npos) {
           mer = rapmap::utils::my_mer(currentKmer);
-          auto bits = mer.get_bits(0, 2 * k);
+          auto bits = mer.word(0);//get_bits(0, 2 * k);
           intervals.add(std::move(bits), {start, stop});
           // push_back(std::make_pair<uint64_t,
           // rapmap::utils::SAInterval<IndexT>>(std::move(bits), {start,
@@ -173,7 +170,7 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
       if (currentKmer.length() == k and
           currentKmer.find_first_of('$') == std::string::npos) {
         mer = rapmap::utils::my_mer(currentKmer);
-        auto bits = mer.get_bits(0, 2 * k);
+        auto bits = mer.word(0);//get_bits(0, 2 * k);
         // intervals.push_back(std::make_pair<uint64_t,
         // rapmap::utils::SAInterval<IndexT>>(std::move(bits), {start, stop}));
         intervals.add(std::move(bits), {start, stop});
@@ -192,7 +189,7 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
     if (currentKmer.length() == k and
         currentKmer.find_first_of('$') == std::string::npos) {
       mer = rapmap::utils::my_mer(currentKmer);
-      auto bits = mer.get_bits(0, 2 * k);
+      auto bits = mer.word(0);//get_bits(0, 2 * k);
       // intervals.push_back(std::make_pair<uint64_t,
       // rapmap::utils::SAInterval<IndexT>>(std::move(bits), {start, stop}));
       intervals.add(std::move(bits), {start, stop});
@@ -225,7 +222,7 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
   {
     ScopedTimer timer;
     SA.resize(tlen, 0);
-    IndexT textLen = static_cast<IndexT>(tlen);
+    //IndexT textLen = static_cast<IndexT>(tlen);
     std::cerr << "Building suffix array . . . ";
     auto ret = divsufsort(
         reinterpret_cast<unsigned char*>(const_cast<char*>(concatText.data())),
@@ -258,7 +255,7 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
 // int64_t for "large" ones
 template <typename IndexT>
 bool buildHash(const std::string& outputDir, std::string& concatText,
-               size_t tlen, uint32_t k, std::vector<IndexT>& SA) {
+               size_t tlenIn, uint32_t k, std::vector<IndexT>& SA) {
   // Now, build the k-mer lookup table
     // The base type should always be uint64_t
     using WordT = rapmap::utils::my_mer::base_type;
@@ -269,12 +266,13 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
     //khash.set_empty_key(std::numeric_limits<uint64_t>::max());
   // The start and stop of the current interval
   IndexT start = 0, stop = 0;
+  IndexT tlen = static_cast<IndexT>(tlenIn);
   // An iterator to the beginning of the text
-  auto textB = concatText.begin();
-  auto textE = concatText.end();
+  //auto textB = concatText.begin();
+  //auto textE = concatText.end();
   // The current k-mer as a string
   rapmap::utils::my_mer mer;
-  bool currentValid{false};
+  //bool currentValid{false};
   std::string currentKmer;
   std::string nextKmer;
   while (stop < tlen) {
@@ -456,8 +454,12 @@ void indexTranscriptsSA(ParserT* parser,
   std::uniform_int_distribution<> dis(0, 3);
 
   // Hashers for getting txome signature
-  picosha2::hash256_one_by_one seqHasher; seqHasher.init();
-  picosha2::hash256_one_by_one nameHasher; nameHasher.init();
+  digestpp::sha256 seqHasher256;
+  digestpp::sha256 nameHasher256;
+  digestpp::sha512 seqHasher512;
+  digestpp::sha512 nameHasher512;
+  //picosha2::hash256_one_by_one seqHasher; seqHasher.init();
+  //picosha2::hash256_one_by_one nameHasher; nameHasher.init();
 
   uint32_t n{0};
   uint32_t k = rapmap::utils::my_mer::k();
@@ -471,7 +473,6 @@ void indexTranscriptsSA(ParserT* parser,
   std::string polyA(polyAClipLength, 'A');
 
   using TranscriptList = std::vector<uint32_t>;
-  using eager_iterator = MerMapT::array::eager_iterator;
   using KmerBinT = uint64_t;
 
   bool clipPolyA = !noClipPolyA;
@@ -487,8 +488,8 @@ void indexTranscriptsSA(ParserT* parser,
   // leeway before
   // we issue any warning.
   size_t tooLong = 200000;
-  size_t numDistinctKmers{0};
-  size_t numKmers{0};
+  //size_t numDistinctKmers{0};
+  //size_t numKmers{0};
   size_t currIndex{0};
   size_t numDups{0};
   std::map<XXH64_hash_t, std::vector<DupInfo>> potentialDuplicates;
@@ -516,7 +517,8 @@ void indexTranscriptsSA(ParserT* parser,
                            [](const char a) -> bool { return !(isprint(a)); }),
             readStr.end());
 
-        seqHasher.process(readStr.begin(), readStr.end());
+        seqHasher256.absorb(readStr.begin(), readStr.end());
+        seqHasher512.absorb(readStr.begin(), readStr.end());
 
         uint32_t readLen = readStr.size();
         uint32_t completeLen = readLen;
@@ -527,11 +529,11 @@ void indexTranscriptsSA(ParserT* parser,
         // First, replace non ATCG nucleotides
         for (size_t b = 0; b < readLen; ++b) {
           readStr[b] = ::toupper(readStr[b]);
-          int c = jellyfish::mer_dna::code(readStr[b]);
+          int c = codeForChar(readStr[b]);
           // Replace non-ACGT bases with pseudo-random bases
-          if (jellyfish::mer_dna::not_dna(c)) {
+          if (notValidNuc(c)) {
             char rbase = bases[dis(eng)];
-            c = jellyfish::mer_dna::code(rbase);
+            c = codeForChar(rbase);
             readStr[b] = rbase;
             ++numNucleotidesReplaced;
           }
@@ -607,7 +609,8 @@ void indexTranscriptsSA(ParserT* parser,
 
           // If there was no collision, then add the transcript
           transcriptNames.emplace_back(processedName);
-          nameHasher.process(processedName.begin(), processedName.end());
+          nameHasher256.absorb(processedName.begin(), processedName.end());
+          nameHasher512.absorb(processedName.begin(), processedName.end());
 
           // The position at which this transcript starts
           transcriptStarts.push_back(currIndex);
@@ -776,8 +779,8 @@ void indexTranscriptsSA(ParserT* parser,
     }
   }
 
-  seqHasher.finish();
-  nameHasher.finish();
+  //seqHasher.finish();
+  //nameHasher.finish();
 
   std::string indexVersion = "q5";
   IndexHeader header(IndexType::QUASI,
@@ -785,12 +788,20 @@ void indexTranscriptsSA(ParserT* parser,
                      true, k, largeIndex,
                      usePerfectHash);
   // Set the hash info
-  std::string seqHash;
-  std::string nameHash;
-  picosha2::get_hash_hex_string(seqHasher, seqHash);
-  picosha2::get_hash_hex_string(nameHasher, nameHash);
-  header.setSeqHash(seqHash);
-  header.setNameHash(nameHash);
+  std::string seqHash256 = seqHasher256.hexdigest();
+  std::string nameHash256 = nameHasher256.hexdigest();
+  std::string seqHash512 = seqHasher512.hexdigest();
+  std::string nameHash512 = nameHasher512.hexdigest();
+  header.setSeqHash256(seqHash256);
+  header.setNameHash256(nameHash256);
+  header.setSeqHash512(seqHash512);
+  header.setNameHash512(nameHash512);
+  //std::string seqHash;
+  //std::string nameHash;
+  //picosha2::get_hash_hex_string(seqHasher, seqHash);
+  //picosha2::get_hash_hex_string(nameHasher, nameHash);
+  //header.setSeqHash(seqHash);
+  //header.setNameHash(nameHash);
 
   // Finally (since everything presumably succeeded) write the header
   std::ofstream headerStream(outputDir + "header.json");
