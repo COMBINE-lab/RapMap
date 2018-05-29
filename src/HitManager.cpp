@@ -101,8 +101,8 @@ namespace rapmap {
                   return (score < mindiff) ? score : mindiff;
                 };
 
-                auto beta = [maxGap=maxDist](int32_t qdiff, int32_t rdiff, double avgseed) -> double {
-                  if (qdiff < 0 or (std::max(qdiff, rdiff) > maxGap)) {
+                auto beta = [maxDist](int32_t qdiff, int32_t rdiff, double avgseed) -> double {
+                  if (qdiff < 0 or (std::max(qdiff, rdiff) > maxDist)) {
                     return std::numeric_limits<double>::infinity();
                   }
                   double l = qdiff - rdiff;
