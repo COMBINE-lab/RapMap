@@ -79,7 +79,6 @@ namespace rapmap {
               if (findBestChain) {
                 // IF WE ARE GOING TO VALIDATE THE MAPPING LATER
                 auto& hitVector = ph.second.tqvec;
-                auto minPosIt = hitVector.begin();
                 // sort the hits within this transcript, first by query position and then reference position.
                 std::sort(hitVector.begin(), hitVector.end(),
                           [](const SATxpQueryPos& p1, const SATxpQueryPos& p2) -> bool {
@@ -90,8 +89,9 @@ namespace rapmap {
 
                             return (r1 < r2) ? true :    // p1 ref < p2 ref
                                    ((r2 < r1 ) ? false : // p2 ref < p1 ref
-                                    (q1 <= q2));         // p1 ref == p2 ref (so sort by query pos)
+                                    (q1 < q2));         // p1 ref == p2 ref (so sort by query pos)
                           });
+                auto minPosIt = hitVector.begin();
                 // find the valid chains
                 // Use variant of minimap2 scoring (Li 2018) 
                 // https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/bty191/4994778
