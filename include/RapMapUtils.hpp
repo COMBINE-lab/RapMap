@@ -77,6 +77,12 @@ namespace rapmap {
     constexpr uint32_t newTxpSetMask = 0x80000000;
     constexpr uint32_t rcSetMask = 0x40000000;
 
+    class MappingConfig {
+    public:
+      bool consistentHits{false};
+      bool doChaining{false};
+    };
+
     // Positions are stored in a packed format, where the highest
     // 2-bits encode if this position refers to a new transcript
     // and whether or not the k-mer from the hash matches this txp

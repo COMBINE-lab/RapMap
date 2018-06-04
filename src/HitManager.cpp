@@ -755,6 +755,123 @@ d
           return outHits;
         }
 
+      template <typename RapMapIndexT>
+      void hitsToMappingsSimple(RapMapIndexT& rmi,
+                                rapmap::utils::MappingConfig& mc,
+                                rapmap::utils::MateStatus mateStatus,
+                                HitCollectorInfo<SAIntervalHit<typename RapMapIndexT::IndexType>>& hcinfo,
+                                std::vector<rapmap::utils::QuasiAlignment>& hits) {
+
+        using OffsetT = typename RapMapIndexT::IndexType;
+        auto& rankDict = rmi.rankDict;
+        auto& txpStarts = rmi.txpOffsets;
+        auto& SA = rmi.SA;
+        auto& fwdSAInts = hcinfo.fwdSAInts;
+        auto& rcSAInts = hcinfo.rcSAInts;
+        auto readLen = hcinfo.readLen;
+        auto maxDist = hcinfo.maxDist;
+
+        auto consistentHits = mc.consistentHits;
+        auto doChaining = mc.doChaining;
+
+        auto fwdHitsStart = hits.size();
+        // If we had > 1 forward hit
+        if (fwdSAInts.size() > 1) {
+          auto processedHits = rapmap::hit_manager::intersectSAHits(
+                                                                    fwdSAInts, rmi, readLen, consistentHits);
+          rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
+                                                   hits, mateStatus, doChaining);
+        } else if (fwdSAInts.size() == 1) { // only 1 hit!
+          auto& saIntervalHit = fwdSAInts.front();
+          auto initialSize = hits.size();
+          for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
+            auto globalPos = SA[i];
+            auto txpID = rmi.transcriptAtPosition(globalPos);
+            // the offset into this transcript
+            auto pos = globalPos - txpStarts[txpID];
+            int32_t hitPos = pos - saIntervalHit.queryPos;
+            hits.emplace_back(txpID, hitPos, true, readLen);
+            hits.back().mateStatus = mateStatus;
+          }
+          // Now sort by transcript ID (then position) and eliminate
+          // duplicates
+          auto sortStartIt = hits.begin() + initialSize;
+          auto sortEndIt = hits.end();
+          std::sort(sortStartIt, sortEndIt,
+                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                      if (a.tid == b.tid) {
+                        return a.pos < b.pos;
+                      } else {
+                        return a.tid < b.tid;
+                      }
+                    });
+          auto newEnd = std::unique(
+                                    hits.begin() + initialSize, hits.end(),
+                                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                                      return a.tid == b.tid;
+                                    });
+          hits.resize(std::distance(hits.begin(), newEnd));
+        }
+        auto fwdHitsEnd = hits.size();
+
+        auto rcHitsStart = fwdHitsEnd;
+        // If we had > 1 rc hit
+        if (rcSAInts.size() > 1) {
+          auto processedHits = rapmap::hit_manager::intersectSAHits(
+                                                                    rcSAInts, rmi, readLen, consistentHits);
+          rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
+                                                   hits, mateStatus, doChaining);
+        } else if (rcSAInts.size() == 1) { // only 1 hit!
+          auto& saIntervalHit = rcSAInts.front();
+          auto initialSize = hits.size();
+          for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
+            auto globalPos = SA[i];
+            auto txpID = rmi.transcriptAtPosition(globalPos);
+            // the offset into this transcript
+            auto pos = globalPos - txpStarts[txpID];
+            int32_t hitPos = pos - saIntervalHit.queryPos;
+            hits.emplace_back(txpID, hitPos, false, readLen);
+            hits.back().mateStatus = mateStatus;
+          }
+          // Now sort by transcript ID (then position) and eliminate
+          // duplicates
+          auto sortStartIt = hits.begin() + rcHitsStart;
+          auto sortEndIt = hits.end();
+          std::sort(sortStartIt, sortEndIt,
+                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                      if (a.tid == b.tid) {
+                        return a.pos < b.pos;
+                      } else {
+                        return a.tid < b.tid;
+                      }
+                    });
+          auto newEnd = std::unique(
+                                    sortStartIt, sortEndIt,
+                                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                                      return a.tid == b.tid;
+                                    });
+          hits.resize(std::distance(hits.begin(), newEnd));
+        }
+        auto rcHitsEnd = hits.size();
+
+        // If we had both forward and RC hits, then merge them
+        if ((fwdHitsEnd > fwdHitsStart) and (rcHitsEnd > rcHitsStart)) {
+          // Merge the forward and reverse hits
+          std::inplace_merge(
+                             hits.begin() + fwdHitsStart, hits.begin() + fwdHitsEnd,
+                             hits.begin() + rcHitsEnd,
+                             [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                               return a.tid < b.tid;
+                             });
+          // And get rid of duplicate transcript IDs
+          auto newEnd = std::unique(
+                                    hits.begin() + fwdHitsStart, hits.begin() + rcHitsEnd,
+                                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                                      return a.tid == b.tid;
+                                    });
+          hits.resize(std::distance(hits.begin(), newEnd));
+        }
+      }
 
         /**
         * Need to explicitly instantiate the versions we use
@@ -805,5 +922,27 @@ d
         template
         SAHitMap intersectSAHits<SAIndex64BitPerfect>(std::vector<SAIntervalHit<int64_t>>& inHits,
                                                       SAIndex64BitPerfect& rmi, size_t readLen, bool strictFilter);
-    }
+      template
+      void hitsToMappingsSimple<SAIndex32BitDense>(SAIndex32BitDense& rmi,
+                                                   rapmap::utils::MappingConfig& mc,
+                                                   rapmap::utils::MateStatus mateStatus,
+                                                   HitCollectorInfo<SAIntervalHit<typename SAIndex32BitDense::IndexType>>& hcinfo, std::vector<rapmap::utils::QuasiAlignment>& hits);
+      template
+      void hitsToMappingsSimple<SAIndex64BitDense>(SAIndex64BitDense& rmi,
+                                                   rapmap::utils::MappingConfig& mc,
+                                                   rapmap::utils::MateStatus mateStatus,
+                                                   HitCollectorInfo<SAIntervalHit<typename SAIndex64BitDense::IndexType>>& hcinfo, std::vector<rapmap::utils::QuasiAlignment>& hits);
+
+      template
+      void hitsToMappingsSimple<SAIndex32BitPerfect>(SAIndex32BitPerfect& rmi,
+                                                   rapmap::utils::MappingConfig& mc,
+                                                   rapmap::utils::MateStatus mateStatus,
+                                                   HitCollectorInfo<SAIntervalHit<typename SAIndex32BitPerfect::IndexType>>& hcinfo, std::vector<rapmap::utils::QuasiAlignment>& hits);
+
+      template
+      void hitsToMappingsSimple<SAIndex64BitPerfect>(SAIndex64BitPerfect& rmi,
+                                                   rapmap::utils::MappingConfig& mc,
+                                                   rapmap::utils::MateStatus mateStatus,
+                                                   HitCollectorInfo<SAIntervalHit<typename SAIndex64BitPerfect::IndexType>>& hcinfo, std::vector<rapmap::utils::QuasiAlignment>& hits);
+}
 }
