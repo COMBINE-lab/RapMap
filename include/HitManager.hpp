@@ -54,6 +54,21 @@ namespace rapmap {
                 std::vector<ProcessedSAHit> hits;
                 std::vector<uint32_t> txps;
         };
+
+      template <typename SAIntervalHitT>
+      class HitCollectorInfo {
+      public:
+        void clear() {
+          readLen = 0;
+          maxDist = 0;
+          fwdSAInts.clear();
+          rcSAInts.clear();
+        }
+        size_t readLen{0};
+        int32_t maxDist{0};
+        std::vector<SAIntervalHitT> fwdSAInts;
+        std::vector<SAIntervalHitT> rcSAInts;
+      };
         /*
         using SAProcessedHitVec = std::tuple<std::vector<ProcessedSAHit>, std::vector<uint32_t>>;
         */
@@ -125,6 +140,14 @@ namespace rapmap {
         std::vector<ProcessedSAHit> intersectSAHits2(
                 std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi);
+
+      template <typename RapMapIndexT>
+      void hitsToMappingsSimple(RapMapIndexT& rmi,
+                                rapmap::utils::MappingConfig& mc,
+                                rapmap::utils::MateStatus mateStatus,
+                                HitCollectorInfo<SAIntervalHit<typename RapMapIndexT::IndexType>>& hcinfo,
+                                std::vector<rapmap::utils::QuasiAlignment>& hits);
+
     }
 }
 

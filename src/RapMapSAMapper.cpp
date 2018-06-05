@@ -157,8 +157,13 @@ void processReadsSingleSA(single_parser * parser,
     size_t batchSize{2500};
     std::vector<QuasiAlignment> hits;
 
+    rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> hcInfo;
+    rapmap::utils::MappingConfig mc;
+    mc.consistentHits = mopts->consistentHits;
+    mc.doChaining = false;
+
     size_t readLen{0};
-	bool tooManyHits{false};
+    bool tooManyHits{false};
     uint16_t flags;
 
     SingleAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
@@ -171,15 +176,18 @@ void processReadsSingleSA(single_parser * parser,
     auto rg = parser->getReadGroup();
 
     while (parser->refill(rg)) {
-      //while(true) {
-      //  typename single_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
-      //  if(j.is_empty()) break;                 // If we got nothing, then quit.
-      //  for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
       for (auto& read : rg) {
-	    readLen = read.seq.length();//j->data[i].seq.length();
+        readLen = read.seq.length();
             ++hctr.numReads;
+            hcInfo.clear();
             hits.clear();
-            hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, mopts->consistentHits);
+            hitCollector(read.seq, saSearcher, hcInfo);
+
+            rapmap::hit_manager::hitsToMappingsSimple(rmi, mc,
+                                                      MateStatus::SINGLE_END,
+                                                      hcInfo, hits);
+
+
             auto numHits = hits.size();
             hctr.totHits += numHits;
 
@@ -273,8 +281,14 @@ void processReadsPairSA(paired_parser* parser,
     std::vector<QuasiAlignment> jointHits;
 
     size_t readLen{0};
-	bool tooManyHits{false};
+    bool tooManyHits{false};
     uint16_t flags1, flags2;
+
+    rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> leftHCInfo;
+    rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> rightHCInfo;
+    rapmap::utils::MappingConfig mc;
+    mc.consistentHits = mopts->consistentHits;
+    mc.doChaining = false;
 
     // Create a formatter for alignments
     PairAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
@@ -288,27 +302,31 @@ void processReadsPairSA(paired_parser* parser,
     auto rg = parser->getReadGroup();
 
     while (parser->refill(rg)) {
-      //while(true) {
-      //typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
-      //if(j.is_empty()) break;                 // If we got nothing, quit
-      //  for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
       for (auto& rpair : rg) {
-	tooManyHits = false;
-	    readLen = rpair.first.seq.length();
+        tooManyHits = false;
+        readLen = rpair.first.seq.length();
             ++hctr.numReads;
+            leftHCInfo.clear();
+            rightHCInfo.clear();
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
 
             bool lh = hitCollector(rpair.first.seq,
-                                   leftHits, saSearcher,
-                                   MateStatus::PAIRED_END_LEFT,
-                                   mopts->consistentHits);
+                                   saSearcher,
+                                   leftHCInfo);
 
             bool rh = hitCollector(rpair.second.seq,
-                                   rightHits, saSearcher,
-                                   MateStatus::PAIRED_END_RIGHT,
-                                   mopts->consistentHits);
+                                   saSearcher,
+                                   rightHCInfo);
+
+           rapmap::hit_manager::hitsToMappingsSimple(rmi, mc,
+                                                     MateStatus::PAIRED_END_LEFT,
+                                                     leftHCInfo, leftHits);
+
+           rapmap::hit_manager::hitsToMappingsSimple(rmi, mc,
+                                                     MateStatus::PAIRED_END_RIGHT,
+                                                     rightHCInfo, rightHits);
 
             if (mopts->fuzzy) {
                 rapmap::utils::mergeLeftRightHitsFuzzy(
