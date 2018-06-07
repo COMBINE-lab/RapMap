@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 2.8)
+cmake_minimum_required (VERSION 3.1)
 
 enable_testing()
 
@@ -212,23 +212,23 @@ endif()
 set (FAST_MALLOC_LIB "")
 set (HAVE_FAST_MALLOC FALSE)
 
+
 # See if we have Jemalloc
 find_package(Jemalloc)
 if (Jemalloc_FOUND)
+  if (NOT (${JEMALLOC_VERSION} VERSION_LESS 5.1.0))
     message("Found Jemalloc library --- using this memory allocator")
     set (FAST_MALLOC_LIB ${JEMALLOC_LIBRARIES})
     set (HAVE_FAST_MALLOC TRUE)
+  else()
+    message("Fond Jemalloc version ${JEMALLOC_VERSION}, but require >= 5.1.0. Downloading newer version")
+  endif()
 endif()
 
-if (NOT HAVE_FAST_MALLOC)
-    # See if we have Tcmalloc
-    find_package(Tcmalloc)
-    if (Tcmalloc_FOUND)
-        message("Fount TCMalloc library --- using this memory allocator")
-        set (TCMALLOC_LIB ${Tcmalloc_LIBRARIES})
-        set (FAST_MALLOC_LIB ${TCMALLOC_LIB})
-        set (HAVE_FAST_MALLOC TRUE)
-    endif()
+if(CONDA_BUILD)
+  set (JEMALLOC_FLAGS "CC=${CMAKE_C_COMPILER} CFLAGS=-fPIC CPPFLAGS=-fPIC")
+else ()
+  set (JEMALLOC_FLAGS "CC=${CMAKE_C_COMPILER}")
 endif()
 
 if (NOT HAVE_FAST_MALLOC)

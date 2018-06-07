@@ -40,7 +40,7 @@ void printUsage() {
     std::cerr << "=====================================\n";
     auto usage =
         R"(
-There are currently 4 RapMap subcommands
+There are currently 2 RapMap subcommands
     quasiindex --- builds a suffix array-based (SA) index
     quasimap   --- map reads using the SA-based index
 

@@ -78,6 +78,13 @@ target_link_libraries(rapmap
     #${LIBLZMA_LIBRARIES}
 )
 
+##
+# External dependencies of salmon_core and salmon
+##
+if (${FETCHED_JEMALLOC})
+   add_dependencies(rapmap libjemalloc)
+   add_dependencies(rapmap libjemalloc)
+endif()
 
 ##### ======================================
 IF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
