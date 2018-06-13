@@ -584,6 +584,9 @@ namespace rapmap {
             case rapmap::utils::MateStatus::PAIRED_END_PAIRED:
                 std::cerr << "PAIRED END (PAIRED)";
                 break;
+          case rapmap::utils::MateStatus::NOTHING:
+            std::cerr << "NOTHING";
+            break;
         }
     }
 
