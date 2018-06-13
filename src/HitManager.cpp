@@ -791,7 +791,9 @@ d
             auto pos = globalPos - txpStarts[txpID];
             int32_t hitPos = pos - saIntervalHit.queryPos;
             hits.emplace_back(txpID, hitPos, true, readLen);
-            hits.back().mateStatus = mateStatus;
+            auto& lastHit = hits.back();
+            lastHit.mateStatus = mateStatus;
+            lastHit.completeMatchType = (saIntervalHit.len == readLen) ? mateStatus : MateStatus::NOTHING;
           }
           // Now sort by transcript ID (then position) and eliminate
           // duplicates
@@ -831,7 +833,9 @@ d
             auto pos = globalPos - txpStarts[txpID];
             int32_t hitPos = pos - saIntervalHit.queryPos;
             hits.emplace_back(txpID, hitPos, false, readLen);
-            hits.back().mateStatus = mateStatus;
+            auto& lastHit = hits.back();
+            lastHit.mateStatus = mateStatus;
+            lastHit.completeMatchType = (saIntervalHit.len == readLen) ? mateStatus : MateStatus::NOTHING;
           }
           // Now sort by transcript ID (then position) and eliminate
           // duplicates

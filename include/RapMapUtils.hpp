@@ -285,7 +285,9 @@ namespace rapmap {
         SINGLE_END = 0,
         PAIRED_END_LEFT = 1,
         PAIRED_END_RIGHT = 2,
-        PAIRED_END_PAIRED = 3 };
+        PAIRED_END_PAIRED = 3,
+        NOTHING = std::numeric_limits<uint8_t>::max()
+    };
 
     // Wraps the standard iterator of the Position list to provide
     // some convenient functionality.  In the future, maybe this
@@ -405,6 +407,8 @@ namespace rapmap {
         MateStatus mateStatus;
         // Numeric score associated with this mapping
         double score_{1.0};
+        // If one or both of the reads is a complete match (no mismatch, indels), say what kind.
+        MateStatus completeMatchType{MateStatus::NOTHING};
     };
 
     struct HitInfo {
@@ -740,6 +744,16 @@ namespace rapmap {
                 std::vector<QuasiAlignment>& jointHits,
                 fmt::MemoryWriter& sstream);
 
+        inline MateStatus mergeMatchType(MateStatus leftT, MateStatus rightT) {
+          if (leftT == MateStatus::NOTHING) {
+            return rightT;
+          }
+          if (rightT == MateStatus::NOTHING) {
+            return leftT;
+          }
+          return MateStatus::PAIRED_END_PAIRED;
+        }
+
         inline void mergeLeftRightHitsFuzzy(
                 bool leftMatches,
                 bool rightMatches,
@@ -806,6 +820,7 @@ namespace rapmap {
                                 qaln.matePos = rightIt->pos;
                                 qaln.mateIsFwd = rightIt->fwd;
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
+                                jointHits.back().completeMatchType = mergeMatchType(leftIt->completeMatchType, rightIt->completeMatchType);
 
                                 ++numHits;
                                 if (numHits > maxNumHits) { tooManyHits = true; break; }
@@ -870,6 +885,7 @@ namespace rapmap {
                                 qaln.matePos = startRead2;
                                 qaln.mateIsFwd = rightIt->fwd;
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
+                                jointHits.back().completeMatchType = mergeMatchType(leftIt->completeMatchType, rightIt->completeMatchType);
 
                                 ++numHits;
                                 if (numHits > maxNumHits) { tooManyHits = true; break; }
