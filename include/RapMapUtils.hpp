@@ -281,7 +281,74 @@ namespace rapmap {
     using PositionList = std::vector<uint32_t>;
     using KmerInfoList = std::vector<KmerInfo>;
 
-    enum class MateStatus : uint8_t {
+    enum class ChainStatus : uint8_t {
+      PERFECT = 0,
+      UNGAPPED = 1,
+      ALIGNED_ON_LEFT = 2,
+      ALIGNED_ON_RIGHT = 3,
+      REGULAR = 4
+    };
+
+      inline std::ostream& operator<<(std::ostream& os, ChainStatus s) {
+        switch (s) {
+        case ChainStatus::PERFECT:
+          os << "PERFECT";
+          break;
+        case ChainStatus::UNGAPPED:
+          os << "UNGAPPED";
+          break;
+        case ChainStatus::ALIGNED_ON_LEFT:
+          os << "ALIGNED_ON_LEFT";
+          break;
+        case ChainStatus::ALIGNED_ON_RIGHT:
+          os << "ALIGNED_ON_RIGHT";
+          break;
+        case ChainStatus::REGULAR:
+          os << "REGULAR";
+          break;
+        default:
+          os << "UNKNOWN";
+          break;
+        }
+        return os;
+      }
+
+    class FragmentChainStatus {
+      public:
+        FragmentChainStatus() :
+          left(static_cast<typename std::underlying_type<ChainStatus>::type>(ChainStatus::REGULAR)),
+          right(static_cast<typename std::underlying_type<ChainStatus>::type>(ChainStatus::REGULAR))
+        {}
+        FragmentChainStatus(ChainStatus ls, ChainStatus rs) :
+          left(static_cast<typename std::underlying_type<ChainStatus>::type>(ls)),
+          right(static_cast<typename std::underlying_type<ChainStatus>::type>(rs))
+        {}
+
+        void setLeft(ChainStatus s) {
+          left = static_cast<typename std::underlying_type<ChainStatus>::type>(s);
+        }
+        void setRight(ChainStatus s) {
+          right = static_cast<typename std::underlying_type<ChainStatus>::type>(s);
+        }
+
+      ChainStatus getLeft() const {
+        return static_cast<ChainStatus>(left);
+      }
+
+      ChainStatus getRight() const {
+        return static_cast<ChainStatus>(right);
+      }
+
+      friend inline std::ostream& operator<<(std::ostream& os, const FragmentChainStatus& s) {
+        os << "fragment chain status {" << s.getLeft() << ", " << s.getRight() << "}";
+        return os;
+      }
+
+      private:
+        uint8_t left : 4, right : 4;
+    };
+
+      enum class MateStatus : uint8_t {
         SINGLE_END = 0,
         PAIRED_END_LEFT = 1,
         PAIRED_END_RIGHT = 2,
@@ -408,7 +475,8 @@ namespace rapmap {
         // Numeric score associated with this mapping
         double score_{1.0};
         // If one or both of the reads is a complete match (no mismatch, indels), say what kind.
-        MateStatus completeMatchType{MateStatus::NOTHING};
+        FragmentChainStatus chainStatus;
+      //MateStatus completeMatchType{MateStatus::NOTHING};
     };
 
     struct HitInfo {
@@ -823,7 +891,8 @@ namespace rapmap {
                                 qaln.matePos = rightIt->pos;
                                 qaln.mateIsFwd = rightIt->fwd;
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
-                                jointHits.back().completeMatchType = mergeMatchType(leftIt->completeMatchType, rightIt->completeMatchType);
+                                jointHits.back().chainStatus = FragmentChainStatus(leftIt->chainStatus.getLeft(), rightIt->chainStatus.getRight());
+                                //jointHits.back().completeMatchType = mergeMatchType(leftIt->completeMatchType, rightIt->completeMatchType);
 
                                 ++numHits;
                                 if (numHits > maxNumHits) { tooManyHits = true; break; }
@@ -888,7 +957,8 @@ namespace rapmap {
                                 qaln.matePos = startRead2;
                                 qaln.mateIsFwd = rightIt->fwd;
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
-                                jointHits.back().completeMatchType = mergeMatchType(leftIt->completeMatchType, rightIt->completeMatchType);
+                                jointHits.back().chainStatus = FragmentChainStatus(leftIt->chainStatus.getLeft(), rightIt->chainStatus.getRight());
+                                //jointHits.back().completeMatchType = mergeMatchType(leftIt->completeMatchType, rightIt->completeMatchType);
 
                                 ++numHits;
                                 if (numHits > maxNumHits) { tooManyHits = true; break; }

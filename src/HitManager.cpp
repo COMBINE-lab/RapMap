@@ -116,6 +116,7 @@ namespace rapmap {
                 double avgseed = 31.0;
                 f.clear();
                 p.clear();
+                auto lastHitId = static_cast<int32_t>(hitVector.size() - 1);
                 for (int32_t i = 0; i < static_cast<int32_t>(hitVector.size()); ++i) {
                   auto& hi = hitVector[i];
 
@@ -161,6 +162,7 @@ namespace rapmap {
                 }
 
                 // Do backtracking
+                auto lastChainHit = bestChainEnd;
                 if (bestChainEnd >= 0) {
                   auto lastPtr = p[bestChainEnd];
                   while (lastPtr < bestChainEnd) {
@@ -182,6 +184,34 @@ namespace rapmap {
                 bool isFwd = !hitRC;
                 hits.emplace_back(tid, hitPos, isFwd, readLen);
                 hits.back().mateStatus = mateStatus;
+
+                // See if we have a gapless chain
+                if (hitVector.size() > 1 and lastChainHit == lastHitId) {
+                  // For this to be the case we must have that
+                  // the length of the chain on the query (L) is *exactly*
+                  // the same as the length of the chain on the reference,
+                  // AND that L is the read length.
+                  auto& firstHit = hitVector.front();
+                  auto& lastHit = hitVector[lastHitId];
+                  int64_t queryRange = static_cast<int64_t>(lastHit.queryPos + lastHit.len) - firstHit.queryPos;
+                  int64_t refRange = static_cast<int64_t>(lastHit.pos + lastHit.len) - firstHit.pos;
+                  int64_t signedReadLen = static_cast<int64_t>(readLen);
+                  int64_t delta = queryRange - refRange + signedReadLen;
+                  if (delta == signedReadLen) {
+                    rapmap::utils::ChainStatus s = rapmap::utils::ChainStatus::UNGAPPED;
+                    switch (mateStatus) {
+                    case rapmap::utils::MateStatus::SINGLE_END:
+                    case rapmap::utils::MateStatus::PAIRED_END_LEFT:
+                      hits.back().chainStatus.setLeft(s);
+                      break;
+                    case rapmap::utils::MateStatus::PAIRED_END_RIGHT:
+                      hits.back().chainStatus.setRight(s);
+                      break;
+                    default:
+                      break;
+                    }
+                  }
+                }
                 // END OF VALIDATE MAPPING VALIDATION
               } else {
                 auto minPosIt = std::min_element(ph.second.tqvec.begin(),
@@ -793,7 +823,20 @@ d
             hits.emplace_back(txpID, hitPos, true, readLen);
             auto& lastHit = hits.back();
             lastHit.mateStatus = mateStatus;
-            lastHit.completeMatchType = (saIntervalHit.len == readLen) ? mateStatus : MateStatus::NOTHING;
+            switch (mateStatus) {
+            case rapmap::utils::MateStatus::PAIRED_END_LEFT:
+            case rapmap::utils::MateStatus::SINGLE_END:
+              lastHit.chainStatus.setLeft( (saIntervalHit.len == readLen) ? rapmap::utils::ChainStatus::PERFECT :
+                                           rapmap::utils::ChainStatus::REGULAR );
+              break;
+            case rapmap::utils::MateStatus::PAIRED_END_RIGHT:
+              lastHit.chainStatus.setRight( (saIntervalHit.len == readLen) ? rapmap::utils::ChainStatus::PERFECT :
+                                            rapmap::utils::ChainStatus::REGULAR );
+              break;
+            default:
+              break;
+            }
+            //lastHit.completeMatchType = (saIntervalHit.len == readLen) ? mateStatus : MateStatus::NOTHING;
           }
           // Now sort by transcript ID (then position) and eliminate
           // duplicates
@@ -835,7 +878,20 @@ d
             hits.emplace_back(txpID, hitPos, false, readLen);
             auto& lastHit = hits.back();
             lastHit.mateStatus = mateStatus;
-            lastHit.completeMatchType = (saIntervalHit.len == readLen) ? mateStatus : MateStatus::NOTHING;
+            switch (mateStatus) {
+            case rapmap::utils::MateStatus::PAIRED_END_LEFT:
+            case rapmap::utils::MateStatus::SINGLE_END:
+              lastHit.chainStatus.setLeft( (saIntervalHit.len == readLen) ? rapmap::utils::ChainStatus::PERFECT :
+                                           rapmap::utils::ChainStatus::REGULAR );
+              break;
+            case rapmap::utils::MateStatus::PAIRED_END_RIGHT:
+              lastHit.chainStatus.setRight( (saIntervalHit.len == readLen) ? rapmap::utils::ChainStatus::PERFECT :
+                                            rapmap::utils::ChainStatus::REGULAR );
+              break;
+            default:
+              break;
+            }
+            //lastHit.completeMatchType = (saIntervalHit.len == readLen) ? mateStatus : MateStatus::NOTHING;
           }
           // Now sort by transcript ID (then position) and eliminate
           // duplicates
