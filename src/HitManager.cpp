@@ -191,10 +191,9 @@ namespace rapmap {
                   // the length of the chain on the query (L) is *exactly*
                   // the same as the length of the chain on the reference,
                   // AND that L is the read length.
-                  auto& firstHit = hitVector.front();
                   auto& lastHit = hitVector[lastHitId];
-                  int64_t queryRange = static_cast<int64_t>(lastHit.queryPos + lastHit.len) - firstHit.queryPos;
-                  int64_t refRange = static_cast<int64_t>(lastHit.pos + lastHit.len) - firstHit.pos;
+                  int64_t queryRange = static_cast<int64_t>(lastHit.queryPos + lastHit.len) - minPosIt->queryPos;
+                  int64_t refRange = static_cast<int64_t>(lastHit.pos + lastHit.len) - minPosIt->pos;
                   int64_t signedReadLen = static_cast<int64_t>(readLen);
                   int64_t delta = queryRange - refRange + signedReadLen;
                   if (delta == signedReadLen) {
