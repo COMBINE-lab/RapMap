@@ -196,7 +196,7 @@ namespace rapmap {
                   int64_t refRange = static_cast<int64_t>(lastHit.pos + lastHit.len) - minPosIt->pos;
                   int64_t signedReadLen = static_cast<int64_t>(readLen);
                   int64_t delta = queryRange - refRange + signedReadLen;
-                  if (delta == signedReadLen) {
+                  if (minPosIt->queryPos > 0 and delta == signedReadLen) {
                     rapmap::utils::ChainStatus s = rapmap::utils::ChainStatus::UNGAPPED;
                     switch (mateStatus) {
                     case rapmap::utils::MateStatus::SINGLE_END:
