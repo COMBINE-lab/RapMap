@@ -111,6 +111,7 @@ namespace rapmap {
         void intersectSAIntervalWithOutput(SAIntervalHit<typename RapMapIndexT::IndexType>& h,
                                            RapMapIndexT& rmi,
                                            uint32_t intervalCounter,
+                                           int32_t maxSlack,
                                            SAHitMap& outHits);
                                            
 
