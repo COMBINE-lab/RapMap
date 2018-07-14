@@ -542,7 +542,8 @@ namespace rapmap {
                 auto localPos = globalPos - txpStarts[txpID];
                 // We already have records for this transcript
                 if (inOutputSet) {
-                  txpListIt->second.numActive += (txpListIt->second.numActive == intervalCounter - 1) ? 1 : 0;
+                  txpListIt->second.numActive++;
+                  //txpListIt->second.numActive += (txpListIt->second.numActive == intervalCounter - 1) ? 1 : 0;
                   txpListIt->second.tqvec.emplace_back(localPos, h.queryPos, h.queryRC, h.len);
                 } else { // We need to add this transcript
                   // The constructor in emplace-back 
