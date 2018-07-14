@@ -529,7 +529,7 @@ namespace rapmap {
               // True if this transcript is already in the output set, and false otherwise.
               bool inOutputSet = (txpListIt != outHits.end());
               // The number of intervals in which this transcript has occurred.
-              int32_t txpOccCount = inOutputSet ? 0 : txpListIt->second.numActive;
+              int32_t txpOccCount = inOutputSet ? txpListIt->second.numActive : 0;
 
               // Difference between the number of hits for this transcript and
               // the total number of intervals examined so far.
