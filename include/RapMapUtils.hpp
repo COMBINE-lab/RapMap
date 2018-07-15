@@ -81,6 +81,7 @@ namespace rapmap {
     public:
       bool consistentHits{false};
       bool doChaining{false};
+      int32_t maxSlack{0};
     };
 
     // Positions are stored in a packed format, where the highest

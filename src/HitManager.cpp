@@ -543,10 +543,9 @@ namespace rapmap {
                 // We already have records for this transcript
                 if (inOutputSet) {
                   txpListIt->second.numActive++;
-                  //txpListIt->second.numActive += (txpListIt->second.numActive == intervalCounter - 1) ? 1 : 0;
                   txpListIt->second.tqvec.emplace_back(localPos, h.queryPos, h.queryRC, h.len);
                 } else { // We need to add this transcript
-                  // The constructor in emplace-back 
+                  // The constructor in emplace-back will set numActive = 1.
                   auto& oh = outHits[txpID];
                   oh.tqvec.emplace_back(localPos, h.queryPos, h.queryRC, h.len);
                 }
@@ -818,7 +817,7 @@ d
         auto doChaining = mc.doChaining;
 
         auto fwdHitsStart = hits.size();
-        int32_t maxSlack = (doChaining) ? 1 : 0;
+        int32_t maxSlack = mc.maxSlack;//(doChaining) ? 1 : 0;
 
         // If we had > 1 forward hit
         if (fwdSAInts.size() > 1) {
