@@ -807,7 +807,7 @@ d
             }
           }
 
-          size_t requiredNumHits = inHits.size() - maxSlack;
+          size_t requiredNumHits = (maxSlack < inHits.size()) ? (inHits.size() - maxSlack) : 1;
           // Mark as active any transcripts with the required number of hits.
           for (auto it = outHits.begin(); it != outHits.end(); ++it) {
             bool enoughHits = (it->second.numActive >= requiredNumHits);
