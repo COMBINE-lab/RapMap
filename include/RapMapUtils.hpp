@@ -581,6 +581,7 @@ namespace rapmap {
 	    std::vector<SATxpQueryPos> tqvec;
       bool active;
       uint32_t numActive;
+      uint32_t lastActiveInterval{1};
     };
 
     struct SAHitInfo {

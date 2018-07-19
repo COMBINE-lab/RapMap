@@ -563,12 +563,14 @@ namespace rapmap {
                 auto localPos = globalPos - txpStarts[txpID];
                 // We already have records for this transcript
                 if (inOutputSet) {
-                  txpListIt->second.numActive++;
+                  txpListIt->second.numActive += (txpListIt->second.lastActiveInterval == intervalCounter) ? 0 : 1;
+                  txpListIt->second.lastActiveInterval = intervalCounter;
                   txpListIt->second.tqvec.emplace_back(localPos, h.queryPos, h.queryRC, h.len);
                 } else { // We need to add this transcript
                   // The constructor in emplace-back will set numActive = 1.
                   auto& oh = outHits[txpID];
                   oh.tqvec.emplace_back(localPos, h.queryPos, h.queryRC, h.len);
+                  oh.lastActiveInterval = intervalCounter;
                 }
               }
             }
@@ -793,6 +795,7 @@ d
               auto txpPos = globalPos - txpStarts[tid];
               auto& oh = outHits[tid];
               oh.tqvec.emplace_back(txpPos, minHit->queryPos, minHit->queryRC, minHit->len);
+              oh.lastActiveInterval = 1;
             }
           }
           // =========
