@@ -217,11 +217,11 @@ namespace moodycamel { namespace details {
 // Compiler-specific likely/unlikely hints
 namespace moodycamel { namespace details {
 #if defined(__GNUC__)
-	inline bool likely(bool x) { return __builtin_expect((x), true); }
-	inline bool unlikely(bool x) { return __builtin_expect((x), false); }
+	static inline bool (likely)(bool x) { return __builtin_expect((x), true); }
+	static inline bool (unlikely)(bool x) { return __builtin_expect((x), false); }
 #else
-	inline bool likely(bool x) { return x; }
-	inline bool unlikely(bool x) { return x; }
+	static inline bool (likely)(bool x) { return x; }
+	static inline bool (unlikely)(bool x) { return x; }
 #endif
 } }
 
@@ -239,8 +239,8 @@ namespace details {
 			: static_cast<T>(-1);
 	};
 
-#if defined(__GNUC__) && !defined( __clang__ )
-	typedef ::max_align_t std_max_align_t;      // GCC forgot to add it to std:: for a while
+#if defined(__GLIBCXX__)
+	typedef ::max_align_t std_max_align_t;      // libstdc++ forgot to add it to std:: for a while
 #else
 	typedef std::max_align_t std_max_align_t;   // Others (e.g. MSVC) insist it can *only* be accessed via std::
 #endif
@@ -1059,7 +1059,7 @@ public:
 		// If there was at least one non-empty queue but it appears empty at the time
 		// we try to dequeue from it, we need to make sure every queue's been tried
 		if (nonEmptyCount > 0) {
-			if (details::likely(best->dequeue(item))) {
+			if ((details::likely)(best->dequeue(item))) {
 				return true;
 			}
 			for (auto ptr = producerListTail.load(std::memory_order_acquire); ptr != nullptr; ptr = ptr->next_prod()) {
@@ -1266,7 +1266,10 @@ public:
 private:
 	friend struct ProducerToken;
 	friend struct ConsumerToken;
+	struct ExplicitProducer;
 	friend struct ExplicitProducer;
+	struct ImplicitProducer;
+	friend struct ImplicitProducer;
 	friend class ConcurrentQueueTests;
 		
 	enum AllocationMode { CanAlloc, CannotAlloc };
@@ -1311,7 +1314,7 @@ private:
 		}
 		auto prodCount = producerCount.load(std::memory_order_relaxed);
 		auto globalOffset = globalExplicitConsumerOffset.load(std::memory_order_relaxed);
-		if (details::unlikely(token.desiredProducer == nullptr)) {
+		if ((details::unlikely)(token.desiredProducer == nullptr)) {
 			// Aha, first time we're dequeueing anything.
 			// Figure out our local position
 			// Note: offset is from start, not end, but we're traversing from end -- subtract from count first
@@ -1910,13 +1913,14 @@ private:
 				// incremented after dequeueOptimisticCount -- this is enforced in the `else` block below), and since we now
 				// have a version of dequeueOptimisticCount that is at least as recent as overcommit (due to the release upon
 				// incrementing dequeueOvercommit and the acquire above that synchronizes with it), overcommit <= myDequeueCount.
-				assert(overcommit <= myDequeueCount);
+				// However, we can't assert this since both dequeueOptimisticCount and dequeueOvercommit may (independently)
+				// overflow; in such a case, though, the logic still holds since the difference between the two is maintained.
 				
 				// Note that we reload tail here in case it changed; it will be the same value as before or greater, since
 				// this load is sequenced after (happens after) the earlier load above. This is supported by read-read
 				// coherency (as defined in the standard), explained here: http://en.cppreference.com/w/cpp/atomic/memory_order
 				tail = this->tailIndex.load(std::memory_order_acquire);
-				if (details::likely(details::circular_less_than<index_t>(myDequeueCount - overcommit, tail))) {
+				if ((details::likely)(details::circular_less_than<index_t>(myDequeueCount - overcommit, tail))) {
 					// Guaranteed to be at least one element to dequeue!
 					
 					// Get the index. Note that since there's guaranteed to be at least one element, this
@@ -2173,8 +2177,7 @@ private:
 				desiredCount = desiredCount < max ? desiredCount : max;
 				std::atomic_thread_fence(std::memory_order_acquire);
 				
-				auto myDequeueCount = this->dequeueOptimisticCount.fetch_add(desiredCount, std::memory_order_relaxed);
-				assert(overcommit <= myDequeueCount);
+				auto myDequeueCount = this->dequeueOptimisticCount.fetch_add(desiredCount, std::memory_order_relaxed);;
 				
 				tail = this->tailIndex.load(std::memory_order_acquire);
 				auto actualCount = static_cast<size_t>(tail - (myDequeueCount - overcommit));
@@ -2477,9 +2480,8 @@ private:
 				std::atomic_thread_fence(std::memory_order_acquire);
 				
 				index_t myDequeueCount = this->dequeueOptimisticCount.fetch_add(1, std::memory_order_relaxed);
-				assert(overcommit <= myDequeueCount);
 				tail = this->tailIndex.load(std::memory_order_acquire);
-				if (details::likely(details::circular_less_than<index_t>(myDequeueCount - overcommit, tail))) {
+				if ((details::likely)(details::circular_less_than<index_t>(myDequeueCount - overcommit, tail))) {
 					index_t index = this->headIndex.fetch_add(1, std::memory_order_acq_rel);
 					
 					// Determine which block the element is in
@@ -2700,7 +2702,6 @@ private:
 				std::atomic_thread_fence(std::memory_order_acquire);
 				
 				auto myDequeueCount = this->dequeueOptimisticCount.fetch_add(desiredCount, std::memory_order_relaxed);
-				assert(overcommit <= myDequeueCount);
 				
 				tail = this->tailIndex.load(std::memory_order_acquire);
 				auto actualCount = static_cast<size_t>(tail - (myDequeueCount - overcommit));
