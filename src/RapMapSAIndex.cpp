@@ -47,7 +47,7 @@ void set_empty_key(spp::sparse_hash_map<uint64_t,
 }
 */
 
-    // Set the SA and text pointer if this is a perfect hash
+// Set the SA and text pointer if this is a perfect hash
 template <typename IndexT>
 void setPerfectHashPointers(RegHashT<uint64_t,
                             rapmap::utils::SAInterval<IndexT>,
