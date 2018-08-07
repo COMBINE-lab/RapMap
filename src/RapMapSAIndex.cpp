@@ -151,7 +151,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
             logger->error("Couldn't load bit array from {}!", rsFileName);
             std::exit(1);
         }
-        logger->info("There were {} set bits in the bit array", bit_array_num_bits_set(bitArray.get()));
+        logger->info("There were {:n} set bits in the bit array", bit_array_num_bits_set(bitArray.get()));
         rankDict.reset(new rank9b(bitArray->words, bitArray->num_of_bits));
     }
     fclose(rsFile);
