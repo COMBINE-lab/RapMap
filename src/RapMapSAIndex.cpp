@@ -97,7 +97,6 @@ template <typename IndexT, typename HashT>
 bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
 
     auto logger = spdlog::get("stderrLog");
-    size_t n{0};
 
     IndexHeader h;
     std::ifstream indexStream(indDir + "header.json");

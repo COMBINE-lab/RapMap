@@ -276,8 +276,12 @@ namespace rapmap {
 
                 std::string numHitFlag = fmt::format("NH:i:{}", jointHits.size());
                 uint32_t alnCtr{0};
-				uint32_t trueHitCtr{0};
-				QuasiAlignment* firstTrueHit{nullptr};
+
+#if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
+                uint32_t trueHitCtr{0};
+                QuasiAlignment* firstTrueHit{nullptr};
+#endif
+
                 bool haveRev1{false};
                 bool haveRev2{false};
                 bool* haveRev = nullptr;

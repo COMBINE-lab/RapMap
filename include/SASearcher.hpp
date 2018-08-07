@@ -128,7 +128,7 @@ class SASearcher {
             BoundSearchResult<OffsetT> res1, res2;
 
             char smallest = '#';
-            char largest = '}';
+            //char largest = '}';
             char sentinel = smallest;
 
             // FIX: these have to be large enough to hold the *sum* of the boundaries!
@@ -138,12 +138,12 @@ class SASearcher {
             int64_t i{0};
 
             int64_t maxI{startAt};
-            int64_t prevI = startAt;
+            //int64_t prevI = startAt;
             int64_t prevILow = startAt;
             int64_t prevIHigh = startAt;
             int64_t validBoundLow = ubIn;
             int64_t validBoundHigh = lbIn;
-            int64_t validBound = 0;
+            //int64_t validBound = 0;
             bool plt{true};
             // Reduce the search interval until we hit a border
             // i.e. until c == r - 1 or c == l + 1
@@ -208,7 +208,7 @@ class SASearcher {
                 }
             }
 
-            bool knownValid{true};
+            //bool knownValid{true};
             m = res1.maxLen + 1;
 
             // first search for the lower bound

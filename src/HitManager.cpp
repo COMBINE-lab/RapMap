@@ -810,7 +810,8 @@ d
             }
           }
 
-          size_t requiredNumHits = (maxSlack < inHits.size()) ? (inHits.size() - maxSlack) : 1;
+          int64_t sInHitsSize = inHits.size();
+          size_t requiredNumHits = (maxSlack < sInHitsSize) ? (sInHitsSize - maxSlack) : 1;
           // Mark as active any transcripts with the required number of hits.
           for (auto it = outHits.begin(); it != outHits.end(); ++it) {
             bool enoughHits = (it->second.numActive >= requiredNumHits);
@@ -829,7 +830,6 @@ d
                                 std::vector<rapmap::utils::QuasiAlignment>& hits) {
 
         using OffsetT = typename RapMapIndexT::IndexType;
-        auto& rankDict = rmi.rankDict;
         auto& txpStarts = rmi.txpOffsets;
         auto& SA = rmi.SA;
         auto& fwdSAInts = hcinfo.fwdSAInts;
@@ -906,7 +906,6 @@ d
                                                    hits, mateStatus, doChaining);
         } else if (rcSAInts.size() == 1) { // only 1 hit!
           auto& saIntervalHit = rcSAInts.front();
-          auto initialSize = hits.size();
           for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
             auto globalPos = SA[i];
             auto txpID = rmi.transcriptAtPosition(globalPos);

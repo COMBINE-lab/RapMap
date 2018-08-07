@@ -410,7 +410,7 @@ namespace rapmap {
                 uint32_t fragLenIn = 0,
                 bool isPairedIn = false) :
             tid(tidIn), pos(posIn), fwd(fwdIn),
-            readLen(readLenIn), fragLen(fragLenIn),
+            fragLen(fragLenIn), readLen(readLenIn), 
             isPaired(isPairedIn)
 #ifdef RAPMAP_SALMON_SUPPORT
         ,format(LibraryFormat::formatFromID(0))
@@ -761,10 +761,10 @@ namespace rapmap {
             constexpr uint16_t mateIsRC = 0x20;
             constexpr uint16_t isRead1 = 0x40;
             constexpr uint16_t isRead2 = 0x80;
-            constexpr uint16_t isSecondaryAlignment = 0x100;
-            constexpr uint16_t failedQC = 0x200;
-            constexpr uint16_t isPCRDup = 0x400;
-            constexpr uint16_t supplementaryAln = 0x800;
+            //constexpr uint16_t isSecondaryAlignment = 0x100;
+            //constexpr uint16_t failedQC = 0x200;
+            //constexpr uint16_t isPCRDup = 0x400;
+            //constexpr uint16_t supplementaryAln = 0x800;
 
             flags1 = flags2 = 0;
             flags1 = (peInput) ? pairedInSeq : 0;

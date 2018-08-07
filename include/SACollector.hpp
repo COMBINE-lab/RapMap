@@ -104,12 +104,12 @@ public:
     using MateStatus = rapmap::utils::MateStatus;
     using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
 
-    auto& rankDict = rmi_->rankDict;
-    auto& txpStarts = rmi_->txpOffsets;
-    auto& SA = rmi_->SA;
+    //auto& rankDict = rmi_->rankDict;
+    //auto& txpStarts = rmi_->txpOffsets;
+    //auto& text = rmi_->seq;
+    //auto salen = SA.size();
+    //auto& SA = rmi_->SA;
     auto& khash = rmi_->khash;
-    auto& text = rmi_->seq;
-    auto salen = SA.size();
     //auto hashEnd_ = khash.end();
     auto readLen = read.length();
     auto maxDist = static_cast<int32_t>(readLen);
@@ -128,7 +128,7 @@ public:
     size_t rcCov{0};
 
     bool foundHit = false;
-    bool isRev = false;
+    //bool isRev = false;
 
     rapmap::utils::my_mer mer;
     rapmap::utils::my_mer rcMer;

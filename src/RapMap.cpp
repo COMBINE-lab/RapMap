@@ -22,6 +22,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <clocale>
 
 #include <cereal/archives/json.hpp>
 
@@ -57,7 +58,7 @@ bool isIndexArg(char* arg) {
 
 
 int main(int argc, char* argv[]) {
-
+    std::setlocale(LC_NUMERIC, "en_US.UTF-8");
     std::vector<char*> args;
     args.push_back(argv[0]);
 

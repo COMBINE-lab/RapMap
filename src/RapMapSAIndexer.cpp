@@ -32,6 +32,7 @@
 #include <unordered_map>
 #include <map>
 #include <vector>
+#include <clocale>
 
 // avoid duplicate definition
 #ifdef HAVE_SSTREAM
@@ -70,6 +71,7 @@
 // sha functionality
 // #include "picosha2.h"
 #include "digestpp/digestpp.hpp"
+#include "nonstd/string_view.hpp"
 
 #include <chrono>
 
@@ -79,7 +81,7 @@ using TranscriptIDVector = std::vector<TranscriptID>;
 using KmerIDMap = std::vector<TranscriptIDVector>;
 using namespace combinelib::kmers;
 
-bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
+bool buildSA(const std::string& outputDir, nonstd::string_view concatText, size_t tlen,
              std::vector<int64_t>& SA) {
   // IndexT is the signed index type
   // UIndexT is the unsigned index type
@@ -87,12 +89,13 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
   using UIndexT = uint64_t;
   bool success{false};
 
+  auto log = spdlog::get("jointLog");
   std::ofstream saStream(outputDir + "sa.bin", std::ios::binary);
   {
     ScopedTimer timer;
     SA.resize(tlen, 0);
     //IndexT textLen = static_cast<IndexT>(tlen);
-    std::cerr << "Building suffix array . . . ";
+    log->info("Building suffix array . . . ");
     auto ret = divsufsort64(
         reinterpret_cast<unsigned char*>(const_cast<char*>(concatText.data())),
         SA.data(), tlen);
@@ -123,9 +126,10 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
 // int32_t for "small" suffix arrays
 // int64_t for "large" ones
 template <typename IndexT>
-bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
+bool buildPerfectHash(const std::string& outputDir, nonstd::string_view concatText,
                       size_t tlenIn, uint32_t k, std::vector<IndexT>& SA,
                       uint32_t numHashThreads) {
+  auto log = spdlog::get("jointLog");
   //BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
   PerfectHashT<uint64_t, rapmap::utils::SAInterval<IndexT>> intervals;
   intervals.setSAPtr(&SA);
@@ -146,7 +150,7 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
     // Check if the string starting at the
     // current position is valid (i.e. doesn't contain $)
     // and is <= k bases from the end of the string
-    nextKmer = concatText.substr(SA[stop], k);
+    nextKmer = concatText.substr(SA[stop], k).to_string();
     if (nextKmer.length() == k and
         nextKmer.find_first_of('$') == std::string::npos) {
       // If this is a new k-mer, then hash the current k-mer
@@ -180,7 +184,7 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
       start = stop;
     }
     if (stop % 1000000 == 0) {
-      std::cerr << "\r\rprocessed " << stop << " positions";
+      fmt::print(std::cerr, "\r\rprocessed {:n} positions", stop);
     }
     // We always update the end position
     ++stop;
@@ -199,9 +203,9 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
   // std::cerr << "\nthere are " << intervals.size() << " intervals of the
   // selected depth\n";
 
-  std::cout << "building perfect hash function\n";
+  log->info("building perfect hash function");
   intervals.build(numHashThreads);
-  std::cout << "\ndone.\n";
+  log->info("done.");
   std::string outputPrefix = outputDir + "hash_info";
   std::cout << "saving the perfect hash and SA intervals to disk ... ";
   intervals.save(outputPrefix);
@@ -210,8 +214,9 @@ bool buildPerfectHash(const std::string& outputDir, std::string& concatText,
   return true;
 }
 
-bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
+bool buildSA(const std::string& outputDir, nonstd::string_view concatText, size_t tlen,
              std::vector<int32_t>& SA) {
+  auto log = spdlog::get("jointLog");
   // IndexT is the signed index type
   // UIndexT is the unsigned index type
   using IndexT = int32_t;
@@ -223,7 +228,7 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
     ScopedTimer timer;
     SA.resize(tlen, 0);
     //IndexT textLen = static_cast<IndexT>(tlen);
-    std::cerr << "Building suffix array . . . ";
+    log->info("Building suffix array . . . ");
     auto ret = divsufsort(
         reinterpret_cast<unsigned char*>(const_cast<char*>(concatText.data())),
         SA.data(), tlen);
@@ -254,8 +259,9 @@ bool buildSA(const std::string& outputDir, std::string& concatText, size_t tlen,
 // int32_t for "small" suffix arrays
 // int64_t for "large" ones
 template <typename IndexT>
-bool buildHash(const std::string& outputDir, std::string& concatText,
+bool buildHash(const std::string& outputDir, nonstd::string_view concatText,
                size_t tlenIn, uint32_t k, std::vector<IndexT>& SA) {
+  auto log = spdlog::get("jointLog");
   // Now, build the k-mer lookup table
     // The base type should always be uint64_t
     using WordT = rapmap::utils::my_mer::base_type;
@@ -279,7 +285,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
     // Check if the string starting at the
     // current position is valid (i.e. doesn't contain $)
     // and is <= k bases from the end of the string
-    nextKmer = concatText.substr(SA[stop], k);
+    nextKmer = concatText.substr(SA[stop], k).to_string();
     if (nextKmer.length() == k and
         nextKmer.find_first_of('$') == std::string::npos) {
       // If this is a new k-mer, then hash the current k-mer
@@ -401,7 +407,7 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
       start = stop;
     }
     if (stop % 1000000 == 0) {
-      std::cerr << "\r\rprocessed " << stop << " positions";
+      fmt::print(std::cerr, "\r\rprocessed {:n} positions", stop);
     }
     // We always update the end position
     ++stop;
@@ -423,14 +429,14 @@ bool buildHash(const std::string& outputDir, std::string& concatText,
       */
     }
   }
-  std::cerr << "\nkhash had " << khash.size() << " keys\n";
+  log->info("khash had {:n} keys", khash.size());
   std::ofstream hashStream(outputDir + "hash.bin", std::ios::binary);
   {
     ScopedTimer timer;
-    std::cerr << "saving hash to disk . . . ";
+    log->info("saving hash to disk . . . ");
     khash.serialize(typename spp_utils::pod_hash_serializer<WordT, rapmap::utils::SAInterval<IndexT>>(),
                     &hashStream);
-    std::cerr << "done\n";
+    log->info("done");
   }
   hashStream.close();
   return true;
@@ -494,7 +500,7 @@ void indexTranscriptsSA(ParserT* parser,
   size_t numDups{0};
   std::map<XXH64_hash_t, std::vector<DupInfo>> potentialDuplicates;
   spp::sparse_hash_map<uint64_t, std::vector<std::string>> duplicateNames;
-  std::cerr << "\n[Step 1 of 4] : counting k-mers\n";
+  log->info("[Step 1 of 4] : counting k-mers");
 
   // rsdic::RSDicBuilder rsdb;
   std::vector<uint64_t>
@@ -634,11 +640,11 @@ void indexTranscriptsSA(ParserT* parser,
         }
       }
       if (n % 10000 == 0) {
-        std::cerr << "\r\rcounted k-mers for " << n << " transcripts";
+        fmt::print(std::cerr, "\r\rcounted k-mers for {:n} transcripts", n);
       }
     }
   }
-  std::cerr << "\n";
+  fmt::print(std::cerr, "\n");
   if (numDups > 0) {
     if (!keepDuplicates) {
       log->warn("Removed {} transcripts that were sequence duplicates of indexed transcripts.", numDups);
@@ -663,15 +669,13 @@ void indexTranscriptsSA(ParserT* parser,
   }
   dupClusterStream.close();
 
-  std::cerr << "Replaced " << numNucleotidesReplaced
-            << " non-ATCG nucleotides\n";
-  std::cerr << "Clipped poly-A tails from " << numPolyAsClipped
-            << " transcripts\n";
+  log->info("Replaced {:n} non-ATCG nucleotides",  numNucleotidesReplaced);
+  log->info("Clipped poly-A tails from {:n} transcripts", numPolyAsClipped);
 
   // Put the concatenated text in a string
-  std::string concatText = txpSeqStream.str();
+  nonstd::string_view concatText(txpSeqStream.data(), txpSeqStream.size());
   // And clear the stream
-  txpSeqStream.clear();
+  // txpSeqStream.clear();
 
   // Build the suffix array
   size_t tlen = concatText.length();
@@ -691,9 +695,9 @@ void indexTranscriptsSA(ParserT* parser,
   FILE* rsFile = fopen(rsFileName.c_str(), "w");
   {
     ScopedTimer timer;
-    std::cerr << "Building rank-select dictionary and saving to disk ";
+    log->info("Building rank-select dictionary and saving to disk");
     bit_array_save(bitArray, rsFile);
-    std::cerr << "done\n";
+    log->info("done");
   }
   fclose(rsFile);
   bit_array_free(bitArray);
@@ -701,7 +705,7 @@ void indexTranscriptsSA(ParserT* parser,
   std::ofstream seqStream(outputDir + "txpInfo.bin", std::ios::binary);
   {
     ScopedTimer timer;
-    std::cerr << "Writing sequence data to file . . . ";
+    log->info("Writing sequence data to file . . . ");
     cereal::BinaryOutputArchive seqArchive(seqStream);
     seqArchive(transcriptNames);
     if (largeIndex) {
@@ -716,10 +720,14 @@ void indexTranscriptsSA(ParserT* parser,
       transcriptStarts.shrink_to_fit();
       { seqArchive(txpStarts); }
     }
-    // seqArchive(positionIDs);
-    seqArchive(concatText);
+
+    // Save number of chars + the data
+    seqArchive( cereal::make_size_tag( static_cast<size_t>(concatText.size()) ) );
+    seqArchive( cereal::binary_data( concatText.data(), concatText.size() * sizeof(char) ) );
+    //seqArchive(concatText);
+
     seqArchive(completeLengths);
-    std::cerr << "done\n";
+    log->info("done");
   }
   seqStream.close();
 
@@ -734,14 +742,13 @@ void indexTranscriptsSA(ParserT* parser,
 
   if (largeIndex) {
     largeIndex = true;
-    std::cerr << "[info] Building 64-bit suffix array "
-                 "(length of generalized text is "
-              << tlen << " )\n";
+    log->info("Building 64-bit suffix array "
+              "(length of generalized text is {:n})", tlen);
     using IndexT = int64_t;
     std::vector<IndexT> SA;
     bool success = buildSA(outputDir, concatText, tlen, SA);
     if (!success) {
-      std::cerr << "[fatal] Could not build the suffix array!\n";
+      log->error("Could not build the suffix array!");
       std::exit(1);
     }
 
@@ -752,18 +759,17 @@ void indexTranscriptsSA(ParserT* parser,
       success = buildHash<IndexT>(outputDir, concatText, tlen, k, SA);
     }
     if (!success) {
-      std::cerr << "[fatal] Could not build the suffix interval hash!\n";
+      log->error("[fatal] Could not build the suffix interval hash!");
       std::exit(1);
     }
   } else {
-    std::cerr << "[info] Building 32-bit suffix array "
-                 "(length of generalized text is "
-              << tlen << ")\n";
+    log->info("Building 32-bit suffix array "
+              "(length of generalized text is {:n})", tlen);
     using IndexT = int32_t;
     std::vector<IndexT> SA;
     bool success = buildSA(outputDir, concatText, tlen, SA);
     if (!success) {
-      std::cerr << "[fatal] Could not build the suffix array!\n";
+      log->error("Could not build the suffix array!");
       std::exit(1);
     }
 
@@ -774,7 +780,7 @@ void indexTranscriptsSA(ParserT* parser,
       success = buildHash<IndexT>(outputDir, concatText, tlen, k, SA);
     }
     if (!success) {
-      std::cerr << "[fatal] Could not build the suffix interval hash!\n";
+      log->error("Could not build the suffix interval hash!");
       std::exit(1);
     }
   }
@@ -813,8 +819,6 @@ void indexTranscriptsSA(ParserT* parser,
 }
 
 int rapMapSAIndex(int argc, char* argv[]) {
-  std::cerr << "RapMap Indexer\n";
-
   TCLAP::CmdLine cmd("RapMap Indexer");
   TCLAP::ValueArg<std::string> transcripts("t", "transcripts",
                                            "The transcript file to be indexed",

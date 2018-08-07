@@ -147,14 +147,9 @@ void processReadsSingleSA(single_parser * parser,
         hitCollector.setCoverageRequirement(mopts->quasiCov);
     }
 
-    auto& txpNames = rmi.txpNames;
-    auto& txpLens = rmi.txpLens;
-    uint32_t n{0};
-
     auto logger = spdlog::get("stderrLog");
 
     fmt::MemoryWriter sstream;
-    size_t batchSize{2500};
     std::vector<QuasiAlignment> hits;
 
     rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> hcInfo;
@@ -162,22 +157,16 @@ void processReadsSingleSA(single_parser * parser,
     mc.consistentHits = mopts->consistentHits;
     mc.doChaining = false;
 
-    size_t readLen{0};
-    bool tooManyHits{false};
-    uint16_t flags;
-
     SingleAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
-
     SASearcher<RapMapIndexT> saSearcher(&rmi);
 
-    uint32_t orphanStatus{0};
     // Get the read group by which this thread will
     // communicate with the parser (*once per-thread*)
     auto rg = parser->getReadGroup();
 
     while (parser->refill(rg)) {
       for (auto& read : rg) {
-        readLen = read.seq.length();
+            read.seq.length();
             ++hctr.numReads;
             hcInfo.clear();
             hits.clear();
@@ -268,21 +257,15 @@ void processReadsPairSA(paired_parser* parser,
         hitCollector.setCoverageRequirement(mopts->quasiCov);
     }
 
-    auto& txpNames = rmi.txpNames;
-    auto& txpLens = rmi.txpLens;
-    uint32_t n{0};
-
     auto logger = spdlog::get("stderrLog");
 
     fmt::MemoryWriter sstream;
-    size_t batchSize{1000};
     std::vector<QuasiAlignment> leftHits;
     std::vector<QuasiAlignment> rightHits;
     std::vector<QuasiAlignment> jointHits;
 
     size_t readLen{0};
     bool tooManyHits{false};
-    uint16_t flags1, flags2;
 
     rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> leftHCInfo;
     rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> rightHCInfo;
@@ -294,8 +277,6 @@ void processReadsPairSA(paired_parser* parser,
     PairAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
 
     SASearcher<RapMapIndexT> saSearcher(&rmi);
-
-    uint32_t orphanStatus{0};
 
     // Get the read group by which this thread will
     // communicate with the parser (*once per-thread*)
