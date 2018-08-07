@@ -450,7 +450,7 @@ private:
   inline void getSAHits_(
       SASearcher<RapMapIndexT>& saSearcher, std::string& read,
       std::string::iterator startIt,
-      rapmap::utils::SAInterval<OffsetT>* startInterval, size_t& cov,
+      const rapmap::utils::SAInterval<OffsetT>* const startInterval, size_t& cov,
       uint32_t& strandHits, uint32_t& otherStrandHits,
       std::vector<rapmap::utils::SAIntervalHit<OffsetT>>& saInts,
       std::vector<KmerDirScore>& kmerScores,

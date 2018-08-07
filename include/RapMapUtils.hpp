@@ -163,8 +163,8 @@ namespace rapmap {
         IndexT begin_;
         IndexT end_;
 
-        inline IndexT begin() { return begin_; }
-        inline IndexT end() { return end_; }
+        inline IndexT begin() const { return begin_; }
+        inline IndexT end() const { return end_; }
 
         template <typename Archive>
             void load(Archive& ar) { ar(kmer, begin_, end_); }
@@ -188,8 +188,8 @@ namespace rapmap {
         IndexT begin_;
         IndexT end_;
         
-        inline IndexT begin() { return begin_; }
-        inline IndexT end() { return end_; }
+        inline IndexT begin() const { return begin_; }
+        inline IndexT end() const { return end_; }
 
         template <typename Archive>
         void load(Archive& ar) { ar(begin_, end_); }
