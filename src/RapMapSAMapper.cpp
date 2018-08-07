@@ -502,10 +502,12 @@ bool mapReads(RapMapIndexT& rmi,
 
 
     consoleLog->info("Done mapping reads.");
-    consoleLog->info("In total saw {} reads.", hctrs.numReads);
+    consoleLog->info("In total saw {:n} reads.", hctrs.numReads);
     consoleLog->info("Final # hits per read = {}", hctrs.totHits / static_cast<float>(hctrs.numReads));
     consoleLog->info("flushing output queue.");
-    outLog->flush();
+    if (outLog) {
+      outLog->flush();
+    }
     /*
       consoleLog->info("Discarded {} reads because they had > {} alignments",
       hctrs.tooManyHits, maxNumHits.getValue());
