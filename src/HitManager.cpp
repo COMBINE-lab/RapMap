@@ -750,7 +750,7 @@ d
 
         template <typename RapMapIndexT>
         SAHitMap intersectSAHits(
-                std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
+                SAIntervalVector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi,
                 size_t readLen,
                 int32_t maxSlack, // The number of intervals a transcript is allowed to miss and still be considered a valid mapping
@@ -995,11 +995,11 @@ d
                                                               SAHitMap& outHits); 
 
         template
-        SAHitMap intersectSAHits<SAIndex32BitDense>(std::vector<SAIntervalHit<int32_t>>& inHits,
+        SAHitMap intersectSAHits<SAIndex32BitDense>(SAIntervalVector<SAIntervalHit<int32_t>>& inHits,
                                                     SAIndex32BitDense& rmi, size_t readLen, int32_t maxSlack, bool strictFilter);
 
         template
-        SAHitMap intersectSAHits<SAIndex64BitDense>(std::vector<SAIntervalHit<int64_t>>& inHits,
+        SAHitMap intersectSAHits<SAIndex64BitDense>(SAIntervalVector<SAIntervalHit<int64_t>>& inHits,
                                                     SAIndex64BitDense& rmi, size_t readLen, int32_t maxSlack, bool strictFilter);
 
         template
@@ -1017,11 +1017,11 @@ d
                                                                 SAHitMap& outHits);
 
         template
-        SAHitMap intersectSAHits<SAIndex32BitPerfect>(std::vector<SAIntervalHit<int32_t>>& inHits,
+        SAHitMap intersectSAHits<SAIndex32BitPerfect>(SAIntervalVector<SAIntervalHit<int32_t>>& inHits,
                                                       SAIndex32BitPerfect& rmi, size_t readLen, int32_t maxSlack, bool strictFilter);
 
         template
-        SAHitMap intersectSAHits<SAIndex64BitPerfect>(std::vector<SAIntervalHit<int64_t>>& inHits,
+        SAHitMap intersectSAHits<SAIndex64BitPerfect>(SAIntervalVector<SAIntervalHit<int64_t>>& inHits,
                                                       SAIndex64BitPerfect& rmi, size_t readLen, int32_t maxSlack, bool strictFilter);
       template
       void hitsToMappingsSimple<SAIndex32BitDense>(SAIndex32BitDense& rmi,

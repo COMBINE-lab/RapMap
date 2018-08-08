@@ -23,10 +23,8 @@
 #define __HIT_MANAGER_HPP__
 
 #include "RapMapUtils.hpp"
-//#include "RapMapIndex.hpp"
 #include "RapMapSAIndex.hpp"
-
-//#include "eytzinger_array.h"
+#include "chobo/small_vector.hpp"
 
 #include <tuple>
 #include <vector>
@@ -49,6 +47,9 @@ namespace rapmap {
         using ProcessedSAHit = rapmap::utils::ProcessedSAHit;
         using SAHitMap = std::map<int, ProcessedSAHit>;
 
+        template <typename SAIntervalHitT>
+        using SAIntervalVector = std::vector<SAIntervalHitT>;
+
         class SAProcessedHitVec {
             public:
                 std::vector<ProcessedSAHit> hits;
@@ -66,8 +67,8 @@ namespace rapmap {
         }
         size_t readLen{0};
         int32_t maxDist{0};
-        std::vector<SAIntervalHitT> fwdSAInts;
-        std::vector<SAIntervalHitT> rcSAInts;
+        SAIntervalVector<SAIntervalHitT> fwdSAInts;
+        SAIntervalVector<SAIntervalHitT> rcSAInts;
       };
         /*
         using SAProcessedHitVec = std::tuple<std::vector<ProcessedSAHit>, std::vector<uint32_t>>;
@@ -132,7 +133,7 @@ namespace rapmap {
 
         template <typename RapMapIndexT>
         SAHitMap intersectSAHits(
-                                 std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
+                                 SAIntervalVector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                                  RapMapIndexT& rmi, 
                                  size_t readLen,
                                  bool strictFilter=false);

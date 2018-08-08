@@ -26,6 +26,7 @@
 #include "RapMapUtils.hpp"
 #include "SASearcher.hpp"
 #include "HitManager.hpp"
+#include "chobo/small_vector.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -96,6 +97,8 @@ public:
     HitStatus rcScore;
   };
 
+  using KmerScoreVec = chobo::small_vector<KmerDirScore, 32, 33>;
+
   bool operator()(std::string& read,
                   SASearcher<RapMapIndexT>& saSearcher,
                   rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>>& hcInfo) {
@@ -104,13 +107,7 @@ public:
     using MateStatus = rapmap::utils::MateStatus;
     using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
 
-    //auto& rankDict = rmi_->rankDict;
-    //auto& txpStarts = rmi_->txpOffsets;
-    //auto& text = rmi_->seq;
-    //auto salen = SA.size();
-    //auto& SA = rmi_->SA;
     auto& khash = rmi_->khash;
-    //auto hashEnd_ = khash.end();
     auto readLen = read.length();
     auto maxDist = static_cast<int32_t>(readLen);
 
@@ -128,7 +125,6 @@ public:
     size_t rcCov{0};
 
     bool foundHit = false;
-    //bool isRev = false;
 
     rapmap::utils::my_mer mer;
     rapmap::utils::my_mer rcMer;
@@ -137,7 +133,7 @@ public:
 
     // This allows implementing our heurisic for comparing
     // forward and reverse-complement strand matches
-    std::vector<KmerDirScore> kmerScores;
+    KmerScoreVec kmerScores;
 
     // Set the readLen and maxDist for this read in the
     // HitCollectorInfo structure
@@ -186,17 +182,6 @@ public:
       if (mer.is_homopolymer()) {
         rb += homoPolymerSkip;
         re += homoPolymerSkip;
-        /* Walk base-by-base rather than skipping
-        // If the first N is within k bases, then this k-mer is invalid
-        if (invalidPos < pos + k) {
-            // Skip to the k-mer starting at the next position
-            // (i.e. right past the N)
-            rb = read.begin() + invalidPos + 1;
-            re = rb + k;
-            // Go to the next iteration of the while loop
-            continue;
-        }
-        */
         continue;
       }
       rcMer = mer.getRC();
@@ -381,7 +366,7 @@ private:
              IteratorT* complementMerItPtr, // nullptr if we haven't checked yet
              bool isRC, // is this being called from the RC of the read
              uint32_t& strandHits, uint32_t& otherStrandHits,
-             std::vector<KmerDirScore>& kmerScores
+             KmerScoreVec& kmerScores
              ) {
     IteratorT merIt = hashEnd_;
     IteratorT complementMerIt = hashEnd_;
@@ -452,8 +437,8 @@ private:
       std::string::iterator startIt,
       const rapmap::utils::SAInterval<OffsetT>* const startInterval, size_t& cov,
       uint32_t& strandHits, uint32_t& otherStrandHits,
-      std::vector<rapmap::utils::SAIntervalHit<OffsetT>>& saInts,
-      std::vector<KmerDirScore>& kmerScores,
+      rapmap::hit_manager::SAIntervalVector<rapmap::utils::SAIntervalHit<OffsetT>>& saInts,
+      KmerScoreVec& kmerScores,
       bool isRC // true if read is the reverse complement, false otherwise
       ) {
     using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
