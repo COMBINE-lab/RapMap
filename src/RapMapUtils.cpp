@@ -31,6 +31,8 @@
 #include "FastxParser.hpp"
 #include "BooMap.hpp"
 #include "FrugalBooMap.hpp"
+#include "spdlog/fmt/ostr.h"
+#include "nonstd/string_view.hpp"
 
 namespace rapmap {
     namespace utils {
@@ -149,18 +151,18 @@ namespace rapmap {
 
                 uint16_t flags;
 
-                auto& readName = r.name;
+                nonstd::string_view readNameView(r.name);
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
-                auto before = readName.find_first_of(':');
-                before = readName.find_first_of(':', before+1);
-                auto after = readName.find_first_of(':', before+1);
-                const auto& txpName = readName.substr(before+1, after-before-1);
+                auto before = readNameView.find_first_of(':');
+                before = readNameView.find_first_of(':', before+1);
+                auto after = readNameView.find_first_of(':', before+1);
+                const auto& txpName = readNameView.substr(before+1, after-before-1);
 #endif //__DEBUG__
                 // If the read name contains multiple space-separated parts, print
                 // only the first
-                size_t splitPos = readName.find(' ');
-                if (splitPos < readName.length()) {
-                    readName[splitPos] = '\0';
+                size_t splitPos = readNameView.find(' ');
+                if (splitPos < readNameView.length()) {
+                  readNameView.remove_suffix(readNameView.size() - splitPos);
                 }
 
 
@@ -189,7 +191,7 @@ namespace rapmap {
 
                    rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], cigarStr);
 
-                    sstream << readName.c_str() << '\t' // QNAME
+                   sstream << fmt::StringRef(readNameView.data(), readNameView.size()) << '\t' // QNAME
                         << flags << '\t' // FLAGS
                         << transcriptName << '\t' // RNAME
                         << qa.pos + 1 << '\t' // POS (1-based)
@@ -232,47 +234,27 @@ namespace rapmap {
 
                 uint16_t flags1, flags2;
 
-                auto& readName = r.first.name;
-                // If the read name contains multiple space-separated parts,
-                // print only the first
-                size_t splitPos = readName.find(' ');
-                if (splitPos < readName.length()) {
-                    readName[splitPos] = '\0';
-                } else {
-                    splitPos = readName.length();
-                }
+                auto processReadName = [](const std::string& name) -> nonstd::string_view {
+                  nonstd::string_view readNameView(name);
+                  // If the read name contains multiple space-separated parts,
+                  // print only the first
+                  size_t splitPos = readNameView.find(' ');
+                  if (splitPos < readNameView.length()) {
+                    readNameView.remove_suffix(readNameView.length() - splitPos);
+                  } else {
+                    splitPos = readNameView.length();
+                  }
 
-                // trim /1 from the pe read
-                if (splitPos > 2 and readName[splitPos - 2] == '/') {
-                    readName[splitPos - 2] = '\0';
-                }
+                  // trim /1 from the pe read
+                  if (splitPos > 2 and readNameView[splitPos - 2] == '/') {
+                    readNameView.remove_suffix(2);
+                    //readName[splitPos - 2] = '\0';
+                  }
+                  return readNameView;
+                };
 
-                auto& mateName = r.second.name;
-                // If the read name contains multiple space-separated parts,
-                // print only the first
-                splitPos = mateName.find(' ');
-                if (splitPos < mateName.length()) {
-                    mateName[splitPos] = '\0';
-                } else {
-                    splitPos = mateName.length();
-                }
-
-                // trim /2 from the pe read
-                if (splitPos > 2 and mateName[splitPos - 2] == '/') {
-                    mateName[splitPos - 2] = '\0';
-                }
-
-                /*
-                // trim /1 and /2 from pe read names
-                if (readName.length() > 2 and
-                        readName[readName.length() - 2] == '/') {
-                    readName[readName.length() - 2] = '\0';
-                }
-                if (mateName.length() > 2 and
-                        mateName[mateName.length() - 2] == '/') {
-                    mateName[mateName.length() - 2] = '\0';
-                }
-                */
+                auto readNameView = processReadName(r.first.name);
+                auto mateNameView = processReadName(r.second.name);
 
                 std::string numHitFlag = fmt::format("NH:i:{}", jointHits.size());
                 uint32_t alnCtr{0};
@@ -335,8 +317,7 @@ namespace rapmap {
                         // get the fragment length as a signed int
                         const int32_t fragLen = static_cast<int32_t>(qa.fragLen);
 
-
-                        sstream << readName.c_str() << '\t' // QNAME
+                        sstream << fmt::StringRef(readNameView.data(), readNameView.size()) << '\t' // QNAME
                                 << flags1 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
@@ -349,7 +330,7 @@ namespace rapmap {
                                 << "*\t" // QUAL
                                 << numHitFlag << '\n';
 
-                        sstream << mateName.c_str() << '\t' // QNAME
+                        sstream << fmt::StringRef(mateNameView.data(), mateNameView.size()) << '\t' // QNAME
                                 << flags2 << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.matePos + 1 << '\t' // POS (1-based)
@@ -386,15 +367,15 @@ namespace rapmap {
                         uint32_t flags, unalignedFlags;
                         //std::string* qstr{nullptr};
                         //std::string* unalignedQstr{nullptr};
-                        std::string* alignedName{nullptr};
-                        std::string* unalignedName{nullptr};
+                        nonstd::string_view* alignedName{nullptr};
+                        nonstd::string_view* unalignedName{nullptr};
                         std::string* readTemp{nullptr};
                         //std::string* qualTemp{nullptr};
 
                         rapmap::utils::FixedWriter* cigarStr;
                         if (qa.mateStatus == MateStatus::PAIRED_END_LEFT) { // left read
-                            alignedName = &readName;
-                            unalignedName = &mateName;
+                            alignedName = &readNameView;
+                            unalignedName = &mateNameView;
 
                             readSeq = &(r.first.seq);
                             unalignedSeq = &(r.second.seq);
@@ -411,8 +392,8 @@ namespace rapmap {
                             readTemp = &read1Temp;
                             //qualTemp = &qual1Temp;
                         } else { // right read
-                            alignedName = &mateName;
-                            unalignedName = &readName;
+                            alignedName = &mateNameView;
+                            unalignedName = &readNameView;
 
                             readSeq = &(r.second.seq);
                             unalignedSeq = &(r.first.seq);
@@ -447,7 +428,7 @@ namespace rapmap {
                         */
 
                         rapmap::utils::adjustOverhang(qa.pos, qa.readLen, txpLens[qa.tid], *cigarStr);
-                        sstream << alignedName->c_str() << '\t' // QNAME
+                        sstream << fmt::StringRef(alignedName->data(), alignedName->size()) << '\t' // QNAME
                                 << flags << '\t' // FLAGS
                                 << transcriptName << '\t' // RNAME
                                 << qa.pos + 1 << '\t' // POS (1-based)
@@ -462,7 +443,7 @@ namespace rapmap {
 
 
                         // Output the info for the unaligned mate.
-                        sstream << unalignedName->c_str() << '\t' // QNAME
+                        sstream << fmt::StringRef(unalignedName->data(), unalignedName->size()) << '\t' // QNAME
                             << unalignedFlags << '\t' // FLAGS
                             << transcriptName << '\t' // RNAME (same as mate)
                             << qa.pos + 1 << '\t' // POS (same as mate)
@@ -598,23 +579,3 @@ template uint32_t rapmap::utils::writeAlignmentsToStream<fastx_parser::ReadSeq, 
                 rapmap::utils::HitCounters& hctr,
                 std::vector<rapmap::utils::QuasiAlignment>& jointHits,
                 fmt::MemoryWriter& sstream);
-
-
-/*template uint32_t rapmap::utils::writeAlignmentsToStream<fastx_parser::ReadPair, RapMapIndex*>(
-                fastx_parser::ReadPair& r,
-                PairAlignmentFormatter<RapMapIndex*>& formatter,
-                rapmap::utils::HitCounters& hctr,
-                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
-                fmt::MemoryWriter& sstream
-                );
-                */
-
-/*
-template uint32_t rapmap::utils::writeAlignmentsToStream<fastx_parser::ReadSeq, RapMapIndex*>(
-                fastx_parser::ReadSeq& r,
-                SingleAlignmentFormatter<RapMapIndex*>& formatter,
-                rapmap::utils::HitCounters& hctr,
-                std::vector<rapmap::utils::QuasiAlignment>& jointHits,
-                fmt::MemoryWriter& sstream
-                );
-                */

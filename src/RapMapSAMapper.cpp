@@ -154,8 +154,8 @@ void processReadsSingleSA(single_parser * parser,
 
     rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> hcInfo;
     rapmap::utils::MappingConfig mc;
-    mc.consistentHits = mopts->consistentHits;
-    mc.doChaining = false;
+    mc.consistentHits = false;
+    mc.doChaining = mopts->consistentHits;
 
     SingleAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
     SASearcher<RapMapIndexT> saSearcher(&rmi);
@@ -270,8 +270,8 @@ void processReadsPairSA(paired_parser* parser,
     rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> leftHCInfo;
     rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> rightHCInfo;
     rapmap::utils::MappingConfig mc;
-    mc.consistentHits = mopts->consistentHits;
-    mc.doChaining = false;
+    mc.consistentHits = false;//mopts->consistentHits;
+    mc.doChaining = mopts->consistentHits;
 
     // Create a formatter for alignments
     PairAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
@@ -566,7 +566,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::SwitchArg sensitive("e", "sensitive", "Perform a more sensitive quasi-mapping by disabling NIP skipping", false);
   TCLAP::SwitchArg noStrict("", "noStrictCheck", "Don't perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
   TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
-  TCLAP::SwitchArg consistent("c", "consistentHits", "Ensure that the hits collected are consistent (co-linear)", false);
+  TCLAP::SwitchArg consistent("c", "chaining", "Score the hits to find the best chain", false);
   TCLAP::SwitchArg compressedOutput("x", "compressed", "Compress the output SAM file using zlib", false);
   TCLAP::SwitchArg quiet("q", "quiet", "Disable all console output apart from warnings and errors", false);
   cmd.add(index);

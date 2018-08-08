@@ -134,14 +134,6 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
     }
     seqStream.close();
 
-    /*
-       std::ifstream rsStream(indDir + "rsdSafe.bin", std::ios::binary);
-       {
-       logger->info("Loading Rank-Select Data");
-       rankDictSafe.Load(rsStream);
-       }
-       rsStream.close();
-       */
     std::string rsFileName = indDir + "rsd.bin";
     FILE* rsFile = fopen(rsFileName.c_str(), "r");
     {
