@@ -187,8 +187,8 @@ namespace rapmap {
                 if (bestChainEnd >= 0) {
                   auto lastPtr = p[bestChainEnd];
                   while (lastPtr < bestChainEnd) {
-                    lastPtr = bestChainEnd;
-                    bestChainEnd = p[bestChainEnd];
+                    bestChainEnd = lastPtr;
+                    lastPtr = p[bestChainEnd];
                   }
                   minPosIt += lastPtr;
                 } else {
