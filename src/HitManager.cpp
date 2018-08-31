@@ -149,7 +149,7 @@ namespace rapmap {
                   f.push_back(baseScore);
 
                   // possible predecessors in the chain
-                  int32_t numRounds{1};
+                  int32_t numRounds{2};
                   (void)numRounds;
                   for (int32_t j = i-1; j >= 0; --j) {
                     auto& hj = hitVector[j];
@@ -174,7 +174,10 @@ namespace rapmap {
                     // here we take this to the extreme, and stop at the first j to which we chain.
                     // we can add a parameter "h" as in the minimap paper.  But here we expect the
                     // chains of matches in short reads to be short enough that this may not be worth it.
-                    if (p[i] < i) { break; }
+                    if (p[i] < i) {
+                      numRounds--;
+                      if (numRounds <= 0) { break; }
+                    }
                   }
                   if (f[i] > bestScore) {
                     bestScore = f[i];
