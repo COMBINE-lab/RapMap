@@ -141,8 +141,8 @@ namespace rapmap {
                 for (int32_t i = 0; i < static_cast<int32_t>(hitVector.size()); ++i) {
                   auto& hi = hitVector[i];
 
-                  auto qposi = hi.queryPos;
-                  auto rposi = hi.pos;
+                  auto qposi = hi.queryPos + hi.len;
+                  auto rposi = hi.pos + hi.len;
 
                   double baseScore = static_cast<double>(hi.len);
                   p.push_back(i);
@@ -154,8 +154,8 @@ namespace rapmap {
                   for (int32_t j = i-1; j >= 0; --j) {
                     auto& hj = hitVector[j];
 
-                    auto qposj = hj.queryPos;
-                    auto rposj = hj.pos;
+                    auto qposj = hj.queryPos + hj.len;
+                    auto rposj = hj.pos + hj.len;
 
                     auto qdiff = qposi - qposj;
                     auto rdiff = rposi - rposj;
