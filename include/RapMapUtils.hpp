@@ -889,15 +889,27 @@ namespace rapmap {
                               // if we are considering multiple positions, and either of these reads appears in
                               // more than one place, then find the best (smallest gap).
                               if (considerMultiPos and (leftIt->hasMultiPos or rightIt->hasMultiPos)) {
-                                // NOTE : Need other code here to handle multiple positions per transcript to find the best.
-                                // O(n1 log n2)
+                                // NOTE: There is certainly a better way to do this, but current
+                                // algorithm is O(n1 log n2) where
+                                // n1 = leftIt->allPositions.size()
+                                // n2 = leftIt->allPositions.size()
+
+                                // Remember the pair of positions that gives us the best gap
+                                // here, a gap of 0 is "optimal".
                                 int32_t bestGap = std::numeric_limits<int32_t>::max();
+                                // Given a left position and a right position, if they produce a better
+                                // gap than the current best, then update the best gap and remember these
+                                // positions that produced it.
                                 auto updateBestGap = [&bestGap, &bestLeftPosIt, &bestRightPosIt, leftIt, rightIt](
                                                                                                  int32_t startRead1,
                                                                                                  chobo::small_vector<int32_t>::iterator leftPosIt,
                                                                                                  chobo::small_vector<int32_t>::iterator rightPosIt
                                                                                                  ) {
+                                                       // The start position for read 2
                                                        int32_t startRead2 = std::max(*rightPosIt, signedZero);
+                                                       // The gap between the end of the first read and the start of the
+                                                       // second (we take the absolute value so it is always non-negative,
+                                                       // even if they overlap).
                                                        int32_t gap = (startRead1 < startRead2) ?
                                                          std::abs(startRead2 - (startRead1 + leftIt->readLen)) :
                                                          std::abs(startRead1 - (startRead2 + rightIt->readLen));
@@ -911,10 +923,15 @@ namespace rapmap {
 
                                 auto rightBeg = rightIt->allPositions.begin();
                                 auto rightEnd = rightIt->allPositions.end();
+
+                                // for every position the left read could start
                                 for (auto pIt = leftIt->allPositions.begin(); pIt != leftIt->allPositions.end(); ++pIt) {
                                   auto p1 = *pIt;
                                   int32_t startRead1 = std::max(p1, signedZero);
+
+                                  // find the closest position for the right read
                                   auto lbIt = std::lower_bound(rightBeg, rightEnd, p1);
+
                                   // p1 is greater than every position where the right read can start
                                   if (lbIt == rightEnd) {
                                     auto closestIt = lbIt - 1;
@@ -955,7 +972,6 @@ namespace rapmap {
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
                                 jointHits.back().chainStatus = FragmentChainStatus(leftIt->chainStatus.getLeft(), rightIt->chainStatus.getRight());
                                 //jointHits.back().completeMatchType = mergeMatchType(leftIt->completeMatchType, rightIt->completeMatchType);
-
                                 ++numHits;
                                 if (numHits > maxNumHits) { tooManyHits = true; break; }
                                 ++leftIt;

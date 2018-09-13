@@ -97,6 +97,7 @@ namespace rapmap {
 
           std::vector<double> f;
           std::vector<int32_t> p;
+          chobo::small_vector<int32_t> bestChainEndInds;
           for (auto& ph : processedHits) {
             // If this is an *active* position list
             if (ph.second.active) {
@@ -141,7 +142,7 @@ namespace rapmap {
                 int32_t bestChainEnd = -1;
                 double avgseed = 31.0;
 
-                chobo::small_vector<int32_t> bestChainEndInds;
+                bestChainEndsInds.clear();
                 f.clear();
                 p.clear();
                 auto lastHitId = static_cast<int32_t>(hitVector.size() - 1);
@@ -203,9 +204,9 @@ namespace rapmap {
 
                 /** Multi-chain backtracking **/
                 // number of equally-optimal chains.
-                auto numOpt = f.size();
+                auto numEnds = f.size();
                 size_t numDistinctOpt{0};
-                chobo::small_vector<int8_t> seen(numOpt, 0);
+                chobo::small_vector<int8_t> seen(numEnds, 0);
                 chobo::small_vector<decltype(minPosIt)> startPositions;
                 auto lastChainHit = bestChainEnd;
                 for (auto bestChainEndInd : bestChainEndInds) {
@@ -256,12 +257,12 @@ namespace rapmap {
                     while (++posIt != startPositions.end()) {
                       currHit.allPositions.push_back((*posIt)->pos - (*posIt)->queryPos);
                     }
+                    // Sort the equally-best hit positions in this transcript
                     std::sort(currHit.allPositions.begin(), currHit.allPositions.end());
                   } else {
                     currHit.hasMultiPos = false;
                   }
                 }
-
 
                 /** Single-chain backtracking **/
                 /*
@@ -557,62 +558,6 @@ namespace rapmap {
         }
 
 
-        /*
-        void intersectSAIntervalWithOutput3(SAIntervalHit& h,
-                RapMapSAIndex& rmi,
-                SAProcessedHitVec& outHits) {
-            // Convenient bindings for variables we'll use
-            auto& SA = rmi.SA;
-            auto& txpIDs = rmi.positionIDs;
-            auto& txpStarts = rmi.txpOffsets;
-
-            // Iterator to the beginning and end of the output hits
-            auto outHitIt = outHits.begin();
-            auto outHitEnd = outHits.end();
-
-            // Make a vector of iterators into the right interval
-            std::vector<int*> rightHitIterators;
-            rightHitIterators.reserve(h.span());
-            for (auto i = h.begin; i < h.end; ++i) {
-                rightHitIterators.emplace_back(&SA[i]);
-            }
-            // Sort the iterators by their transcript ID
-            std::sort(rightHitIterators.begin(), rightHitIterators.end(),
-                    [&txpIDs](const int* a, const int* b) -> bool {
-                    return txpIDs[*a] < txpIDs[*b];
-                    });
-            auto rightIntHit = rightHitIterators.begin();
-            auto rightIntHitEnd = rightHitIterators.end();
-
-            uint32_t leftTxp, rightTxp;
-            uint32_t pos;
-            while (outHitIt != outHitEnd and rightIntHit != rightIntHitEnd) {
-                // Get the current transcript ID for the left and right eq class
-                leftTxp = outHitIt->tid;
-                rightTxp = txpIDs[(*(*rightIntHit))];
-                // If we need to advance the left txp, do it
-                if (leftTxp < rightTxp) {
-                    // Advance to the next transcript in the
-                    // equivalence class label
-                    ++outHitIt;
-                } else {
-                    // If the transcripts are equal (i.e. leftTxp >= rightTxp and !(rightTxp < leftTxp))
-                    // Then see if there are any hits here.
-                    if (!(rightTxp < leftTxp)) {
-                        // Add the position list iterator and query pos for the
-                        // hit from h2 to the back of outHits' tqvec.
-                        pos = static_cast<uint32_t>(*(*rightIntHit)) - txpStarts[rightTxp];
-                        outHitIt->tqvec.emplace_back(pos, h.queryPos, h.queryRC);
-                        //++outHitIt;
-                    }
-                    ++rightIntHit;
-                }
-            }
-        }
-        */
-
-
-
         template <typename RapMapIndexT>
         void intersectSAIntervalWithOutput(SAIntervalHit<typename RapMapIndexT::IndexType>& h,
                                            RapMapIndexT& rmi,
@@ -658,86 +603,6 @@ namespace rapmap {
             }
           }
 
-
-          /*
-        std::vector<ProcessedHit> intersectHits(
-                std::vector<HitInfo>& inHits,
-                RapMapIndex& rmi
-                ) {
-            // Each inHit is a HitInfo structure that contains
-            // an iterator to the KmerInfo for this k-mer, the k-mer ID,
-            // and the query position where this k-mer appeared.
-            // We want to find the transcripts that appear in *every*
-            // hit.  Further, for each transcript, we want to
-            // know the k-mers that appear in this txp.
-
-            // Check this --- we should never call this function
-            // with less than 2 hits.
-            if (inHits.size() < 2) {
-                std::cerr << "intersectHits() called with < 2 k-mer "
-                    " hits; this shouldn't happen\n";
-                return {};
-            }
-
-            auto& eqClasses = rmi.eqClassList;
-            auto& eqClassLabels = rmi.eqLabelList;
-            auto& posList = rmi.posList;
-
-            // The HitInfo with the smallest equivalence class
-            // i.e. label with the fewest transcripts.
-            HitInfo* minHit = &inHits[0];
-            for (auto& h : inHits) {
-                if (h.kinfo->count < minHit->kinfo->count) {
-                    minHit = &h;
-                }
-            }
-
-            std::vector<ProcessedHit> outHits;
-            outHits.reserve(minHit->kinfo->count);
-            // =========
-            { // Add the info from minHit to outHits
-                // Equiv. class for minHit
-                auto& eqClass = eqClasses[minHit->kinfo->eqId];
-                // Iterator into, length of and end of the positon list
-                auto posIt = posList.begin() + minHit->kinfo->offset;
-                auto posLen = minHit->kinfo->count;
-                // auto posEnd = posIt + posLen;
-                // Iterator into, length of and end of the transcript list
-                auto txpIt = eqClassLabels.begin() + eqClass.txpListStart;
-                auto txpListLen = eqClass.txpListLen;
-                auto txpEnd = txpIt + txpListLen;
-                PositionListHelper posHelper(posIt, posList.end());
-
-                while (txpIt != txpEnd) {
-                    auto tid = *txpIt;
-                    outHits.emplace_back(tid, posHelper, minHit->queryPos, minHit->queryRC);
-                    posHelper.advanceToNextTranscript();
-                    ++txpIt;
-                }
-            }
-            // =========
-
-            // Now intersect everything in inHits (apart from minHits)
-            // to get the final set of mapping info.
-            for (auto& h : inHits) {
-                if (&h != minHit) { // don't intersect minHit with itself
-                    intersectWithOutput(h, rmi, outHits);
-                }
-            }
-
-            size_t requiredNumHits = inHits.size();
-            // do we need stable_partition? --- don't think so.
-            auto newEnd = std::stable_partition(outHits.begin(), outHits.end(),
-                    [requiredNumHits] (const ProcessedHit& ph) -> bool {
-                    // should never really be greater.
-                    return (ph.tqvec.size() >= requiredNumHits);
-                    });
-d
-            // return only the valid hits
-            outHits.resize(std::distance(outHits.begin(), newEnd));
-            return outHits;
-        }
-        */
 
         template <typename RapMapIndexT>
         std::vector<ProcessedSAHit> intersectSAHits2(
@@ -926,13 +791,17 @@ d
         auto fwdHitsStart = hits.size();
         int32_t maxSlack = mc.maxSlack;
 
+        // If the hit we have for a read is contained within a single suffix array interval
+        // (i.e. there is only one MMP), then this function is called to collect the relevant
+        // hits into `outHits`.
         auto collectFromSingleInterval = [&](decltype(hcinfo.fwdSAInts)& saInts,
                                              bool isFw,
                                              std::vector<rapmap::utils::QuasiAlignment>& outHits) {
             auto& saIntervalHit = saInts.front();
             auto initialSize = outHits.size();
 
-
+            // First, we put all (txp, position) pairs into their own
+            // QuasiAlignment
             for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
               auto globalPos = SA[i];
               auto txpID = rmi.transcriptAtPosition(globalPos);
@@ -960,7 +829,7 @@ d
               //lastHit.completeMatchType = (saIntervalHit.len == readLen) ? mateStatus : MateStatus::NOTHING;
             }
 
-            // Now sort by transcript ID (then position)
+            // Now sort these QuasiAlignments by transcript ID (then position)
             auto sortStartIt = outHits.begin() + initialSize;
             auto sortEndIt = outHits.end();
             std::sort(sortStartIt, sortEndIt,
@@ -975,37 +844,34 @@ d
 
             // Custom variant of unique algorithm from : https://en.cppreference.com/w/cpp/algorithm/unique
             // that will merge the position lists of adjacent hits from the same transcript.
-            // if doMerge = false, this is identical to std::unique, else it does the merge
             auto mergeUnique = [](decltype(outHits.begin()) first, decltype(outHits.end()) last) -> decltype(outHits.end()) {
               if (first == last)
                 return last;
 
-              //decltype(first) start = first;
               decltype(first) result = first;
               while (++first != last) {
                 bool distinct = !(result->tid == first->tid);
+                // If we just completed a run of transcript-identical hits
+                // then move the new transcript's first hit into the next
+                // position.
                 if (distinct && ++result != first) {
                   *result = std::move(*first);
                 } else if(!distinct) {
+                  // If we are looking at a pair of transcript-identical elements
+                  // then push the position of the current hit onto the position
+                  // list for the element that will remain after uniquifying.
                   result->hasMultiPos = true;
                   result->allPositions.push_back(first->pos);
                 }
               }
 
-              // for each transcript having multiple positions, sort the positions
-              // should not be necessary because of sorting above.
-              /*
-              while(start != last) {
-                if (start->hasMultiPos) {
-                  std::sort(start->allPositions.begin(), start->allPositions.end());
-                }
-                ++start;
-              }
-              */
-
+              // NOTE: positions within transcripts should already be sorted, so we don't need
+              // to do it again here.
               return ++result;
             };
 
+            // If we are considering multiple hits, then merge the position lists
+            // otherwise, just make the hit lists unique.
             auto newEnd = considerMultiPos ?
                mergeUnique(outHits.begin() + initialSize, outHits.end()) :
                std::unique(
@@ -1014,13 +880,7 @@ d
                  return a.tid == b.tid;
                });
 
-            /*
-            auto newEnd = std::unique(
-                                      outHits.begin() + initialSize, outHits.end(),
-                                      [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                                        return a.tid == b.tid;
-                                      });
-            */
+            // Get rid of redundant QuasiAlignemnts.
             outHits.resize(std::distance(outHits.begin(), newEnd));
         };
 
@@ -1058,7 +918,7 @@ d
                                return a.tid < b.tid;
                              });
           // And get rid of duplicate transcript IDs
-          // NOTE: We generally don't want to get rid of duplicate transcripts if we are allowing multiple
+          // TODO: We generally don't want to get rid of duplicate transcripts if we are allowing multiple
           // positions, since we may want to consider both fw and rev on the same transcript.
           auto newEnd = std::unique(
                                     hits.begin() + fwdHitsStart, hits.begin() + rcHitsEnd,
