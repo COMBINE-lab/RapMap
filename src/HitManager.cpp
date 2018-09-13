@@ -142,7 +142,7 @@ namespace rapmap {
                 int32_t bestChainEnd = -1;
                 double avgseed = 31.0;
 
-                bestChainEndsInds.clear();
+                bestChainEndInds.clear();
                 f.clear();
                 p.clear();
                 auto lastHitId = static_cast<int32_t>(hitVector.size() - 1);
