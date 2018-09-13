@@ -313,6 +313,7 @@ void processReadsPairSA(paired_parser* parser,
                 rapmap::utils::mergeLeftRightHitsFuzzy(
                         lh, rh,
                         leftHits, rightHits, jointHits,
+                        mc,
                         readLen, mopts->maxNumHits, tooManyHits, hctr);
 
             } else {

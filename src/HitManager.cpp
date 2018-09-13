@@ -22,6 +22,7 @@
 #include "HitManager.hpp"
 #include "BooMap.hpp"
 #include "FrugalBooMap.hpp"
+#include "chobo/small_vector.hpp"
 #include <type_traits>
 
 namespace rapmap {
@@ -84,7 +85,11 @@ namespace rapmap {
                         int32_t maxDist,
                         std::vector<QuasiAlignment>& hits,
                         MateStatus mateStatus,
-                        bool findBestChain){
+                        rapmap::utils::MappingConfig& mc) {
+          //bool findBestChain){
+
+          auto findBestChain = mc.doChaining;
+          bool considerMultiPos = mc.considerMultiPos;
 
           //bool foundHit{false};
           // One processed hit per transcript
@@ -135,6 +140,8 @@ namespace rapmap {
                 double bestScore = bottomScore;
                 int32_t bestChainEnd = -1;
                 double avgseed = 31.0;
+
+                chobo::small_vector<int32_t> bestChainEndInds;
                 f.clear();
                 p.clear();
                 auto lastHitId = static_cast<int32_t>(hitVector.size() - 1);
@@ -182,10 +189,82 @@ namespace rapmap {
                   if (f[i] > bestScore) {
                     bestScore = f[i];
                     bestChainEnd = i;
+                    if (considerMultiPos) {
+                      bestChainEndInds.clear();
+                      bestChainEndInds.push_back(bestChainEnd);
+                    }
+                  } else if (considerMultiPos and f[i] == bestScore) {
+                    bestChainEndInds.push_back(i);
                   }
                 }
 
                 // Do backtracking
+
+
+                /** Multi-chain backtracking **/
+                // number of equally-optimal chains.
+                auto numOpt = f.size();
+                size_t numDistinctOpt{0};
+                chobo::small_vector<int8_t> seen(numOpt, 0);
+                chobo::small_vector<decltype(minPosIt)> startPositions;
+                auto lastChainHit = bestChainEnd;
+                for (auto bestChainEndInd : bestChainEndInds) {
+                  bool validChain{true};
+                  if (bestChainEndInd >= 0) {
+                    auto lastPtr = p[bestChainEndInd];
+                    while (lastPtr < bestChainEndInd) {
+                      if (seen[bestChainEndInd]) {
+                        validChain = false;
+                        break;
+                      }
+                      // It is always OK to mark this, because even if we end up
+                      // not using this chain (i.e. it later encounters a seen mem)
+                      // then _all_ chains passing through this mem would encounter the
+                      // same seen mem and hence be invalid.
+                      seen[bestChainEndInd] = 1;
+                      bestChainEndInd = lastPtr;
+                      lastPtr = p[bestChainEndInd];
+                    }
+                    if (seen[bestChainEndInd]) {
+                      validChain = false;
+                    }
+                    if (validChain) {
+                      ++numDistinctOpt;
+                      startPositions.push_back(minPosIt + lastPtr);
+                    }
+                  } else {
+                    // should not happen
+                    std::cerr << "[FATAL] : Cannot find any valid chain for quasi-mapping\n";
+                    std::cerr << "num hits = " << hitVector.size() << "\n";
+                    std::cerr << "bestChainEnd = " << bestChainEnd << "\n";
+                    std::cerr << "bestChainScore = " << bestScore << "\n";
+                    std::exit(1);
+                  }
+                }
+
+                {
+                  auto posIt = startPositions.begin();
+                  bool hitRC = (*posIt)->queryRC;
+                  bool isFwd = !hitRC;
+                  int32_t hitPos = (*posIt)->pos - (*posIt)->queryPos;
+                  hits.emplace_back(tid, hitPos, isFwd, readLen);
+                  auto& currHit = hits.back();
+                  currHit.mateStatus = mateStatus;
+                  currHit.allPositions.push_back(hitPos);
+                  if (startPositions.size() > 1) {
+                    currHit.hasMultiPos = true;
+                    while (++posIt != startPositions.end()) {
+                      currHit.allPositions.push_back((*posIt)->pos - (*posIt)->queryPos);
+                    }
+                    std::sort(currHit.allPositions.begin(), currHit.allPositions.end());
+                  } else {
+                    currHit.hasMultiPos = false;
+                  }
+                }
+
+
+                /** Single-chain backtracking **/
+                /*
                 auto lastChainHit = bestChainEnd;
                 if (bestChainEnd >= 0) {
                   auto lastPtr = p[bestChainEnd];
@@ -202,15 +281,15 @@ namespace rapmap {
                   std::cerr << "bestChainScore = " << bestScore << "\n";
                   std::exit(1);
                 }
-
                 bool hitRC = minPosIt->queryRC;
                 int32_t hitPos = minPosIt->pos - minPosIt->queryPos;
                 bool isFwd = !hitRC;
                 hits.emplace_back(tid, hitPos, isFwd, readLen);
                 hits.back().mateStatus = mateStatus;
+                */
 
                 // See if we have a gapless chain
-                if (hitVector.size() > 1 and lastChainHit == lastHitId) {
+                if (hitVector.size() > 1 and numDistinctOpt == 1 and lastChainHit == lastHitId) {
                   // For this to be the case we must have that
                   // the length of the chain on the query (L) is *exactly*
                   // the same as the length of the chain on the reference,
@@ -841,116 +920,131 @@ d
         auto maxDist = hcinfo.maxDist;
 
         auto consistentHits = mc.consistentHits;
-        auto doChaining = mc.doChaining;
+        //auto doChaining = mc.doChaining;
+        bool considerMultiPos = mc.considerMultiPos;
 
         auto fwdHitsStart = hits.size();
         int32_t maxSlack = mc.maxSlack;
+
+        auto collectFromSingleInterval = [&](decltype(hcinfo.fwdSAInts)& saInts,
+                                             bool isFw,
+                                             std::vector<rapmap::utils::QuasiAlignment>& outHits) {
+            auto& saIntervalHit = saInts.front();
+            auto initialSize = outHits.size();
+
+
+            for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
+              auto globalPos = SA[i];
+              auto txpID = rmi.transcriptAtPosition(globalPos);
+              // the offset into this transcript
+              auto pos = globalPos - txpStarts[txpID];
+              int32_t hitPos = pos - saIntervalHit.queryPos;
+              outHits.emplace_back(txpID, hitPos, isFw, readLen);
+              auto& lastHit = outHits.back();
+              lastHit.mateStatus = mateStatus;
+              lastHit.allPositions.push_back(hitPos);
+              lastHit.hasMultiPos = false;
+              switch (mateStatus) {
+              case rapmap::utils::MateStatus::PAIRED_END_LEFT:
+              case rapmap::utils::MateStatus::SINGLE_END:
+                lastHit.chainStatus.setLeft( (saIntervalHit.len == readLen) ? rapmap::utils::ChainStatus::PERFECT :
+                                             rapmap::utils::ChainStatus::REGULAR );
+                break;
+              case rapmap::utils::MateStatus::PAIRED_END_RIGHT:
+                lastHit.chainStatus.setRight( (saIntervalHit.len == readLen) ? rapmap::utils::ChainStatus::PERFECT :
+                                              rapmap::utils::ChainStatus::REGULAR );
+                break;
+              default:
+                break;
+              }
+              //lastHit.completeMatchType = (saIntervalHit.len == readLen) ? mateStatus : MateStatus::NOTHING;
+            }
+
+            // Now sort by transcript ID (then position)
+            auto sortStartIt = outHits.begin() + initialSize;
+            auto sortEndIt = outHits.end();
+            std::sort(sortStartIt, sortEndIt,
+                      [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                        if (a.tid == b.tid) {
+                          return a.pos < b.pos;
+                        } else {
+                          return a.tid < b.tid;
+                        }
+                      });
+
+
+            // Custom variant of unique algorithm from : https://en.cppreference.com/w/cpp/algorithm/unique
+            // that will merge the position lists of adjacent hits from the same transcript.
+            // if doMerge = false, this is identical to std::unique, else it does the merge
+            auto mergeUnique = [](decltype(outHits.begin()) first, decltype(outHits.end()) last) -> decltype(outHits.end()) {
+              if (first == last)
+                return last;
+
+              //decltype(first) start = first;
+              decltype(first) result = first;
+              while (++first != last) {
+                bool distinct = !(result->tid == first->tid);
+                if (distinct && ++result != first) {
+                  *result = std::move(*first);
+                } else if(!distinct) {
+                  result->hasMultiPos = true;
+                  result->allPositions.push_back(first->pos);
+                }
+              }
+
+              // for each transcript having multiple positions, sort the positions
+              // should not be necessary because of sorting above.
+              /*
+              while(start != last) {
+                if (start->hasMultiPos) {
+                  std::sort(start->allPositions.begin(), start->allPositions.end());
+                }
+                ++start;
+              }
+              */
+
+              return ++result;
+            };
+
+            auto newEnd = considerMultiPos ?
+               mergeUnique(outHits.begin() + initialSize, outHits.end()) :
+               std::unique(
+                 outHits.begin() + initialSize, outHits.end(),
+                 [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                 return a.tid == b.tid;
+               });
+
+            /*
+            auto newEnd = std::unique(
+                                      outHits.begin() + initialSize, outHits.end(),
+                                      [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+                                        return a.tid == b.tid;
+                                      });
+            */
+            outHits.resize(std::distance(outHits.begin(), newEnd));
+        };
+
 
         // If we had > 1 forward hit
         if (fwdSAInts.size() > 1) {
           auto processedHits = rapmap::hit_manager::intersectSAHits(
                                                                     fwdSAInts, rmi, readLen, maxSlack, consistentHits);
           rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
-                                                   hits, mateStatus, doChaining);
+                                                   hits, mateStatus, mc);
         } else if (fwdSAInts.size() == 1) { // only 1 hit!
-          auto& saIntervalHit = fwdSAInts.front();
-          auto initialSize = hits.size();
-          for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
-            auto globalPos = SA[i];
-            auto txpID = rmi.transcriptAtPosition(globalPos);
-            // the offset into this transcript
-            auto pos = globalPos - txpStarts[txpID];
-            int32_t hitPos = pos - saIntervalHit.queryPos;
-            hits.emplace_back(txpID, hitPos, true, readLen);
-            auto& lastHit = hits.back();
-            lastHit.mateStatus = mateStatus;
-            switch (mateStatus) {
-            case rapmap::utils::MateStatus::PAIRED_END_LEFT:
-            case rapmap::utils::MateStatus::SINGLE_END:
-              lastHit.chainStatus.setLeft( (saIntervalHit.len == readLen) ? rapmap::utils::ChainStatus::PERFECT :
-                                           rapmap::utils::ChainStatus::REGULAR );
-              break;
-            case rapmap::utils::MateStatus::PAIRED_END_RIGHT:
-              lastHit.chainStatus.setRight( (saIntervalHit.len == readLen) ? rapmap::utils::ChainStatus::PERFECT :
-                                            rapmap::utils::ChainStatus::REGULAR );
-              break;
-            default:
-              break;
-            }
-            //lastHit.completeMatchType = (saIntervalHit.len == readLen) ? mateStatus : MateStatus::NOTHING;
-          }
-          // Now sort by transcript ID (then position) and eliminate
-          // duplicates
-          auto sortStartIt = hits.begin() + initialSize;
-          auto sortEndIt = hits.end();
-          std::sort(sortStartIt, sortEndIt,
-                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                      if (a.tid == b.tid) {
-                        return a.pos < b.pos;
-                      } else {
-                        return a.tid < b.tid;
-                      }
-                    });
-          auto newEnd = std::unique(
-                                    hits.begin() + initialSize, hits.end(),
-                                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                                      return a.tid == b.tid;
-                                    });
-          hits.resize(std::distance(hits.begin(), newEnd));
+          collectFromSingleInterval(fwdSAInts, true, hits);
         }
-        auto fwdHitsEnd = hits.size();
 
+        auto fwdHitsEnd = hits.size();
         auto rcHitsStart = fwdHitsEnd;
         // If we had > 1 rc hit
         if (rcSAInts.size() > 1) {
           auto processedHits = rapmap::hit_manager::intersectSAHits(
                                                                     rcSAInts, rmi, readLen, maxSlack, consistentHits);
           rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
-                                                   hits, mateStatus, doChaining);
+                                                   hits, mateStatus, mc);
         } else if (rcSAInts.size() == 1) { // only 1 hit!
-          auto& saIntervalHit = rcSAInts.front();
-          for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
-            auto globalPos = SA[i];
-            auto txpID = rmi.transcriptAtPosition(globalPos);
-            // the offset into this transcript
-            auto pos = globalPos - txpStarts[txpID];
-            int32_t hitPos = pos - saIntervalHit.queryPos;
-            hits.emplace_back(txpID, hitPos, false, readLen);
-            auto& lastHit = hits.back();
-            lastHit.mateStatus = mateStatus;
-            switch (mateStatus) {
-            case rapmap::utils::MateStatus::PAIRED_END_LEFT:
-            case rapmap::utils::MateStatus::SINGLE_END:
-              lastHit.chainStatus.setLeft( (saIntervalHit.len == readLen) ? rapmap::utils::ChainStatus::PERFECT :
-                                           rapmap::utils::ChainStatus::REGULAR );
-              break;
-            case rapmap::utils::MateStatus::PAIRED_END_RIGHT:
-              lastHit.chainStatus.setRight( (saIntervalHit.len == readLen) ? rapmap::utils::ChainStatus::PERFECT :
-                                            rapmap::utils::ChainStatus::REGULAR );
-              break;
-            default:
-              break;
-            }
-            //lastHit.completeMatchType = (saIntervalHit.len == readLen) ? mateStatus : MateStatus::NOTHING;
-          }
-          // Now sort by transcript ID (then position) and eliminate
-          // duplicates
-          auto sortStartIt = hits.begin() + rcHitsStart;
-          auto sortEndIt = hits.end();
-          std::sort(sortStartIt, sortEndIt,
-                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                      if (a.tid == b.tid) {
-                        return a.pos < b.pos;
-                      } else {
-                        return a.tid < b.tid;
-                      }
-                    });
-          auto newEnd = std::unique(
-                                    sortStartIt, sortEndIt,
-                                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                                      return a.tid == b.tid;
-                                    });
-          hits.resize(std::distance(hits.begin(), newEnd));
+          collectFromSingleInterval(rcSAInts, false, hits);
         }
         auto rcHitsEnd = hits.size();
 
@@ -964,6 +1058,8 @@ d
                                return a.tid < b.tid;
                              });
           // And get rid of duplicate transcript IDs
+          // NOTE: We generally don't want to get rid of duplicate transcripts if we are allowing multiple
+          // positions, since we may want to consider both fw and rev on the same transcript.
           auto newEnd = std::unique(
                                     hits.begin() + fwdHitsStart, hits.begin() + rcHitsEnd,
                                     [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {

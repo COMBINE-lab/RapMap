@@ -89,7 +89,7 @@ namespace rapmap {
                 int32_t maxDist,
                 std::vector<QuasiAlignment>& hits,
                 MateStatus mateStatus,
-                bool doChaining);
+                rapmap::utils::MappingConfig& mc);
 
         // Return hits from processedHits where position constraints
         // match maxDist
