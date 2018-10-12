@@ -911,8 +911,8 @@ namespace rapmap {
                                                        // second (we take the absolute value so it is always non-negative,
                                                        // even if they overlap).
                                                        int32_t gap = (startRead1 < startRead2) ?
-                                                         std::abs(startRead2 - (startRead1 + leftIt->readLen)) :
-                                                         std::abs(startRead1 - (startRead2 + rightIt->readLen));
+                                                         std::abs(startRead2 - (startRead1 + static_cast<int32_t>(leftIt->readLen))) :
+                                                         std::abs(startRead1 - (startRead2 + static_cast<int32_t>(rightIt->readLen)));
                                                        if (gap < bestGap) {
                                                          bestGap = gap;
                                                          bestLeftPosIt = leftPosIt;
