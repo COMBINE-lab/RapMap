@@ -203,7 +203,11 @@ namespace rapmap {
 
 
                 /** Multi-chain backtracking **/
-                // number of equally-optimal chains.
+                // If considerMultiPos is true, then bestChainEndInds can have
+                // >1 entry (the number of equally-optimal chains).  If
+                // considerMultiPos is false, then bestChainEndInds will have
+                // only a single (best-scoring) chain end, and the below will
+                // behave as single-chain backtracking.
                 auto numEnds = f.size();
                 size_t numDistinctOpt{0};
                 chobo::small_vector<int8_t> seen(numEnds, 0);
@@ -263,31 +267,6 @@ namespace rapmap {
                     currHit.hasMultiPos = false;
                   }
                 }
-
-                /** Single-chain backtracking **/
-                /*
-                auto lastChainHit = bestChainEnd;
-                if (bestChainEnd >= 0) {
-                  auto lastPtr = p[bestChainEnd];
-                  while (lastPtr < bestChainEnd) {
-                    bestChainEnd = lastPtr;
-                    lastPtr = p[bestChainEnd];
-                  }
-                  minPosIt += lastPtr;
-                } else {
-                  // should not happen
-                  std::cerr << "[FATAL] : Cannot find any valid chain for quasi-mapping\n";
-                  std::cerr << "num hits = " << hitVector.size() << "\n";
-                  std::cerr << "bestChainEnd = " << bestChainEnd << "\n";
-                  std::cerr << "bestChainScore = " << bestScore << "\n";
-                  std::exit(1);
-                }
-                bool hitRC = minPosIt->queryRC;
-                int32_t hitPos = minPosIt->pos - minPosIt->queryPos;
-                bool isFwd = !hitRC;
-                hits.emplace_back(tid, hitPos, isFwd, readLen);
-                hits.back().mateStatus = mateStatus;
-                */
 
                 // See if we have a gapless chain
                 if (hitVector.size() > 1 and numDistinctOpt == 1 and lastChainHit == lastHitId) {
