@@ -198,7 +198,7 @@ namespace rapmap {
                     bestChainEndInds.push_back(i);
                   }
                 }
-		      
+
                 // Since we use bestChainEndInds for backtracking,
                 // regardless of if we are considering multiple positions
                 // or not, make sure we populate it here if we have not above.
@@ -206,10 +206,11 @@ namespace rapmap {
                   bestChainEndInds.push_back(bestChainEnd);
                 }
 
-                // Do backtracking
+                //  ===== Do backtracking ========
 
-
-                /** Multi-chain backtracking **/
+                // Multi-chain backtracking
+                // =========================
+                //
                 // If considerMultiPos is true, then bestChainEndInds can have
                 // >1 entry (the number of equally-optimal chains).  If
                 // considerMultiPos is false, then bestChainEndInds will have
