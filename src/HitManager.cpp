@@ -313,6 +313,7 @@ namespace rapmap {
                 bool isFwd = !hitRC;
                 hits.emplace_back(tid, hitPos, isFwd, readLen);
                 hits.back().mateStatus = mateStatus;
+		hits.back().allPositions.push_back(hitPos);
               }
             }
           }
