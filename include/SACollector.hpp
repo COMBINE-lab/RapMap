@@ -545,8 +545,29 @@ private:
         // lb must be 1 *less* then the current lb
         // We can't move any further in the reverse complement direction
         lb = std::max(static_cast<OffsetT>(0), lb - 1);
+
+	// [Nov 21] NOTE: Attempt to cheaply mimic intruders --- hack for now,
+	// make it nicer if it works.
+	bool firstAttempt = doChaining_ ? (rb == readStartIt) : true;
+	constexpr int mohsenNumber = 7;
+	auto endIt = (firstAttempt) ? readEndIt : std::min(rb + k + mohsenNumber, readEndIt);
+	auto lbP = lb;
+	auto ubP = ub;
+
         std::tie(lb, ub, matchedLen) =
-            saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
+            saSearcher.extendSearchNaive(lb, ub, k, rb, endIt);
+
+
+	// [Nov 21] NOTE: Attempt to cheaply mimic intruders --- hack for now,
+	// make it nicer if it works.
+	if (doChaining_ and firstAttempt and matchedLen > k and matchedLen < readLen) {
+	  firstAttempt = false;
+	  lb = lbP;
+          ub = ubP;
+   	  endIt = std::min(rb + k + mohsenNumber, readEndIt);
+	  std::tie(lb, ub, matchedLen) =
+            	saSearcher.extendSearchNaive(lb, ub, k, rb, endIt);
+	}
 
         OffsetT diff = ub - lb;
         if (ub > lb and diff < maxInterval_) {
