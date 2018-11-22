@@ -424,6 +424,13 @@ namespace rapmap {
         QuasiAlignment(const QuasiAlignment& o) = default;
         QuasiAlignment(QuasiAlignment& o) = default;
 
+      inline void setChainScore(double chainScoreIn) {
+        chainScore_ = chainScoreIn;
+      }
+
+      inline double chainScore() const {
+        return chainScore_;
+      }
         // Some convenience functions to allow salmon interop
 #ifdef RAPMAP_SALMON_SUPPORT
         inline uint32_t transcriptID() const { return tid; }
@@ -481,6 +488,7 @@ namespace rapmap {
         double score_{1.0};
         // If one or both of the reads is a complete match (no mismatch, indels), say what kind.
         FragmentChainStatus chainStatus;
+        double chainScore_{std::numeric_limits<double>::lowest()};
       //MateStatus completeMatchType{MateStatus::NOTHING};
     };
 

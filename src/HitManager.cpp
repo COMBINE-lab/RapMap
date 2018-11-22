@@ -262,6 +262,7 @@ namespace rapmap {
                   int32_t hitPos = (*posIt)->pos - (*posIt)->queryPos;
                   hits.emplace_back(tid, hitPos, isFwd, readLen);
                   auto& currHit = hits.back();
+                  currHit.setChainScore(bestScore);
                   currHit.mateStatus = mateStatus;
                   currHit.allPositions.push_back(hitPos);
                   if (startPositions.size() > 1) {
@@ -903,7 +904,9 @@ namespace rapmap {
                              hits.begin() + fwdHitsStart, hits.begin() + fwdHitsEnd,
                              hits.begin() + rcHitsEnd,
                              [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                               return a.tid < b.tid;
+                               // If we have a tie, then the one with the better chain score
+                               // comes *before* the one with the worse chain score.
+                               return (a.tid == b.tid) ? a.chainScore() > b.chainScore() : a.tid < b.tid;
                              });
           // And get rid of duplicate transcript IDs
           // TODO: We generally don't want to get rid of duplicate transcripts if we are allowing multiple
