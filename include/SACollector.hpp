@@ -560,7 +560,7 @@ private:
 
 	// [Nov 21] NOTE: Attempt to cheaply mimic intruders --- hack for now,
 	// make it nicer if it works.
-	if (doChaining_ and firstAttempt and matchedLen > k and matchedLen < readLen) {
+  if (doChaining_ and firstAttempt and matchedLen > static_cast<OffsetT>(k) and matchedLen < static_cast<OffsetT>(readLen)) {
 	  firstAttempt = false;
 	  lb = lbP;
           ub = ubP;
