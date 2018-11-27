@@ -169,7 +169,9 @@ namespace rapmap {
                 std::string numHitFlag = fmt::format("NH:i:{}", hits.size());
                 uint32_t alnCtr{0};
                 bool haveRev{false};
+                size_t i{0}
                 for (auto& qa : hits) {
+                    ++i;
                     auto& transcriptName = txpNames[qa.tid];
                     // === SAM
                     rapmap::utils::getSamFlags(qa, flags);
@@ -202,7 +204,8 @@ namespace rapmap {
                         << qa.fragLen << '\t' // TLEN
                         << *readSeq << '\t' // SEQ
                         << "*\t" // QSTR
-                        << numHitFlag << '\n';
+                        << numHitFlag << '\t'
+                        << "HI:i:" << i << '\n';
                     ++alnCtr;
                     // === SAM
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
@@ -269,7 +272,6 @@ namespace rapmap {
                 bool* haveRev = nullptr;
                 size_t i{0};
                 for (auto& qa : jointHits) {
-
                     ++i;
                     auto& transcriptName = txpNames[qa.tid];
                     // === SAM
@@ -328,7 +330,8 @@ namespace rapmap {
                                 << ((read1First) ? fragLen : -fragLen) << '\t' // TLEN
                                 << *readSeq1 << '\t' // SEQ
                                 << "*\t" // QUAL
-                                << numHitFlag << '\n';
+                                << numHitFlag << '\t'
+                                << "HI:i:" << i << '\n';
 
                         sstream << mateNameView << '\t' // QNAME
                                 << flags2 << '\t' // FLAGS
@@ -341,7 +344,8 @@ namespace rapmap {
                                 << ((read1First) ? -fragLen : fragLen) << '\t' // TLEN
                                 << *readSeq2 << '\t' // SEQ
                                 << "*\t" // QUAL
-                                << numHitFlag << '\n';
+                                << numHitFlag << '\t'
+                                << "HI:i:" << i << '\n';
                     } else {
                         rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
@@ -439,8 +443,8 @@ namespace rapmap {
                                 << 0 << '\t' // TLEN (spec says 0, not read len)
                                 << *readSeq << '\t' // SEQ
                                 << "*\t" // QUAL
-                                << numHitFlag << '\n';
-
+                                << numHitFlag << '\t'
+                                << "HI:i:" << i << '\n';
 
                         // Output the info for the unaligned mate.
                         sstream << *unalignedName << '\t' // QNAME
@@ -454,7 +458,8 @@ namespace rapmap {
                             << 0 << '\t' // TLEN (spec says 0, not read len)
                             << *unalignedSeq << '\t' // SEQ
                             << "*\t" // QUAL
-                            << numHitFlag << '\n';
+                            << numHitFlag << '\t'
+                            << "HI:i:" << i << '\n';
                     }
                     ++alnCtr;
                     // == SAM
