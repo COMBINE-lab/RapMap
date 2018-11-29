@@ -908,7 +908,7 @@ namespace rapmap {
                                 // Given a left position and a right position, if they produce a better
                                 // gap than the current best, then update the best gap and remember these
                                 // positions that produced it.
-                                auto updateBestGap = [&bestGap, &bestLeftPosIt, &bestRightPosIt, leftIt, rightIt](
+                                auto updateBestGap = [&bestGap, &bestLeftPosIt, &bestRightPosIt, leftIt, rightIt, signedZero](
                                                                                                  int32_t startRead1,
                                                                                                  chobo::small_vector<int32_t>::iterator leftPosIt,
                                                                                                  chobo::small_vector<int32_t>::iterator rightPosIt
