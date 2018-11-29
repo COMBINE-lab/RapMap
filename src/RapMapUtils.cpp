@@ -169,7 +169,7 @@ namespace rapmap {
                 std::string numHitFlag = fmt::format("NH:i:{}", hits.size());
                 uint32_t alnCtr{0};
                 bool haveRev{false};
-                size_t i{0}
+                size_t i{0};
                 for (auto& qa : hits) {
                     ++i;
                     auto& transcriptName = txpNames[qa.tid];
