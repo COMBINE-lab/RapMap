@@ -127,6 +127,7 @@ struct MappingOpts {
     bool consistentHits{false};
     bool compressedOutput{false};
     bool quiet{false};
+    int32_t maxMMPExtension{7};
 };
 
 template <typename RapMapIndexT, typename MutexT>
@@ -147,39 +148,39 @@ void processReadsSingleSA(single_parser * parser,
         hitCollector.setCoverageRequirement(mopts->quasiCov);
     }
 
-    auto& txpNames = rmi.txpNames;
-    auto& txpLens = rmi.txpLens;
-    uint32_t n{0};
-
     auto logger = spdlog::get("stderrLog");
 
     fmt::MemoryWriter sstream;
-    size_t batchSize{2500};
     std::vector<QuasiAlignment> hits;
 
-    size_t readLen{0};
-	bool tooManyHits{false};
-    uint16_t flags;
+    rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> hcInfo;
+    rapmap::utils::MappingConfig mc;
+    mc.consistentHits = false;
+    mc.doChaining = mopts->consistentHits;
+    if (mc.doChaining) {
+      hitCollector.setMaxMMPExtension(mopts->maxMMPExtension);
+    }
 
     SingleAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
-
     SASearcher<RapMapIndexT> saSearcher(&rmi);
 
-    uint32_t orphanStatus{0};
     // Get the read group by which this thread will
     // communicate with the parser (*once per-thread*)
     auto rg = parser->getReadGroup();
 
     while (parser->refill(rg)) {
-      //while(true) {
-      //  typename single_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
-      //  if(j.is_empty()) break;                 // If we got nothing, then quit.
-      //  for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
       for (auto& read : rg) {
-	    readLen = read.seq.length();//j->data[i].seq.length();
+            read.seq.length();
             ++hctr.numReads;
+            hcInfo.clear();
             hits.clear();
-            hitCollector(read.seq, hits, saSearcher, MateStatus::SINGLE_END, mopts->consistentHits);
+            hitCollector(read.seq, saSearcher, hcInfo);
+
+            rapmap::hit_manager::hitsToMappingsSimple(rmi, mc,
+                                                      MateStatus::SINGLE_END,
+                                                      hcInfo, hits);
+
+
             auto numHits = hits.size();
             hctr.totHits += numHits;
 
@@ -260,60 +261,66 @@ void processReadsPairSA(paired_parser* parser,
         hitCollector.setCoverageRequirement(mopts->quasiCov);
     }
 
-    auto& txpNames = rmi.txpNames;
-    auto& txpLens = rmi.txpLens;
-    uint32_t n{0};
-
     auto logger = spdlog::get("stderrLog");
 
     fmt::MemoryWriter sstream;
-    size_t batchSize{1000};
     std::vector<QuasiAlignment> leftHits;
     std::vector<QuasiAlignment> rightHits;
     std::vector<QuasiAlignment> jointHits;
 
     size_t readLen{0};
-	bool tooManyHits{false};
-    uint16_t flags1, flags2;
+    bool tooManyHits{false};
+
+    rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> leftHCInfo;
+    rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> rightHCInfo;
+    rapmap::utils::MappingConfig mc;
+    mc.consistentHits = false;//mopts->consistentHits;
+    mc.doChaining = mopts->consistentHits;
+    if (mc.doChaining) {
+      hitCollector.setMaxMMPExtension(mopts->maxMMPExtension);
+    }
 
     // Create a formatter for alignments
     PairAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
 
     SASearcher<RapMapIndexT> saSearcher(&rmi);
 
-    uint32_t orphanStatus{0};
-
     // Get the read group by which this thread will
     // communicate with the parser (*once per-thread*)
     auto rg = parser->getReadGroup();
 
     while (parser->refill(rg)) {
-      //while(true) {
-      //typename paired_parser::job j(*parser); // Get a job from the parser: a bunch of reads (at most max_read_group)
-      //if(j.is_empty()) break;                 // If we got nothing, quit
-      //  for(size_t i = 0; i < j->nb_filled; ++i) { // For each sequence
       for (auto& rpair : rg) {
-	tooManyHits = false;
-	    readLen = rpair.first.seq.length();
+        tooManyHits = false;
+        readLen = rpair.first.seq.length();
             ++hctr.numReads;
+            leftHCInfo.clear();
+            rightHCInfo.clear();
             jointHits.clear();
             leftHits.clear();
             rightHits.clear();
 
             bool lh = hitCollector(rpair.first.seq,
-                                   leftHits, saSearcher,
-                                   MateStatus::PAIRED_END_LEFT,
-                                   mopts->consistentHits);
+                                   saSearcher,
+                                   leftHCInfo);
 
             bool rh = hitCollector(rpair.second.seq,
-                                   rightHits, saSearcher,
-                                   MateStatus::PAIRED_END_RIGHT,
-                                   mopts->consistentHits);
+                                   saSearcher,
+                                   rightHCInfo);
+
+           rapmap::hit_manager::hitsToMappingsSimple(rmi, mc,
+                                                     MateStatus::PAIRED_END_LEFT,
+                                                     leftHCInfo, leftHits);
+
+           rapmap::hit_manager::hitsToMappingsSimple(rmi, mc,
+                                                     MateStatus::PAIRED_END_RIGHT,
+                                                     rightHCInfo, rightHits);
 
             if (mopts->fuzzy) {
                 rapmap::utils::mergeLeftRightHitsFuzzy(
                         lh, rh,
                         leftHits, rightHits, jointHits,
+                        mc,
                         readLen, mopts->maxNumHits, tooManyHits, hctr);
 
             } else {
@@ -503,10 +510,12 @@ bool mapReads(RapMapIndexT& rmi,
 
 
     consoleLog->info("Done mapping reads.");
-    consoleLog->info("In total saw {} reads.", hctrs.numReads);
+    consoleLog->info("In total saw {:n} reads.", hctrs.numReads);
     consoleLog->info("Final # hits per read = {}", hctrs.totHits / static_cast<float>(hctrs.numReads));
     consoleLog->info("flushing output queue.");
-    outLog->flush();
+    if (outLog) {
+      outLog->flush();
+    }
     /*
       consoleLog->info("Discarded {} reads because they had > {} alignments",
       hctrs.tooManyHits, maxNumHits.getValue());
@@ -562,10 +571,10 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::ValueArg<std::string> outname("o", "output", "The output file (default: stdout)", false, "", "path");
   TCLAP::ValueArg<double> quasiCov("z", "quasiCoverage", "Require that this fraction of a read is covered by MMPs before it is considered mappable.", false, 0.0, "double in [0,1]");
   TCLAP::SwitchArg noout("n", "noOutput", "Don't write out any alignments (for speed testing purposes)", false);
-  TCLAP::SwitchArg sensitive("e", "sensitive", "Perform a more sensitive quasi-mapping by disabling NIP skipping", false);
+  TCLAP::SwitchArg nosensitive("n", "noSensitive", "Perform a less sensitive quasi-mapping by enabling NIP skipping", false);
   TCLAP::SwitchArg noStrict("", "noStrictCheck", "Don't perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
   TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
-  TCLAP::SwitchArg consistent("c", "consistentHits", "Ensure that the hits collected are consistent (co-linear)", false);
+  TCLAP::SwitchArg consistent("c", "chaining", "Score the hits to find the best chain", false);
   TCLAP::SwitchArg compressedOutput("x", "compressed", "Compress the output SAM file using zlib", false);
   TCLAP::SwitchArg quiet("q", "quiet", "Disable all console output apart from warnings and errors", false);
   cmd.add(index);
@@ -578,7 +587,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(numThreads);
   cmd.add(maxNumHits);
   cmd.add(quasiCov);
-  cmd.add(sensitive);
+  cmd.add(nosensitive);
   cmd.add(noStrict);
   cmd.add(fuzzy);
   cmd.add(consistent);
@@ -640,15 +649,15 @@ int rapMapSAMap(int argc, char* argv[]) {
     mopts.outname = (outname.isSet()) ? outname.getValue() : "";
     mopts.quasiCov = quasiCov.getValue();
     mopts.noOutput = noout.getValue();
-    mopts.sensitive = sensitive.getValue();
+    mopts.sensitive = !nosensitive.getValue();
     mopts.strictCheck = !noStrict.getValue();
     mopts.consistentHits = consistent.getValue();
     mopts.compressedOutput = compressedOutput.getValue();
     mopts.fuzzy = fuzzy.getValue();
     mopts.quiet = quiet.getValue();
 
-    if (quasiCov.isSet() and !sensitive.isSet()) {
-        consoleLog->info("The --quasiCoverage option is set to {}, but the --sensitive flag was not set. The former implies the later. Enabling sensitive mode.", quasiCov.getValue());
+    if (quasiCov.isSet() and nosensitive.isSet()) {
+        consoleLog->info("The --quasiCoverage option is set to {}, but the --noSensitive flag was also set. The former forbids the later. Enabling sensitive mode.", quasiCov.getValue());
         mopts.sensitive = true;
     }
 

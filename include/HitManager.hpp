@@ -23,10 +23,8 @@
 #define __HIT_MANAGER_HPP__
 
 #include "RapMapUtils.hpp"
-//#include "RapMapIndex.hpp"
 #include "RapMapSAIndex.hpp"
-
-//#include "eytzinger_array.h"
+#include "chobo/small_vector.hpp"
 
 #include <tuple>
 #include <vector>
@@ -46,14 +44,32 @@ namespace rapmap {
 
         template <typename T>
         using SAIntervalHit = rapmap::utils::SAIntervalHit<T>;
-        using SAHitMap = std::map<int, rapmap::utils::ProcessedSAHit>;
         using ProcessedSAHit = rapmap::utils::ProcessedSAHit;
+        using SAHitMap = std::map<int, ProcessedSAHit>;
+
+        template <typename SAIntervalHitT>
+        using SAIntervalVector = std::vector<SAIntervalHitT>;
 
         class SAProcessedHitVec {
             public:
                 std::vector<ProcessedSAHit> hits;
                 std::vector<uint32_t> txps;
         };
+
+      template <typename SAIntervalHitT>
+      class HitCollectorInfo {
+      public:
+        void clear() {
+          readLen = 0;
+          maxDist = 0;
+          fwdSAInts.clear();
+          rcSAInts.clear();
+        }
+        size_t readLen{0};
+        int32_t maxDist{0};
+        SAIntervalVector<SAIntervalHitT> fwdSAInts;
+        SAIntervalVector<SAIntervalHitT> rcSAInts;
+      };
         /*
         using SAProcessedHitVec = std::tuple<std::vector<ProcessedSAHit>, std::vector<uint32_t>>;
         */
@@ -70,9 +86,10 @@ namespace rapmap {
         // match maxDist
         bool collectHitsSimpleSA(SAHitMap& processedHits,
                 uint32_t readLen,
-                uint32_t maxDist,
+                int32_t maxDist,
                 std::vector<QuasiAlignment>& hits,
-                MateStatus mateStatus);
+                MateStatus mateStatus,
+                rapmap::utils::MappingConfig& mc);
 
         // Return hits from processedHits where position constraints
         // match maxDist
@@ -95,6 +112,7 @@ namespace rapmap {
         void intersectSAIntervalWithOutput(SAIntervalHit<typename RapMapIndexT::IndexType>& h,
                                            RapMapIndexT& rmi,
                                            uint32_t intervalCounter,
+                                           int32_t maxSlack,
                                            SAHitMap& outHits);
                                            
 
@@ -115,7 +133,7 @@ namespace rapmap {
 
         template <typename RapMapIndexT>
         SAHitMap intersectSAHits(
-                                 std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
+                                 SAIntervalVector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                                  RapMapIndexT& rmi, 
                                  size_t readLen,
                                  bool strictFilter=false);
@@ -124,6 +142,14 @@ namespace rapmap {
         std::vector<ProcessedSAHit> intersectSAHits2(
                 std::vector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi);
+
+      template <typename RapMapIndexT>
+      void hitsToMappingsSimple(RapMapIndexT& rmi,
+                                rapmap::utils::MappingConfig& mc,
+                                rapmap::utils::MateStatus mateStatus,
+                                HitCollectorInfo<SAIntervalHit<typename RapMapIndexT::IndexType>>& hcinfo,
+                                std::vector<rapmap::utils::QuasiAlignment>& hits);
+
     }
 }
 

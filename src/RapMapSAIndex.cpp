@@ -97,7 +97,6 @@ template <typename IndexT, typename HashT>
 bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
 
     auto logger = spdlog::get("stderrLog");
-    size_t n{0};
 
     IndexHeader h;
     std::ifstream indexStream(indDir + "header.json");
@@ -135,14 +134,6 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
     }
     seqStream.close();
 
-    /*
-       std::ifstream rsStream(indDir + "rsdSafe.bin", std::ios::binary);
-       {
-       logger->info("Loading Rank-Select Data");
-       rankDictSafe.Load(rsStream);
-       }
-       rsStream.close();
-       */
     std::string rsFileName = indDir + "rsd.bin";
     FILE* rsFile = fopen(rsFileName.c_str(), "r");
     {
@@ -152,7 +143,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
             logger->error("Couldn't load bit array from {}!", rsFileName);
             std::exit(1);
         }
-        logger->info("There were {} set bits in the bit array", bit_array_num_bits_set(bitArray.get()));
+        logger->info("There were {:n} set bits in the bit array", bit_array_num_bits_set(bitArray.get()));
         rankDict.reset(new rank9b(bitArray->words, bitArray->num_of_bits));
     }
     fclose(rsFile);

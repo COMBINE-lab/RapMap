@@ -25,6 +25,8 @@
 #include "RapMapSAIndex.hpp"
 #include "RapMapUtils.hpp"
 #include "SASearcher.hpp"
+#include "HitManager.hpp"
+#include "chobo/small_vector.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -58,11 +60,22 @@ public:
   bool getStrictCheck() const { return strictCheck_; };
   void setStrictCheck(bool sc) { strictCheck_ = sc; }
 
+  /** Get/Set usage of MMP chain scoring **/
+  void enableChainScoring() { doChaining_ = true; }
+  void disableChainScoring() { doChaining_ = false; }
+  bool getChainScoring() const { return doChaining_; }
+
+  /** Get/Set the "mohsen number" that is used to limit the
+      maximum MMP length during interval collection **/
+  // Note --- cannot set an extension less than 1
+  void setMaxMMPExtension(int32_t ext) { if (ext > 0) { maxMMPExtension_ = ext; } }
+  int32_t getMaxMMPExtension() const { return maxMMPExtension_; }
+
   /** Construct an SACollector given an index **/
   SACollector(RapMapIndexT* rmi)
       : rmi_(rmi), hashEnd_(rmi->khash.end()), disableNIP_(false), 
         covReq_(0.0), maxInterval_(1000),
-        strictCheck_(false) {}
+        strictCheck_(false), doChaining_(false) {}
 
   enum HitStatus { ABSENT = -1, UNTESTED = 0, PRESENT = 1 };
   // Record if k-mers are hits in the
@@ -90,25 +103,19 @@ public:
     HitStatus rcScore;
   };
 
+  using KmerScoreVec = chobo::small_vector<KmerDirScore, 32, 33>;
+
   bool operator()(std::string& read,
-                  std::vector<rapmap::utils::QuasiAlignment>& hits,
                   SASearcher<RapMapIndexT>& saSearcher,
-                  rapmap::utils::MateStatus mateStatus,
-                  bool consistentHits = false) {
+                  rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>>& hcInfo) {
 
     using QuasiAlignment = rapmap::utils::QuasiAlignment;
     using MateStatus = rapmap::utils::MateStatus;
     using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
 
-    auto& rankDict = rmi_->rankDict;
-    auto& txpStarts = rmi_->txpOffsets;
-    auto& SA = rmi_->SA;
     auto& khash = rmi_->khash;
-    auto& text = rmi_->seq;
-    auto salen = SA.size();
-    //auto hashEnd_ = khash.end();
     auto readLen = read.length();
-    auto maxDist = 1.5 * readLen;
+    auto maxDist = static_cast<int32_t>(readLen);
 
     auto k = rapmap::utils::my_mer::k();
     auto readStartIt = read.begin();
@@ -124,7 +131,6 @@ public:
     size_t rcCov{0};
 
     bool foundHit = false;
-    bool isRev = false;
 
     rapmap::utils::my_mer mer;
     rapmap::utils::my_mer rcMer;
@@ -133,11 +139,16 @@ public:
 
     // This allows implementing our heurisic for comparing
     // forward and reverse-complement strand matches
-    std::vector<KmerDirScore> kmerScores;
+    KmerScoreVec kmerScores;
+
+    // Set the readLen and maxDist for this read in the
+    // HitCollectorInfo structure
+    hcInfo.readLen = readLen;
+    hcInfo.maxDist = maxDist;
 
     // Where we store the SA intervals for forward and rc hits
-    std::vector<SAIntervalHit> fwdSAInts;
-    std::vector<SAIntervalHit> rcSAInts;
+    auto& fwdSAInts = hcInfo.fwdSAInts;
+    auto& rcSAInts = hcInfo.rcSAInts;
 
     // Number of nucleotides to skip when encountering a homopolymer k-mer.
     OffsetT homoPolymerSkip = 1; // k / 2;
@@ -177,17 +188,6 @@ public:
       if (mer.is_homopolymer()) {
         rb += homoPolymerSkip;
         re += homoPolymerSkip;
-        /* Walk base-by-base rather than skipping
-        // If the first N is within k bases, then this k-mer is invalid
-        if (invalidPos < pos + k) {
-            // Skip to the k-mer starting at the next position
-            // (i.e. right past the N)
-            rb = read.begin() + invalidPos + 1;
-            re = rb + k;
-            // Go to the next iteration of the while loop
-            continue;
-        }
-        */
         continue;
       }
       rcMer = mer.getRC();
@@ -357,103 +357,6 @@ public:
       }
     }
 
-    auto fwdHitsStart = hits.size();
-    // If we had > 1 forward hit
-    if (fwdSAInts.size() > 1) {
-      auto processedHits = rapmap::hit_manager::intersectSAHits(
-          fwdSAInts, *rmi_, readLen, consistentHits);
-      rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
-                                               hits, mateStatus);
-    } else if (fwdSAInts.size() == 1) { // only 1 hit!
-      auto& saIntervalHit = fwdSAInts.front();
-      auto initialSize = hits.size();
-      for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
-        auto globalPos = SA[i];
-        auto txpID = rmi_->transcriptAtPosition(globalPos);
-        // the offset into this transcript
-        auto pos = globalPos - txpStarts[txpID];
-        int32_t hitPos = pos - saIntervalHit.queryPos;
-        hits.emplace_back(txpID, hitPos, true, readLen);
-        hits.back().mateStatus = mateStatus;
-      }
-      // Now sort by transcript ID (then position) and eliminate
-      // duplicates
-      auto sortStartIt = hits.begin() + initialSize;
-      auto sortEndIt = hits.end();
-      std::sort(sortStartIt, sortEndIt,
-                [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                  if (a.tid == b.tid) {
-                    return a.pos < b.pos;
-                  } else {
-                    return a.tid < b.tid;
-                  }
-                });
-      auto newEnd = std::unique(
-          hits.begin() + initialSize, hits.end(),
-          [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-            return a.tid == b.tid;
-          });
-      hits.resize(std::distance(hits.begin(), newEnd));
-    }
-    auto fwdHitsEnd = hits.size();
-
-    auto rcHitsStart = fwdHitsEnd;
-    // If we had > 1 rc hit
-    if (rcSAInts.size() > 1) {
-      auto processedHits = rapmap::hit_manager::intersectSAHits(
-          rcSAInts, *rmi_, readLen, consistentHits);
-      rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
-                                               hits, mateStatus);
-    } else if (rcSAInts.size() == 1) { // only 1 hit!
-      auto& saIntervalHit = rcSAInts.front();
-      auto initialSize = hits.size();
-      for (OffsetT i = saIntervalHit.begin; i != saIntervalHit.end; ++i) {
-        auto globalPos = SA[i];
-        auto txpID = rmi_->transcriptAtPosition(globalPos);
-        // the offset into this transcript
-        auto pos = globalPos - txpStarts[txpID];
-        int32_t hitPos = pos - saIntervalHit.queryPos;
-        hits.emplace_back(txpID, hitPos, false, readLen);
-        hits.back().mateStatus = mateStatus;
-      }
-      // Now sort by transcript ID (then position) and eliminate
-      // duplicates
-      auto sortStartIt = hits.begin() + rcHitsStart;
-      auto sortEndIt = hits.end();
-      std::sort(sortStartIt, sortEndIt,
-                [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                  if (a.tid == b.tid) {
-                    return a.pos < b.pos;
-                  } else {
-                    return a.tid < b.tid;
-                  }
-                });
-      auto newEnd = std::unique(
-          sortStartIt, sortEndIt,
-          [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-            return a.tid == b.tid;
-          });
-      hits.resize(std::distance(hits.begin(), newEnd));
-    }
-    auto rcHitsEnd = hits.size();
-
-    // If we had both forward and RC hits, then merge them
-    if ((fwdHitsEnd > fwdHitsStart) and (rcHitsEnd > rcHitsStart)) {
-      // Merge the forward and reverse hits
-      std::inplace_merge(
-          hits.begin() + fwdHitsStart, hits.begin() + fwdHitsEnd,
-          hits.begin() + rcHitsEnd,
-          [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-            return a.tid < b.tid;
-          });
-      // And get rid of duplicate transcript IDs
-      auto newEnd = std::unique(
-          hits.begin() + fwdHitsStart, hits.begin() + rcHitsEnd,
-          [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-            return a.tid == b.tid;
-          });
-      hits.resize(std::distance(hits.begin(), newEnd));
-    }
     // Return true if we had any valid hits and false otherwise.
     return foundHit;
   }
@@ -469,7 +372,7 @@ private:
              IteratorT* complementMerItPtr, // nullptr if we haven't checked yet
              bool isRC, // is this being called from the RC of the read
              uint32_t& strandHits, uint32_t& otherStrandHits,
-             std::vector<KmerDirScore>& kmerScores
+             KmerScoreVec& kmerScores
              ) {
     IteratorT merIt = hashEnd_;
     IteratorT complementMerIt = hashEnd_;
@@ -538,10 +441,10 @@ private:
   inline void getSAHits_(
       SASearcher<RapMapIndexT>& saSearcher, std::string& read,
       std::string::iterator startIt,
-      rapmap::utils::SAInterval<OffsetT>* startInterval, size_t& cov,
+      const rapmap::utils::SAInterval<OffsetT>* const startInterval, size_t& cov,
       uint32_t& strandHits, uint32_t& otherStrandHits,
-      std::vector<rapmap::utils::SAIntervalHit<OffsetT>>& saInts,
-      std::vector<KmerDirScore>& kmerScores,
+      rapmap::hit_manager::SAIntervalVector<rapmap::utils::SAIntervalHit<OffsetT>>& saInts,
+      KmerScoreVec& kmerScores,
       bool isRC // true if read is the reverse complement, false otherwise
       ) {
     using SAIntervalHit = rapmap::utils::SAIntervalHit<OffsetT>;
@@ -600,7 +503,7 @@ private:
       // If this k-mer contains an 'N', then find the position
       // of this character and skip one past it.
       if (!validMer) {
-        invalidPos = read.find_first_of("nN", pos);
+        invalidPos = read.find_first_of("Nn", pos);
         // If the first N is within k bases, then this k-mer is invalid
         if (invalidPos < pos + k) {
           // Skip to the k-mer starting at the next position
@@ -648,8 +551,28 @@ private:
         // lb must be 1 *less* then the current lb
         // We can't move any further in the reverse complement direction
         lb = std::max(static_cast<OffsetT>(0), lb - 1);
+
+        // [Nov 21] NOTE: Attempt to cheaply mimic intruders --- hack for now,
+        // make it nicer if it works.
+        bool firstAttempt = doChaining_ ? (rb == readStartIt) : true;
+        auto endIt = (firstAttempt) ? readEndIt : std::min(rb + k + maxMMPExtension_, readEndIt);
+        auto lbP = lb;
+        auto ubP = ub;
+
         std::tie(lb, ub, matchedLen) =
-            saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
+          saSearcher.extendSearchNaive(lb, ub, k, rb, endIt);
+
+
+        // [Nov 21] NOTE: Attempt to cheaply mimic intruders --- hack for now,
+        // make it nicer if it works.
+        if (doChaining_ and firstAttempt and !(matchedLen >= static_cast<OffsetT>(readLen)) and matchedLen >= static_cast<OffsetT>(k + maxMMPExtension_)) {
+          firstAttempt = false;
+          lb = lbP;
+          ub = ubP;
+          endIt = std::min(rb + k + maxMMPExtension_, readEndIt);
+          std::tie(lb, ub, matchedLen) =
+            saSearcher.extendSearchNaive(lb, ub, k, rb, endIt);
+        }
 
         OffsetT diff = ub - lb;
         if (ub > lb and diff < maxInterval_) {
@@ -759,6 +682,8 @@ private:
   double covReq_;
   OffsetT maxInterval_;
   bool strictCheck_;
+  bool doChaining_;
+  int32_t maxMMPExtension_{7};
   std::string rcBuffer_;
 };
 
