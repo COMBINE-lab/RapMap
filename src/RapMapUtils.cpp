@@ -205,7 +205,8 @@ namespace rapmap {
                         << *readSeq << '\t' // SEQ
                         << "*\t" // QSTR
                         << numHitFlag << '\t'
-                        << "HI:i:" << i << '\n';
+                        << "HI:i:" << i << '\t'
+                        << "AS:i:" << qa.alnScore_ << '\n';
                     ++alnCtr;
                     // === SAM
 #if defined(__DEBUG__) || defined(__TRACK_CORRECT__)
@@ -331,7 +332,8 @@ namespace rapmap {
                                 << *readSeq1 << '\t' // SEQ
                                 << "*\t" // QUAL
                                 << numHitFlag << '\t'
-                                << "HI:i:" << i << '\n';
+                                << "HI:i:" << i << '\t';
+                                << "AS:i:" << qa.alnScore_ << '\n';
 
                         sstream << mateNameView << '\t' // QNAME
                                 << flags2 << '\t' // FLAGS
@@ -345,7 +347,8 @@ namespace rapmap {
                                 << *readSeq2 << '\t' // SEQ
                                 << "*\t" // QUAL
                                 << numHitFlag << '\t'
-                                << "HI:i:" << i << '\n';
+                                << "HI:i:" << i << '\t';
+                                << "AS:i:" << qa.alnScore_ << '\n';
                     } else {
                         rapmap::utils::getSamFlags(qa, true, flags1, flags2);
                         if (alnCtr != 0) {
@@ -444,7 +447,8 @@ namespace rapmap {
                                 << *readSeq << '\t' // SEQ
                                 << "*\t" // QUAL
                                 << numHitFlag << '\t'
-                                << "HI:i:" << i << '\n';
+                                << "HI:i:" << i << '\t';
+                                << "AS:i:" << qa.alnScore_ << '\n';
 
                         // Output the info for the unaligned mate.
                         sstream << *unalignedName << '\t' // QNAME
@@ -459,7 +463,8 @@ namespace rapmap {
                             << *unalignedSeq << '\t' // SEQ
                             << "*\t" // QUAL
                             << numHitFlag << '\t'
-                            << "HI:i:" << i << '\n';
+                            << "HI:i:" << i << '\t';
+                            << "AS:i:" << qa.alnScore_ << '\n';
                     }
                     ++alnCtr;
                     // == SAM

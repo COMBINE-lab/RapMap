@@ -434,8 +434,10 @@ namespace rapmap {
         // Some convenience functions to allow salmon interop
 #ifdef RAPMAP_SALMON_SUPPORT
         inline uint32_t transcriptID() const { return tid; }
-        inline double score() { return score_; }
+        inline double score() const { return score_; }
         inline void score(double scoreIn) { score_ = scoreIn; }
+        inline int32_t alnScore() const { return alnScore_; }
+        inline void alnScore(int32_t alnScoreIn) { alnScore_ = alnScoreIn; }
         inline uint32_t fragLength() const { return fragLen; }
 
         inline uint32_t fragLengthPedantic(uint32_t txpLen) const {
@@ -484,8 +486,10 @@ namespace rapmap {
         // Is this a paired *alignment* or not
         bool isPaired;
         MateStatus mateStatus;
-        // Numeric score associated with this mapping
+        // numeric score associated with this mapping
         double score_{1.0};
+        // actual ``alignment'' score associated with this mapping.
+        int32_t alnScore_{0};
         // If one or both of the reads is a complete match (no mismatch, indels), say what kind.
         FragmentChainStatus chainStatus;
         double chainScore_{std::numeric_limits<double>::lowest()};
