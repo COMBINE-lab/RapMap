@@ -571,7 +571,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::ValueArg<std::string> outname("o", "output", "The output file (default: stdout)", false, "", "path");
   TCLAP::ValueArg<double> quasiCov("z", "quasiCoverage", "Require that this fraction of a read is covered by MMPs before it is considered mappable.", false, 0.0, "double in [0,1]");
   TCLAP::SwitchArg noout("n", "noOutput", "Don't write out any alignments (for speed testing purposes)", false);
-  TCLAP::SwitchArg nosensitive("n", "noSensitive", "Perform a less sensitive quasi-mapping by enabling NIP skipping", false);
+  TCLAP::SwitchArg nosensitive("", "noSensitive", "Perform a less sensitive quasi-mapping by enabling NIP skipping", false);
   TCLAP::SwitchArg noStrict("", "noStrictCheck", "Don't perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
   TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
   TCLAP::SwitchArg consistent("c", "chaining", "Score the hits to find the best chain", false);
