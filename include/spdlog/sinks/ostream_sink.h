@@ -5,12 +5,11 @@
 
 #pragma once
 
+#include "../details/null_mutex.h"
+#include "base_sink.h"
+
 #include <ostream>
 #include <mutex>
-#include <memory>
-
-#include "../details/null_mutex.h"
-#include "./base_sink.h"
 
 namespace spdlog
 {
@@ -33,7 +32,7 @@ protected:
             _ostream.flush();
     }
 
-    void flush() override
+    void _flush() override
     {
         _ostream.flush();
     }

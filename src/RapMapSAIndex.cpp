@@ -1,4 +1,26 @@
+//
+// RapMap - Rapid and accurate mapping of short reads to transcriptomes using
+// quasi-mapping.
+// Copyright (C) 2015, 2016 Rob Patro, Avi Srivastava, Hirak Sarkar
+//
+// This file is part of RapMap.
+//
+// RapMap is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// RapMap is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with RapMap.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 #include "BooMap.hpp"
+#include "FrugalBooMap.hpp"
 #include "RapMapSAIndex.hpp"
 #include "IndexHeader.hpp"
 #include <cereal/types/unordered_map.hpp>
@@ -11,24 +33,51 @@
 #include <future>
 #include <thread>
 
+/*
+void set_empty_key(spp::sparse_hash_map<uint64_t,
+                       rapmap::utils::SAInterval<IndexT>,
+		   rapmap::utils::KmerKeyHasher>& khash,
+		   uint64_t k) {
+}
+
+void set_empty_key(spp::sparse_hash_map<uint64_t,
+                       rapmap::utils::SAInterval<IndexT>,
+		   rapmap::utils::KmerKeyHasher>& khash,
+		   uint64_t k) {
+}
+*/
+
+    // Set the SA and text pointer if this is a perfect hash
+template <typename IndexT>
+void setPerfectHashPointers(RegHashT<uint64_t,
+                            rapmap::utils::SAInterval<IndexT>,
+                            rapmap::utils::KmerKeyHasher>& khash, std::vector<IndexT>& SA, std::string& seq) {
+    // do nothing
+}
+
+template <typename IndexT>
+void setPerfectHashPointers(PerfectHashT<uint64_t,
+                            rapmap::utils::SAInterval<IndexT>>& khash, std::vector<IndexT>& SA, std::string& seq) {
+    khash.setSAPtr(&SA);
+    khash.setTextPtr(seq.c_str(), seq.length());
+}
+
 // These are **free** functions that are used for loading the
 // appropriate type of hash.
 template <typename IndexT>
 bool loadHashFromIndex(const std::string& indexDir,
-                       google::dense_hash_map<uint64_t,
+                       RegHashT<uint64_t,
                        rapmap::utils::SAInterval<IndexT>,
                        rapmap::utils::KmerKeyHasher>& khash) {
-      khash.set_empty_key(std::numeric_limits<uint64_t>::max());
-      std::ifstream hashStream(indexDir + "hash.bin");
-      khash.unserialize(typename google::dense_hash_map<uint64_t,
-                      rapmap::utils::SAInterval<IndexT>,
-                      rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
+      std::ifstream hashStream(indexDir + "hash.bin", std::ios::binary);
+      khash.unserialize(typename spp_utils::pod_hash_serializer<uint64_t, rapmap::utils::SAInterval<IndexT>>(),
+			&hashStream);
       return true;
 }
 
 template <typename IndexT>
 bool loadHashFromIndex(const std::string& indexDir,
-		       BooMap<uint64_t, rapmap::utils::SAInterval<IndexT>> & h) {
+		       PerfectHashT<uint64_t, rapmap::utils::SAInterval<IndexT>> & h) {
     std::string hashBase = indexDir + "hash_info";
     h.load(hashBase);
     return true;
@@ -48,7 +97,6 @@ template <typename IndexT, typename HashT>
 bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
 
     auto logger = spdlog::get("stderrLog");
-    size_t n{0};
 
     IndexHeader h;
     std::ifstream indexStream(indDir + "header.json");
@@ -58,45 +106,12 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
     }
     indexStream.close();
     uint32_t idxK = h.kmerLen();
+    rapmap::utils::my_mer::k(idxK);
 
     // This part takes the longest, so do it in it's own asynchronous task
     std::future<bool> loadingHash = std::async(std::launch::async, [this, logger, indDir]() -> bool {
-	   if (loadHashFromIndex(indDir, khash)) {
-                logger->info("Successfully loaded position hash");
-                return true;
-            } else {
-                logger->error("Failed to load position hash!");
-                return false;
-            }
-	// If using a google dense hash
-        //this->khash.set_empty_key(std::numeric_limits<uint64_t>::max());
-        //uint32_t k = 31;
-        //std::ifstream hashStream(indDir + "hash.bin");
-        //{
-
-	  //logger->info("Loading Position Hash");
-            //khash.load(hashStream);
-            //cereal::BinaryInputArchive hashArchive(hashStream);
-            //hashArchive(k);
-            //khash.unserialize(typename google::dense_hash_map<uint64_t,
-            //        rapmap::utils::SAInterval<IndexT>,
-            //        rapmap::utils::KmerKeyHasher>::NopointerSerializer(), &hashStream);
-            //hashArchive(khash);
-	   //}
-        //hashStream.close();
-        //std::cerr << "had " << khash.size() << " entries\n";
-        //return true;
+	return loadHashFromIndex(indDir, khash);
     });
-
-    /*
-    std::ifstream intervalStream(indDir + "kintervals.bin");
-    {
-        logger->info("Loading k-mer intervals");
-        cereal::BinaryInputArchive intervalArchive(intervalStream);
-        intervalArchive(kintervals);
-    }
-    intervalStream.close();
-    */
 
     std::ifstream saStream(indDir + "sa.bin");
     {
@@ -115,17 +130,10 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         seqArchive(txpOffsets);
         //seqArchive(positionIDs);
         seqArchive(seq);
+        seqArchive(txpCompleteLens);
     }
     seqStream.close();
 
-    /*
-       std::ifstream rsStream(indDir + "rsdSafe.bin", std::ios::binary);
-       {
-       logger->info("Loading Rank-Select Data");
-       rankDictSafe.Load(rsStream);
-       }
-       rsStream.close();
-       */
     std::string rsFileName = indDir + "rsd.bin";
     FILE* rsFile = fopen(rsFileName.c_str(), "r");
     {
@@ -135,7 +143,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
             logger->error("Couldn't load bit array from {}!", rsFileName);
             std::exit(1);
         }
-        logger->info("There were {} set bits in the bit array", bit_array_num_bits_set(bitArray.get()));
+        logger->info("There were {:n} set bits in the bit array", bit_array_num_bits_set(bitArray.get()));
         rankDict.reset(new rank9b(bitArray->words, bitArray->num_of_bits));
     }
     fclose(rsFile);
@@ -152,7 +160,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         }
         // The last length is just the length of the suffix array - the last offset
         txpLens[txpOffsets.size()-1] = (SA.size() - 1) - txpOffsets[txpOffsets.size() - 1];
-    }
+    } 
 
     logger->info("Waiting to finish loading hash");
     loadingHash.wait();
@@ -161,17 +169,17 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         logger->error("Failed to load hash!");
         std::exit(1);
     }
-    rapmap::utils::my_mer::k(idxK);
-
+    // Set the SA and text pointer if this is a perfect hash
+    setPerfectHashPointers(khash, SA, seq); 
     logger->info("Done loading index");
     return true;
 }
 
-template class RapMapSAIndex<int32_t,  google::dense_hash_map<uint64_t,
+template class RapMapSAIndex<int32_t,  RegHashT<uint64_t,
                       rapmap::utils::SAInterval<int32_t>,
                       rapmap::utils::KmerKeyHasher>>;
-template class RapMapSAIndex<int64_t,  google::dense_hash_map<uint64_t,
+template class RapMapSAIndex<int64_t,  RegHashT<uint64_t,
                       rapmap::utils::SAInterval<int64_t>,
                       rapmap::utils::KmerKeyHasher>>;
-template class RapMapSAIndex<int32_t, BooMap<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
-template class RapMapSAIndex<int64_t, BooMap<uint64_t, rapmap::utils::SAInterval<int64_t>>>;
+template class RapMapSAIndex<int32_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int32_t>>>;
+template class RapMapSAIndex<int64_t, PerfectHashT<uint64_t, rapmap::utils::SAInterval<int64_t>>>;

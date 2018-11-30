@@ -1,6 +1,28 @@
+//
+// RapMap - Rapid and accurate mapping of short reads to transcriptomes using
+// quasi-mapping.
+// Copyright (C) 2015, 2016 Rob Patro, Avi Srivastava, Hirak Sarkar
+//
+// This file is part of RapMap.
+//
+// RapMap is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// RapMap is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with RapMap.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <clocale>
 
 #include <cereal/archives/json.hpp>
 
@@ -19,9 +41,7 @@ void printUsage() {
     std::cerr << "=====================================\n";
     auto usage =
         R"(
-There are currently 4 RapMap subcommands
-    pseudoindex   --- builds a k-mer-based index
-    pseudomap     --- map reads using a k-mer-based index
+There are currently 2 RapMap subcommands
     quasiindex --- builds a suffix array-based (SA) index
     quasimap   --- map reads using the SA-based index
 
@@ -38,7 +58,7 @@ bool isIndexArg(char* arg) {
 
 
 int main(int argc, char* argv[]) {
-
+    std::setlocale(LC_NUMERIC, "en_US.UTF-8");
     std::vector<char*> args;
     args.push_back(argv[0]);
 
@@ -58,11 +78,13 @@ int main(int argc, char* argv[]) {
     }
 
     if (std::string(argv[1]) == "pseudoindex") {
-        return rapMapIndex(argc - 1, args.data());
+        std::cerr << "This mode not enabled in this branch\n";
+        return 1;//rapMapIndex(argc - 1, args.data());
     } else if (std::string(argv[1]) == "quasiindex") {
         return rapMapSAIndex(argc - 1, args.data());
     } else if (std::string(argv[1]) == "pseudomap") {
-        return rapMapMap(argc - 1, args.data());
+        std::cerr << "This mode not enabled in this branch\n";
+        return 1;//rapMapMap(argc - 1, args.data());
     } else if (std::string(argv[1]) == "quasimap") {
         return rapMapSAMap(argc - 1, args.data());
     } else {

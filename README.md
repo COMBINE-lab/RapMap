@@ -50,7 +50,7 @@ The index itself will record whether it was built with the aid of minimum perfec
 This will tell RapMap to map the paired-end reads using 8 threads, and to write the resulting `SAM` records to the file `mapped_reads.sam`.  The SAM format is rather verbose, and so such output files can be rather large (and slow to write) if you're mapping many reads.  For that reason, we recommend that you use [samtools](http://www.htslib.org/) to convert the `SAM` file to a `BAM` file on-the-fly.  Assuming `samtools` is installed an in your path, that can be accomplished with the following command:
 
 ```
-> rapmap quasimap -i ref_index -1 <(gunzip -c r1.fq.gz) -2 <(gunzip -c r2.fq.gz) -t 8 -o | samtools view -Sb -@ 4 - > mapped_reads.bam
+> rapmap quasimap -i ref_index -1 <(gunzip -c r1.fq.gz) -2 <(gunzip -c r2.fq.gz) -t 8 | samtools view -Sb -@ 4 - > mapped_reads.bam
 ```
 
 This will stream the output from RapMap to standard out, and then convert it into a `BAM` file (using up to an additional 4 threads for `BAM` compression) and write the resulting output to the file `mapped_reads.bam`.  To reduce the amount that needs to be typed in the common case, and to prevent the user from having to remember invocations like the above, we inclde a simple wrapper script that simplifies this process.  After installing RapMap, there should be a script called `RunRapMap.sh` in the `bin` directory of whereever you have chosen to install RapMap.  You can issue a command equivalent to the above using this scrpt as follows:

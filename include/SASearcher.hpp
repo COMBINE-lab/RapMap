@@ -1,10 +1,31 @@
+//
+// RapMap - Rapid and accurate mapping of short reads to transcriptomes using
+// quasi-mapping.
+// Copyright (C) 2015, 2016 Rob Patro, Avi Srivastava, Hirak Sarkar
+//
+// This file is part of RapMap.
+//
+// RapMap is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// RapMap is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with RapMap.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 #ifndef SA_SEARCHER_HPP
 #define SA_SEARCHER_HPP
 
 #include <vector>
 #include <algorithm>
 #include <iterator>
-#include "jellyfish/mer_dna.hpp"
+#include "Kmer.hpp"
 
 #include "RapMapUtils.hpp"
 #include "RapMapSAIndex.hpp"
@@ -78,10 +99,10 @@ class SASearcher {
             std::string& seq = *seq_;
 
             int64_t m = std::distance(qb, qe);
-            size_t n = seq.length();
+            int64_t n = static_cast<int64_t>(seq.length());
 
             auto sb = seq.begin();
-            auto se = seq.end();
+            //auto se = seq.end();
 
             // If the bounds are already trivial, just figure how long
             // of a prefix we share and return the interval.
@@ -92,7 +113,7 @@ class SASearcher {
                     char queryChar = ::toupper(*(qb + i));
                     // If we're reverse complementing
                     if (complementBases) {
-                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        queryChar = combinelib::kmers::complement(queryChar);
                     }
                     if ( queryChar < *(sb + SA[lbIn] + i) ) {
                         break;
@@ -107,7 +128,7 @@ class SASearcher {
             BoundSearchResult<OffsetT> res1, res2;
 
             char smallest = '#';
-            char largest = '}';
+            //char largest = '}';
             char sentinel = smallest;
 
             // FIX: these have to be large enough to hold the *sum* of the boundaries!
@@ -117,12 +138,12 @@ class SASearcher {
             int64_t i{0};
 
             int64_t maxI{startAt};
-            int64_t prevI = startAt;
+            //int64_t prevI = startAt;
             int64_t prevILow = startAt;
             int64_t prevIHigh = startAt;
             int64_t validBoundLow = ubIn;
             int64_t validBoundHigh = lbIn;
-            int64_t validBound = 0;
+            //int64_t validBound = 0;
             bool plt{true};
             // Reduce the search interval until we hit a border
             // i.e. until c == r - 1 or c == l + 1
@@ -134,7 +155,7 @@ class SASearcher {
                     char queryChar = ::toupper(*(qb + i));
                     // If we're reverse complementing
                     if (complementBases) {
-                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        queryChar = combinelib::kmers::complement(queryChar);
                     }
 
                     if ( queryChar < *(sb + SA[c] + i) ) {
@@ -187,7 +208,7 @@ class SASearcher {
                 }
             }
 
-            bool knownValid{true};
+            //bool knownValid{true};
             m = res1.maxLen + 1;
 
             // first search for the lower bound
@@ -208,7 +229,7 @@ class SASearcher {
                     char queryChar = (i < m - 1) ? ::toupper(*(qb + i)) : sentinel;
                     // If we're reverse complementing
                     if (queryChar != sentinel and complementBases) {
-                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        queryChar = combinelib::kmers::complement(queryChar);
                     }
 
                     if ( queryChar < *(sb + SA[c] + i) ) {
@@ -254,7 +275,7 @@ class SASearcher {
                     char queryChar = (i < m - 1) ? ::toupper(*(qb + i)) : sentinel;
                     // If we're reverse complementing
                     if (queryChar != sentinel and complementBases) {
-                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        queryChar = combinelib::kmers::complement(queryChar);
                     }
 
                     if ( queryChar < *(sb + SA[c] + i) ) {
@@ -426,7 +447,7 @@ class SASearcher {
                     char queryChar = ::toupper(*(qb + i));
                     // If we're reverse complementing
                     if (complementBases) {
-                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        queryChar = combinelib::kmers::complement(queryChar);
                     }
                     if ( queryChar < *(sb + SA[lbIn] + i) ) {
                         break;
@@ -469,7 +490,7 @@ class SASearcher {
                     char queryChar = ::toupper(*(qb + i));
                     // If we're reverse complementing
                     if (complementBases) {
-                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        queryChar = combinelib::kmers::complement(queryChar);
                     }
 
                     if ( queryChar < *(sb + SA[c] + i) ) {
@@ -591,7 +612,7 @@ class SASearcher {
                     char queryChar = (i < m - 1) ? ::toupper(*(qb + i)) : sentinel;
                     // If we're reverse complementing
                     if (queryChar != sentinel and complementBases) {
-                        queryChar = rapmap::utils::my_mer::complement(queryChar);
+                        queryChar = combinelib::kmers::complement(queryChar);
                     }
 
                     if ( queryChar < *(sb + SA[c] + i) ) {

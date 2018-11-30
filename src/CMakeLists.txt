@@ -1,18 +1,19 @@
 set (RAPMAP_MAIN_SRCS
     RapMap.cpp
-    RapMapIndexer.cpp
     RapMapSAIndexer.cpp
     RapMapUtils.cpp
-    RapMapMapper.cpp
     RapMapSAMapper.cpp
     RapMapFileSystem.cpp
     RapMapSAIndex.cpp
-    RapMapIndex.cpp
     HitManager.cpp
+    FastxParser.cpp
     rank9b.cpp
     stringpiece.cc
     xxhash.c
     bit_array.c
+    #RapMapIndex.cpp
+    #RapMapMapper.cpp
+    #RapMapIndexer.cpp
 )
 
 set (RAPMAP_ALIGN_SRCS
@@ -21,58 +22,43 @@ set (RAPMAP_ALIGN_SRCS
 set (RAPMAP_LIB_SRCS
 )
 
-#set (RSDICT_LIB_SRCS
-#    EnumCoder.cpp
-#    RSDic.cpp
-#    RSDicBuilder.cpp
-#)
-
 include_directories(
 ${GAT_SOURCE_DIR}/include
+${GAT_SOURCE_DIR}/digestpp
 ${GAT_SOURCE_DIR}/external
 ${GAT_SOURCE_DIR}/external/cereal/include
 ${GAT_SOURCE_DIR}/external/install/include
-${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.5
 ${ZLIB_INCLUDE_DIR}
 ${CEREAL_INCLUDE_DIRS}
 )
 
-if (JELLYFISH_FOUND)
-    include_directories(${JELLYFISH_INCLUDE_DIR})
-else()
-    include_directories(${GAT_SOURCE_DIR}/external/install/include/jellyfish-2.2.5)
-endif()
-
 link_directories(
 ${GAT_SOURCE_DIR}/lib
 ${GAT_SOURCE_DIR}/external/install/lib
-#${Boost_LIBRARY_DIRS}
-#${TBB_LIBRARY_DIRS}
-#${LAPACK_LIBRARY_DIR}
-#${BLAS_LIBRARY_DIR}
 )
 
-#message("Boost_LIBRARIES = ${Boost_LIBRARIES}")
-
 # Set the RPATH
-if (APPLE)
-    ## This DOES NOT do what I / any one sane, expects.  Setting the
-    ## linker path on OSX is messed up.  Just tell the user to use
-    ## DYLD_FALLBACK_LIBRARY_PATH for now
-    set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-else()
+if (NOT APPLE)
     set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib:$ORIGIN/../../lib:$ORIGIN/:$ORIGIN/../../external/install/lib")
+    set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+else()
+  # use, i.e. don't skip the full RPATH for the build tree
+  set(CMAKE_SKIP_BUILD_RPATH  FALSE)
+
+  # when building, don't use the install RPATH already
+  # (but later on when installing)
+  set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE) 
+
+  # the RPATH to be used when installing
+  set(CMAKE_INSTALL_RPATH "")
+
+  # don't add the automatically determined parts of the RPATH
+  # which point to directories outside the build tree to the install RPATH
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
 endif()
-
-set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-
-# Build the rsdic library
-# add_library(rsdic STATIC ${RSDICT_LIB_SRCS} )
 
 # Build the rapmap executable
 add_executable(rapmap ${RAPMAP_MAIN_SRCS})
-
-#set_target_properties(salmon_core salmon PROPERTIES LINK_SEARCH_END_STATIC TRUE)
 
 # our suffix array construction libraries
 set (SUFFARRAY_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort.a)
@@ -80,34 +66,27 @@ set (SUFFARRAY64_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort64.a)
 
 # Link the executable
 target_link_libraries(rapmap
-    ${PTHREAD_LIB}
-    #${Boost_LIBRARIES}
+    # ${PTHREAD_LIB}
     ${ZLIB_LIBRARY}
     ${SUFFARRAY_LIB}
     ${SUFFARRAY64_LIB}
-    ${GAT_SOURCE_DIR}/external/install/lib/libjellyfish-2.0.a
     m
-    ${LIBLZMA_LIBRARIES}
-    #${LIBSALMON_LINKER_FLAGS}
     ${NON_APPLECLANG_LIBS}
     ${FAST_MALLOC_LIB}
+    ${CMAKE_THREAD_LIBS_INIT}
+    #${GAT_SOURCE_DIR}/external/install/lib/libjellyfish-2.0.a
+    #${LIBLZMA_LIBRARIES}
 )
 
-#add_dependencies(salmon libbwa)
-
 ##
-#  This ensures that the salmon executable should work with or without `make install`
+# External dependencies of salmon_core and salmon
 ##
-if (APPLE)
-	add_custom_command(TARGET rapmap
-		POST_BUILD
-		COMMAND install_name_tool -add_rpath ${GAT_SOURCE_DIR}/external/install/lib rapmap
-		COMMAND install_name_tool -add_rpath @executable_path/../lib rapmap
-		)
+if (${FETCHED_JEMALLOC})
+   add_dependencies(rapmap libjemalloc)
+   add_dependencies(rapmap libjemalloc)
 endif()
 
 ##### ======================================
-
 IF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   SET(CMAKE_INSTALL_PREFIX
     "${GAT_SOURCE_DIR}" CACHE PATH "Default install prefix" FORCE
@@ -143,4 +122,5 @@ install(FILES ${GAT_SOURCE_DIR}/scripts/RunRapMap.sh
     #)
     #
     #include(InstallRequiredSystemLibraries)
-    #add_test( NAME salmon_read_test COMMAND ${CMAKE_COMMAND} -DTOPLEVEL_DIR=${GAT_SOURCE_DIR} -P ${GAT_SOURCE_DIR}/cmake/TestSalmon.cmake )
+    add_test( NAME quasi_map_test COMMAND ${CMAKE_COMMAND} -DTOPLEVEL_DIR=${GAT_SOURCE_DIR} -P ${GAT_SOURCE_DIR}/cmake/TestQuasiMap.cmake )
+    add_test( NAME quasi_map_test_ph COMMAND ${CMAKE_COMMAND} -DTOPLEVEL_DIR=${GAT_SOURCE_DIR} -P ${GAT_SOURCE_DIR}/cmake/TestQuasiMapPerfectHash.cmake )

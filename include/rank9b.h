@@ -26,8 +26,10 @@
 class rank9b {
 private:
 	const uint64_t *bits;
-	uint64_t *counts, *inventory;
-	uint64_t num_words, num_counts, inventory_size, ones_per_inventory, log2_ones_per_inventory, num_ones;
+	//uint64_t *counts, *inventory;
+	uint64_t *counts;
+	//uint64_t num_words, num_counts, inventory_size, ones_per_inventory, log2_ones_per_inventory, num_ones;
+	uint64_t num_words, num_counts;
 
 public:
 	rank9b();
