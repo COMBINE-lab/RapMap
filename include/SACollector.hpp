@@ -65,6 +65,12 @@ public:
   void disableChainScoring() { doChaining_ = false; }
   bool getChainScoring() const { return doChaining_; }
 
+  /** Get/Set the "mohsen number" that is used to limit the
+      maximum MMP length during interval collection **/
+  // Note --- cannot set an extension less than 1
+  void setMaxMMPExtension(int32_t ext) { if (ext > 0) { maxMMPExtension_ = ext; } }
+  int32_t getMaxMMPExtension() const { return maxMMPExtension_; }
+
   /** Construct an SACollector given an index **/
   SACollector(RapMapIndexT* rmi)
       : rmi_(rmi), hashEnd_(rmi->khash.end()), disableNIP_(false), 
@@ -497,7 +503,7 @@ private:
       // If this k-mer contains an 'N', then find the position
       // of this character and skip one past it.
       if (!validMer) {
-        invalidPos = read.find_first_of("nN", pos);
+        invalidPos = read.find_first_of("Nn", pos);
         // If the first N is within k bases, then this k-mer is invalid
         if (invalidPos < pos + k) {
           // Skip to the k-mer starting at the next position
@@ -545,8 +551,28 @@ private:
         // lb must be 1 *less* then the current lb
         // We can't move any further in the reverse complement direction
         lb = std::max(static_cast<OffsetT>(0), lb - 1);
+
+        // [Nov 21] NOTE: Attempt to cheaply mimic intruders --- hack for now,
+        // make it nicer if it works.
+        bool firstAttempt = doChaining_ ? (rb == readStartIt) : true;
+        auto endIt = (firstAttempt) ? readEndIt : std::min(rb + k + maxMMPExtension_, readEndIt);
+        auto lbP = lb;
+        auto ubP = ub;
+
         std::tie(lb, ub, matchedLen) =
-            saSearcher.extendSearchNaive(lb, ub, k, rb, readEndIt);
+          saSearcher.extendSearchNaive(lb, ub, k, rb, endIt);
+
+
+        // [Nov 21] NOTE: Attempt to cheaply mimic intruders --- hack for now,
+        // make it nicer if it works.
+        if (doChaining_ and firstAttempt and !(matchedLen >= static_cast<OffsetT>(readLen)) and matchedLen >= static_cast<OffsetT>(k + maxMMPExtension_)) {
+          firstAttempt = false;
+          lb = lbP;
+          ub = ubP;
+          endIt = std::min(rb + k + maxMMPExtension_, readEndIt);
+          std::tie(lb, ub, matchedLen) =
+            saSearcher.extendSearchNaive(lb, ub, k, rb, endIt);
+        }
 
         OffsetT diff = ub - lb;
         if (ub > lb and diff < maxInterval_) {
@@ -657,6 +683,7 @@ private:
   OffsetT maxInterval_;
   bool strictCheck_;
   bool doChaining_;
+  int32_t maxMMPExtension_{7};
   std::string rcBuffer_;
 };
 

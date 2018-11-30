@@ -127,6 +127,7 @@ struct MappingOpts {
     bool consistentHits{false};
     bool compressedOutput{false};
     bool quiet{false};
+    int32_t maxMMPExtension{7};
 };
 
 template <typename RapMapIndexT, typename MutexT>
@@ -156,6 +157,9 @@ void processReadsSingleSA(single_parser * parser,
     rapmap::utils::MappingConfig mc;
     mc.consistentHits = false;
     mc.doChaining = mopts->consistentHits;
+    if (mc.doChaining) {
+      hitCollector.setMaxMMPExtension(mopts->maxMMPExtension);
+    }
 
     SingleAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
     SASearcher<RapMapIndexT> saSearcher(&rmi);
@@ -272,6 +276,9 @@ void processReadsPairSA(paired_parser* parser,
     rapmap::utils::MappingConfig mc;
     mc.consistentHits = false;//mopts->consistentHits;
     mc.doChaining = mopts->consistentHits;
+    if (mc.doChaining) {
+      hitCollector.setMaxMMPExtension(mopts->maxMMPExtension);
+    }
 
     // Create a formatter for alignments
     PairAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
@@ -313,6 +320,7 @@ void processReadsPairSA(paired_parser* parser,
                 rapmap::utils::mergeLeftRightHitsFuzzy(
                         lh, rh,
                         leftHits, rightHits, jointHits,
+                        mc,
                         readLen, mopts->maxNumHits, tooManyHits, hctr);
 
             } else {
@@ -563,7 +571,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::ValueArg<std::string> outname("o", "output", "The output file (default: stdout)", false, "", "path");
   TCLAP::ValueArg<double> quasiCov("z", "quasiCoverage", "Require that this fraction of a read is covered by MMPs before it is considered mappable.", false, 0.0, "double in [0,1]");
   TCLAP::SwitchArg noout("n", "noOutput", "Don't write out any alignments (for speed testing purposes)", false);
-  TCLAP::SwitchArg sensitive("e", "sensitive", "Perform a more sensitive quasi-mapping by disabling NIP skipping", false);
+  TCLAP::SwitchArg nosensitive("n", "noSensitive", "Perform a less sensitive quasi-mapping by enabling NIP skipping", false);
   TCLAP::SwitchArg noStrict("", "noStrictCheck", "Don't perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
   TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
   TCLAP::SwitchArg consistent("c", "chaining", "Score the hits to find the best chain", false);
@@ -579,7 +587,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(numThreads);
   cmd.add(maxNumHits);
   cmd.add(quasiCov);
-  cmd.add(sensitive);
+  cmd.add(nosensitive);
   cmd.add(noStrict);
   cmd.add(fuzzy);
   cmd.add(consistent);
@@ -641,15 +649,15 @@ int rapMapSAMap(int argc, char* argv[]) {
     mopts.outname = (outname.isSet()) ? outname.getValue() : "";
     mopts.quasiCov = quasiCov.getValue();
     mopts.noOutput = noout.getValue();
-    mopts.sensitive = sensitive.getValue();
+    mopts.sensitive = !nosensitive.getValue();
     mopts.strictCheck = !noStrict.getValue();
     mopts.consistentHits = consistent.getValue();
     mopts.compressedOutput = compressedOutput.getValue();
     mopts.fuzzy = fuzzy.getValue();
     mopts.quiet = quiet.getValue();
 
-    if (quasiCov.isSet() and !sensitive.isSet()) {
-        consoleLog->info("The --quasiCoverage option is set to {}, but the --sensitive flag was not set. The former implies the later. Enabling sensitive mode.", quasiCov.getValue());
+    if (quasiCov.isSet() and nosensitive.isSet()) {
+        consoleLog->info("The --quasiCoverage option is set to {}, but the --noSensitive flag was also set. The former forbids the later. Enabling sensitive mode.", quasiCov.getValue());
         mopts.sensitive = true;
     }
 
