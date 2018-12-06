@@ -68,6 +68,7 @@
 #include "IndexHeader.hpp"
 
 #include "xxhash.h"
+#include "SegmentMappingInfo.hpp"
 // sha functionality
 // #include "picosha2.h"
 #include "digestpp/digestpp.hpp"
@@ -840,6 +841,7 @@ int rapMapSAIndex(int argc, char* argv[]) {
       "p", "perfectHash", "Use a perfect hash instead of sparse hash --- "
                           "somewhat slows construction, but uses less memory",
       false);
+  TCLAP::ValueArg<std::string> segmentFile("", "segments", "The segment mapping file", false, "", "string");
   /*
   TCLAP::SwitchArg perfectHash(
       "f", "frugalPerfectHash", "Use a frugal variant of the perfect hash --- "
@@ -858,6 +860,7 @@ int rapMapSAIndex(int argc, char* argv[]) {
   cmd.add(noClip);
   cmd.add(perfectHash);
   cmd.add(customSeps);
+  cmd.add(segmentFile);
   cmd.add(numHashThreads);
   cmd.parse(argc, argv);
 
@@ -911,6 +914,14 @@ int rapMapSAIndex(int argc, char* argv[]) {
   bool usePerfectHash = perfectHash.getValue();
   bool keepDuplicates = keepDuplicatesSwitch.getValue();
   uint32_t numPerfectHashThreads = numHashThreads.getValue();
+
+  if(segmentFile.isSet()) {
+    auto sfile = segmentFile.getValue();
+    SegmentMappingInfo smi;
+    smi.loadFromFile(sfile);
+  }
+
+
   std::mutex iomutex;
   indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA,
                      usePerfectHash, numPerfectHashThreads, keepDuplicates, sepStr, iomutex, jointLog);
