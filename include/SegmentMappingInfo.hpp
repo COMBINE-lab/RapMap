@@ -24,13 +24,16 @@
 
 #include <vector>
 #include "nonstd/span.hpp"
+#include "spdlog/spdlog.h"
 
 // Parse segment information from yanagi (https://github.com/mgunady/yanagi)
 class SegmentMappingInfo {
   using TranscriptIDType = int32_t;
 public:
   SegmentMappingInfo();
-  bool loadFromFile(const std::string& fname);
+  bool loadFromFile(const std::string& fname,
+                    const std::vector<std::string>& segmentNames,
+                    std::shared_ptr<spdlog::logger> log);
   nonstd::span<TranscriptIDType> transcriptsForSegment(int64_t segmentID) const;
  
 private:
@@ -39,6 +42,7 @@ private:
   // all transcripts corresponding to this segment.
   std::vector<nonstd::span<TranscriptIDType>> txpListRanges_;
   std::vector<TranscriptIDType> txpList_;
+  std::vector<std::string> txpNames_;
 };
 
 #endif // __RAPMAP_SEGMENT_MAPPING_INFO_HPP__

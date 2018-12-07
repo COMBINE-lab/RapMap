@@ -453,6 +453,7 @@ void indexTranscriptsSA(ParserT* parser,
                         uint32_t numHashThreads,
                         bool keepDuplicates,
                         std::string& sepStr,
+                        std::string& segFile,
                         std::mutex& iomutex,
                         std::shared_ptr<spdlog::logger> log) {
   // Create a random uniform distribution
@@ -737,6 +738,14 @@ void indexTranscriptsSA(ParserT* parser,
   // positionIDs.shrink_to_fit();
   transcriptStarts.clear();
   transcriptStarts.shrink_to_fit();
+
+  // If we are going to build a segment mapping, we need to know
+  // the order of the segment names --- pass them in here.
+  if (segFile != "") {
+    SegmentMappingInfo smi;
+    smi.loadFromFile(segFile, transcriptNames, log);
+  }
+
   transcriptNames.clear();
   transcriptNames.shrink_to_fit();
   // done clearing
@@ -915,16 +924,17 @@ int rapMapSAIndex(int argc, char* argv[]) {
   bool keepDuplicates = keepDuplicatesSwitch.getValue();
   uint32_t numPerfectHashThreads = numHashThreads.getValue();
 
+  /*
   if(segmentFile.isSet()) {
     auto sfile = segmentFile.getValue();
     SegmentMappingInfo smi;
     smi.loadFromFile(sfile);
   }
-
+  */
 
   std::mutex iomutex;
   indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA,
-                     usePerfectHash, numPerfectHashThreads, keepDuplicates, sepStr, iomutex, jointLog);
+                     usePerfectHash, numPerfectHashThreads, keepDuplicates, sepStr, segmentFile.getValue(), iomutex, jointLog);
 
   // Output info about the reference
   std::ofstream refInfoStream(indexDir + "refInfo.json");

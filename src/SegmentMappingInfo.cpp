@@ -21,12 +21,18 @@
 
 #include <fstream>
 #include <map>
+#include <utility>
+#include <sstream>
+#include "sparsepp/spp.h"
 #include "SegmentMappingInfo.hpp"
 #include "RapMapUtils.hpp"
 
 SegmentMappingInfo::SegmentMappingInfo() {}
 
-bool SegmentMappingInfo::loadFromFile(const std::string& fname) {
+bool SegmentMappingInfo::loadFromFile(const std::string& fname,
+                                      const std::vector<std::string>& segmentNames,
+                                      std::shared_ptr<spdlog::logger> log
+                                      ) {
   /*
     segID   chrom   geneID  txAnnIDs        binIDs  st      end     strand
     SEG0000001      10      ENSG00000012779 ENST00000542434 57010,57011     45869661        45869774        +
@@ -45,15 +51,92 @@ bool SegmentMappingInfo::loadFromFile(const std::string& fname) {
     hmap[header[i]] = i;
   }
 
+  spp::sparse_hash_map<std::string, uint32_t> segmentID;
+  segmentID.reserve(segmentNames.size());
+
+  spp::sparse_hash_map<std::string, uint32_t> txpID;
+
+  std::vector<bool> seenSegment(segmentNames.size(), false);
+
+  uint32_t ctr{0};
+  for (const auto& sn : segmentNames) {
+    segmentID[sn] = ctr;
+    ++ctr;
+  }
+
+  // number of segments we care about
+  //txpListRanges_.resize(segmentNames.size());
+
   int32_t segID = hmap["segID"];
   int32_t txAnnIDs = hmap["txAnnIDs"];
+
+  std::vector<std::pair<uint32_t, uint32_t>> segmentIntervals;
+
+  uint64_t lastIdx{0};
   while (std::getline(ifile, line)) {
     auto tokens = rapmap::utils::tokenize(line, '\t');
     std::string sid = tokens[segID];
     std::string txlist = tokens[txAnnIDs];
-    std::cerr << "sid : " << sid << " :: txlist : " << txlist << "\n";
+
+    auto sidIt = segmentID.find(sid);
+    uint32_t segIdx{std::numeric_limits<uint32_t>::max()};
+    if (sidIt == segmentID.end()) {
+      //log->error("Segment mapping {} referred to a segment {} not in the sequence file.", fname, sid);
+      continue;
+      //return false;
+    } else {
+      segIdx = sidIt->second;
+    }
+
+    if (seenSegment[segIdx]) {
+      log->error("Segment {} was seen more than once in the segment mapping {}.", sidIt->first, fname);
+      return false;
+    }
+    seenSegment[segIdx] = true;
+
+    auto txtokens = rapmap::utils::tokenize(txlist, ',');
+    auto firstIdx = lastIdx;
+    uint32_t len{0};
+    for (auto& tx : txtokens) {
+      // index for this transcript
+      auto txIt = txpID.find(tx);
+      uint32_t txpIdx{std::numeric_limits<uint32_t>::max()};
+      if (txIt == txpID.end()) {
+        txpIdx = txpID.size();
+        txpID[tx] = txpIdx;
+        txpNames_.push_back(tx);
+      } else {
+        txpIdx = txIt->second;
+      }
+      txpList_.push_back(txpIdx);
+      ++lastIdx;
+      ++len;
+    }
+    segmentIntervals.push_back(std::make_pair(firstIdx, len));
+    //std::cerr << "sid : " << sid << " :: txlist : " << txlist << "\n";
   }
 
+  txpListRanges_.resize(segmentIntervals.size());
+  size_t siIdx{0};
+  for (auto& si : segmentIntervals) {
+    txpListRanges_[siIdx] = nonstd::span<int32_t>(txpList_.data() + si.first, si.second);
+    ++siIdx;
+  }
+
+  log->info("Total txps {} for {} segments.", txpNames_.size(), txpListRanges_.size());
+  log->info("Total txps list length = {}", txpList_.size());
+
+  siIdx = 0;
+  for (auto r : txpListRanges_) {
+    std::stringstream s;
+    s << "transcripts for " << siIdx << " : {";
+    for (auto tid : r) {
+      s << tid << ',';
+    }
+    s << "}\n";
+    log->info(s.str());
+    siIdx++;
+  }
   ifile.close();
   return true;
 }
