@@ -54,6 +54,7 @@ class IndexHeader {
                 ar( cereal::make_nvp("NameHash", nameHash256_) );
                 ar( cereal::make_nvp("SeqHash512", seqHash512_) );
                 ar( cereal::make_nvp("NameHash512", nameHash512_) );
+                ar( cereal::make_nvp("IsSegmentIndex", isSegmentIndex_) );
             }
 
         template <typename Archive>
@@ -69,6 +70,7 @@ class IndexHeader {
                 ar( cereal::make_nvp("NameHash", nameHash256_) );
                 ar( cereal::make_nvp("SeqHash512", seqHash512_) );
                 ar( cereal::make_nvp("NameHash512", nameHash512_) );
+                ar( cereal::make_nvp("IsSegmentIndex", isSegmentIndex_) );
             } catch (const cereal::Exception& e) {
                 auto cerrLog = spdlog::get("stderrLog");
                 cerrLog->error("Encountered exception [{}] when loading index.", e.what());
@@ -95,6 +97,9 @@ class IndexHeader {
         void setNameHash512(const std::string& nameHash) { nameHash512_ = nameHash; }
         std::string seqHash512() const { return seqHash512_; }
         std::string nameHash512() const { return nameHash512_; }
+
+        void isSegmentIndex(bool isSeg) { isSegmentIndex_ = isSeg; }
+        bool isSegmentIndex() const { return isSegmentIndex_; }
     private:
         // The type of index we have
         IndexType type_;
@@ -117,6 +122,8 @@ class IndexHeader {
         std::string seqHash512_;
         // Hash of sequence names in txome
         std::string nameHash512_;
+        // Is this a segment index
+        bool isSegmentIndex_{false};
 };
 
 

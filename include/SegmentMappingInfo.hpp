@@ -35,12 +35,12 @@ public:
                     const std::vector<std::string>& segmentNames,
                     std::shared_ptr<spdlog::logger> log);
   nonstd::span<TranscriptIDType> transcriptsForSegment(int64_t segmentID) const;
- 
+  void serialize(const std::string& outDir);
 private:
   // The segment id provides an
   // interval into the transcript list vector of
   // all transcripts corresponding to this segment.
-  std::vector<nonstd::span<TranscriptIDType>> txpListRanges_;
+  std::vector<std::pair<uint32_t, uint32_t>> txpListRanges_;
   std::vector<TranscriptIDType> txpList_;
   std::vector<std::string> txpNames_;
 };

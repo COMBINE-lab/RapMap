@@ -743,7 +743,14 @@ void indexTranscriptsSA(ParserT* parser,
   // the order of the segment names --- pass them in here.
   if (segFile != "") {
     SegmentMappingInfo smi;
-    smi.loadFromFile(segFile, transcriptNames, log);
+    bool couldProduceMapping = smi.loadFromFile(segFile, transcriptNames, log);
+    if (!couldProduceMapping) {
+      log->error("Failed to produce valid segment -> transcript mapping. "
+                 "Please make sure the meta file and fasta file you provided are "
+                 "consistent!");
+      std::exit(1);
+    }
+    smi.serialize(outputDir);
   }
 
   transcriptNames.clear();
@@ -812,6 +819,8 @@ void indexTranscriptsSA(ParserT* parser,
   header.setNameHash256(nameHash256);
   header.setSeqHash512(seqHash512);
   header.setNameHash512(nameHash512);
+  if (segFile != "") { header.isSegmentIndex(true); }
+
   //std::string seqHash;
   //std::string nameHash;
   //picosha2::get_hash_hex_string(seqHasher, seqHash);
@@ -923,14 +932,6 @@ int rapMapSAIndex(int argc, char* argv[]) {
   bool usePerfectHash = perfectHash.getValue();
   bool keepDuplicates = keepDuplicatesSwitch.getValue();
   uint32_t numPerfectHashThreads = numHashThreads.getValue();
-
-  /*
-  if(segmentFile.isSet()) {
-    auto sfile = segmentFile.getValue();
-    SegmentMappingInfo smi;
-    smi.loadFromFile(sfile);
-  }
-  */
 
   std::mutex iomutex;
   indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA,

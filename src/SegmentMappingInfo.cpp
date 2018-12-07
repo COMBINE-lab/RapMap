@@ -27,20 +27,17 @@
 #include "SegmentMappingInfo.hpp"
 #include "RapMapUtils.hpp"
 
+#include <cereal/archives/binary.hpp>
+#include <cereal/types/string.hpp>
+#include <cereal/types/utility.hpp>
+#include <cereal/types/vector.hpp>
+
 SegmentMappingInfo::SegmentMappingInfo() {}
 
 bool SegmentMappingInfo::loadFromFile(const std::string& fname,
                                       const std::vector<std::string>& segmentNames,
                                       std::shared_ptr<spdlog::logger> log
                                       ) {
-  /*
-    segID   chrom   geneID  txAnnIDs        binIDs  st      end     strand
-    SEG0000001      10      ENSG00000012779 ENST00000542434 57010,57011     45869661        45869774        +
-    SEG0000002      10      ENSG00000012779 ENST00000374391,ENST00000542434 57011,57012,57013,57014,57015,57016,57017       45869675        45920450        +
-    SEG0000003      10      ENSG00000012779 ENST00000374391,ENST00000483623,ENST00000542434 57016,57017     45919539        45920580        +
-    SEG0000004      10      ENSG00000012779 ENST00000483623 57017,57018     45920481        45923934        +
-  */
-
   std::ifstream ifile(fname);
   std::string line;
   // The first line is the header
@@ -112,26 +109,31 @@ bool SegmentMappingInfo::loadFromFile(const std::string& fname,
       ++lastIdx;
       ++len;
     }
-    segmentIntervals.push_back(std::make_pair(firstIdx, len));
+    txpListRanges_.push_back(std::make_pair(firstIdx, len));
+    auto& r = txpListRanges_.back();
+    std::sort(txpList_.begin() + r.first, txpList_.begin() + r.first + r.second);
     //std::cerr << "sid : " << sid << " :: txlist : " << txlist << "\n";
   }
 
-  txpListRanges_.resize(segmentIntervals.size());
   size_t siIdx{0};
+  /*
+  txpListRanges_.resize(segmentIntervals.size());
   for (auto& si : segmentIntervals) {
     txpListRanges_[siIdx] = nonstd::span<int32_t>(txpList_.data() + si.first, si.second);
     std::sort(txpListRanges_[siIdx].begin(), txpListRanges_[siIdx].end());
     ++siIdx;
   }
+  */
 
   log->info("Total txps {} for {} segments.", txpNames_.size(), txpListRanges_.size());
   log->info("Total txps list length = {}", txpList_.size());
 
-  /*
+
   siIdx = 0;
-  for (auto r : txpListRanges_) {
+  for (auto p : txpListRanges_) {
     std::stringstream s;
     s << "transcripts for " << siIdx << " : {";
+    nonstd::span<int32_t> r(txpList_.data() + p.first, p.second);
     for (auto tid : r) {
       s << tid << ',';
     }
@@ -139,9 +141,20 @@ bool SegmentMappingInfo::loadFromFile(const std::string& fname,
     log->info(s.str());
     siIdx++;
   }
-  */
+
 
   ifile.close();
   return true;
 }
 
+void SegmentMappingInfo::serialize(const std::string& outDir) {
+  std::ofstream mappingStream(outDir + "segmentMappingInfo.bin", std::ios::binary);
+  {
+    //ScopedTimer timer;
+    cereal::BinaryOutputArchive segArchive(mappingStream);
+    segArchive(txpListRanges_);
+    segArchive(txpList_);
+    segArchive(txpNames_);
+  }
+  mappingStream.close();
+}
