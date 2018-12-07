@@ -120,12 +120,14 @@ bool SegmentMappingInfo::loadFromFile(const std::string& fname,
   size_t siIdx{0};
   for (auto& si : segmentIntervals) {
     txpListRanges_[siIdx] = nonstd::span<int32_t>(txpList_.data() + si.first, si.second);
+    std::sort(txpListRanges_[siIdx].begin(), txpListRanges_[siIdx].end());
     ++siIdx;
   }
 
   log->info("Total txps {} for {} segments.", txpNames_.size(), txpListRanges_.size());
   log->info("Total txps list length = {}", txpList_.size());
 
+  /*
   siIdx = 0;
   for (auto r : txpListRanges_) {
     std::stringstream s;
@@ -137,6 +139,8 @@ bool SegmentMappingInfo::loadFromFile(const std::string& fname,
     log->info(s.str());
     siIdx++;
   }
+  */
+
   ifile.close();
   return true;
 }
