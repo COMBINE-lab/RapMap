@@ -73,6 +73,7 @@
 // #include "picosha2.h"
 #include "digestpp/digestpp.hpp"
 #include "nonstd/string_view.hpp"
+#include "nonstd/optional.hpp"
 
 #include <chrono>
 
@@ -453,7 +454,7 @@ void indexTranscriptsSA(ParserT* parser,
                         uint32_t numHashThreads,
                         bool keepDuplicates,
                         std::string& sepStr,
-                        std::string& segFile,
+                        nonstd::optional<std::string>& segFile,
                         std::mutex& iomutex,
                         std::shared_ptr<spdlog::logger> log) {
   // Create a random uniform distribution
@@ -741,9 +742,9 @@ void indexTranscriptsSA(ParserT* parser,
 
   // If we are going to build a segment mapping, we need to know
   // the order of the segment names --- pass them in here.
-  if (segFile != "") {
+  if (segFile) {
     SegmentMappingInfo smi;
-    bool couldProduceMapping = smi.loadFromFile(segFile, transcriptNames, log);
+    bool couldProduceMapping = smi.loadFromFile(*segFile, transcriptNames, log);
     if (!couldProduceMapping) {
       log->error("Failed to produce valid segment -> transcript mapping. "
                  "Please make sure the meta file and fasta file you provided are "
@@ -819,7 +820,7 @@ void indexTranscriptsSA(ParserT* parser,
   header.setNameHash256(nameHash256);
   header.setSeqHash512(seqHash512);
   header.setNameHash512(nameHash512);
-  if (segFile != "") { header.isSegmentIndex(true); }
+  if (segFile) { header.isSegmentIndex(true); }
 
   //std::string seqHash;
   //std::string nameHash;
@@ -933,9 +934,12 @@ int rapMapSAIndex(int argc, char* argv[]) {
   bool keepDuplicates = keepDuplicatesSwitch.getValue();
   uint32_t numPerfectHashThreads = numHashThreads.getValue();
 
+  nonstd::optional<std::string> segFile = segmentFile.isSet() ?
+    nonstd::optional<std::string>(segmentFile.getValue()) : nonstd::nullopt;
+
   std::mutex iomutex;
   indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA,
-                     usePerfectHash, numPerfectHashThreads, keepDuplicates, sepStr, segmentFile.getValue(), iomutex, jointLog);
+                     usePerfectHash, numPerfectHashThreads, keepDuplicates, sepStr, segFile, iomutex, jointLog);
 
   // Output info about the reference
   std::ofstream refInfoStream(indexDir + "refInfo.json");
