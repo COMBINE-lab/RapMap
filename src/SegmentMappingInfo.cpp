@@ -158,3 +158,15 @@ void SegmentMappingInfo::serialize(const std::string& outDir) {
   }
   mappingStream.close();
 }
+
+void SegmentMappingInfo::load(const std::string& indDir) {
+  std::ifstream mappingStream(indDir + "segmentMappingInfo.bin", std::ios::binary);
+  {
+    //ScopedTimer timer;
+    cereal::BinaryInputArchive segArchive(mappingStream);
+    segArchive(txpListRanges_);
+    segArchive(txpList_);
+    segArchive(txpNames_);
+  }
+  mappingStream.close();
+}
