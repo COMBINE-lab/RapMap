@@ -113,6 +113,14 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
 	return loadHashFromIndex(indDir, khash);
     });
 
+    if (h.isSegmentIndex()) {
+      logger->info("This is a segment index : loading segment mapping information.");
+      segInfo.reset(new SegmentMappingInfo);
+      segInfo->load(indDir);
+      isSegmentIndex_ = true;
+    }
+
+
     std::ifstream saStream(indDir + "sa.bin");
     {
         logger->info("Loading Suffix Array ");

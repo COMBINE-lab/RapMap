@@ -326,7 +326,7 @@ void processReadsPairSA(paired_parser* parser,
             } else {
                 rapmap::utils::mergeLeftRightHits(
                         leftHits, rightHits, jointHits,
-                        readLen, mopts->maxNumHits, tooManyHits, hctr);
+                        readLen, mopts->maxNumHits, tooManyHits, hctr, rmi.segInfo.get());
             }
 
             hctr.totHits += jointHits.size();
@@ -373,7 +373,9 @@ void processReadsPairSA(paired_parser* parser,
         }
 
     } // processed all reads
-
+    if (rmi.segInfo) {
+      logger->info("size of table {}", rmi.segInfo->tableSize());
+    }
 }
 
 template <typename RapMapIndexT, typename MutexT>

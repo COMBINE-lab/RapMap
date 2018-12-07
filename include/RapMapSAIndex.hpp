@@ -42,6 +42,7 @@
 
 #include <fstream>
 #include "RapMapUtils.hpp"
+#include "SegmentMappingInfo.hpp"
 
 template <typename IndexT, typename HashT>
 class RapMapSAIndex {
@@ -67,10 +68,17 @@ class RapMapSAIndex {
 
     bool load(const std::string& indDir);
 
+    bool isSegmentIndex() const { return isSegmentIndex_; }
+
     std::vector<IndexT> SA;
 
     BitArrayPointer bitArray{nullptr};
     std::unique_ptr<rank9b> rankDict{nullptr};
+
+    // potentially, we also have a segment mapping if
+    // this is a segment enabled index
+    std::unique_ptr<SegmentMappingInfo> segInfo{nullptr};
+    bool isSegmentIndex_{false};
 
     std::string seq;
     std::vector<std::string> txpNames;

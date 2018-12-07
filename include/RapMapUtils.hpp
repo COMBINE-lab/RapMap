@@ -35,6 +35,7 @@
 #include "spdlog/fmt/fmt.h"
 #include "chobo/small_vector.hpp"
 #include "RapMapConfig.hpp"
+#include "SegmentMappingInfo.hpp"
 
 #ifdef RAPMAP_SALMON_SUPPORT
 #include "LibraryFormat.hpp"
@@ -1002,6 +1003,66 @@ namespace rapmap {
             }
         }
 
+
+      /**
+       * modified from : https://en.cppreference.com/w/cpp/algorithm/set_intersection
+       * return true of the two sorted ranges have a non-null intersection, false otherwise.
+       **/
+      template<class InputIt1, class InputIt2>
+      bool hasIntersection(InputIt1 first1, InputIt1 last1,
+                           InputIt2 first2, InputIt2 last2) {
+        while (first1 != last1 && first2 != last2) {
+          if (*first1 < *first2) {
+            ++first1;
+          } else  {
+            if (!(*first2 < *first1)) {
+              return true;
+            }
+            ++first2;
+          }
+        }
+        return false;
+      }
+
+      inline void mergeLeftRightSegments(
+                                     std::vector<QuasiAlignment>& leftHits,
+                                     std::vector<QuasiAlignment>& rightHits,
+                                     std::vector<QuasiAlignment>& jointHits,
+                                     uint32_t readLen,
+                                     uint32_t maxNumHits,
+                                     bool& tooManyHits,
+                                     HitCounters& hctr,
+                                     SegmentMappingInfo* smap) {
+
+        bool hadJointHit{false};
+        for (auto& lh : leftHits) {
+          auto leftTxps = smap->transcriptsForSegment(lh.tid);
+          for (auto& rh : rightHits) {
+            auto rightTxps = smap->transcriptsForSegment(rh.tid);
+            auto nonNull = hasIntersection(leftTxps.begin(), leftTxps.end(),
+                                           rightTxps.begin(), rightTxps.end());
+            if (nonNull) {
+              // mapping types
+              // r1 -> lh : fwd, r2 -> rh : fwd = 3
+              // r1 -> lh : fwd, r2 -> rh : rc  = 2
+              // r1 -> lh : rc , r2 -> rh : fwd = 1
+              // r1 -> lh : rc , r2 -> rh : rc = 0
+
+              // r2 -> lh : fwd, r1 -> rh : fwd = 7
+              // r2 -> lh : fwd, r1 -> rh : rc  = 6
+              // r2 -> lh : rc , r1 -> rh : fwd = 5
+              // r2 -> lh : rc , r1 -> rh : rc = 4
+              uint8_t mappingType = lh.fwd ? 2 : 0;
+              mappingType += rh.fwd ? 1 : 0;
+              if (lh.tid > rh.tid) { mappingType += 4; }
+              auto smallerSegID = (lh.tid < rh.tid) ? lh.tid : rh.tid;
+              auto largerSegID  = (lh.tid < rh.tid) ? rh.tid : lh.tid;
+              smap->addHit(smallerSegID, largerSegID, mappingType);
+            }
+          }
+        }
+      }
+
         inline void mergeLeftRightHits(
                 std::vector<QuasiAlignment>& leftHits,
                 std::vector<QuasiAlignment>& rightHits,
@@ -1009,7 +1070,12 @@ namespace rapmap {
                 uint32_t readLen,
                 uint32_t maxNumHits,
                 bool& tooManyHits,
-                HitCounters& hctr) {
+                HitCounters& hctr,
+                SegmentMappingInfo* smap) {
+          if (smap != nullptr) {
+            mergeLeftRightSegments(leftHits, rightHits, jointHits, readLen, maxNumHits, tooManyHits, hctr, smap);
+            return;
+          }
             if (leftHits.size() > 0) {
                 constexpr const int32_t signedZero{0};
                 auto leftIt = leftHits.begin();
