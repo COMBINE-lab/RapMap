@@ -27,6 +27,7 @@
 #include "nonstd/span.hpp"
 #include "cuckoohash_map.hh"
 #include "spdlog/spdlog.h"
+#include "metro/metrohash64.h"
 
 using SegmentIDType = uint32_t;
 
@@ -62,17 +63,21 @@ public:
     auto upfn = [mappingType](SegmentCountValue& x) -> void {
       x.typeCounts[mappingType] += 1;
     };
-    SegmentCountValue v;
+    SegmentCountValue v; v.typeCounts[mappingType] = 1;
     countMap_.upsert(p, upfn, v);
   }
 
+  bool writeSegmentOutput(const std::string& segFile, const std::vector<std::string>& segNames);
 private:
     struct pairhash {
     public:
-      template <typename T, typename U>
-      std::size_t operator()(const std::pair<T, U> &x) const
+      template <typename T>
+      std::size_t operator()(const std::pair<T, T> &x) const
       {
-        return std::hash<T>()(x.first) ^ std::hash<U>()(x.second);
+        T d[2] = {x.first, x.second};
+        uint64_t hashKey{0};
+        MetroHash64::Hash(reinterpret_cast<uint8_t*>(d), 2*sizeof(T), reinterpret_cast<uint8_t*>(&hashKey), 0);
+        return hashKey;
       }
     };
 

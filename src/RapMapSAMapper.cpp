@@ -253,6 +253,7 @@ void processReadsPairSA(paired_parser* parser,
     using OffsetT = typename RapMapIndexT::IndexType;
 
     SACollector<RapMapIndexT> hitCollector(&rmi);
+    bool isSegmentIndex = rmi.isSegmentIndex();
     if (mopts->sensitive) {
         hitCollector.disableNIP();
     }
@@ -315,21 +316,27 @@ void processReadsPairSA(paired_parser* parser,
            rapmap::hit_manager::hitsToMappingsSimple(rmi, mc,
                                                      MateStatus::PAIRED_END_RIGHT,
                                                      rightHCInfo, rightHits);
+           if (isSegmentIndex) {
+             auto nh = rapmap::utils::mergeLeftRightSegments(
+                                               leftHits, rightHits,
+                                               readLen, mopts->maxNumHits, tooManyHits, hctr, rmi.segInfo.get());
+             hctr.totHits += nh;
+           } else {
+             if (mopts->fuzzy) {
+               rapmap::utils::mergeLeftRightHitsFuzzy(
+                                                      lh, rh,
+                                                      leftHits, rightHits, jointHits,
+                                                      mc,
+                                                      readLen, mopts->maxNumHits, tooManyHits, hctr);
 
-            if (mopts->fuzzy) {
-                rapmap::utils::mergeLeftRightHitsFuzzy(
-                        lh, rh,
-                        leftHits, rightHits, jointHits,
-                        mc,
-                        readLen, mopts->maxNumHits, tooManyHits, hctr);
+             } else {
+               rapmap::utils::mergeLeftRightHits(
+                                                 leftHits, rightHits, jointHits,
+                                                 readLen, mopts->maxNumHits, tooManyHits, hctr, rmi.segInfo.get());
+             }
+             hctr.totHits += jointHits.size();
+           }
 
-            } else {
-                rapmap::utils::mergeLeftRightHits(
-                        leftHits, rightHits, jointHits,
-                        readLen, mopts->maxNumHits, tooManyHits, hctr, rmi.segInfo.get());
-            }
-
-            hctr.totHits += jointHits.size();
 
             // If we have reads to output, and we're writing output.
             if (jointHits.size() > 0 and !mopts->noOutput and jointHits.size() <= mopts->maxNumHits) {
@@ -356,7 +363,7 @@ void processReadsPairSA(paired_parser* parser,
         } // for all reads in this job
 
         // DUMP OUTPUT
-        if (!mopts->noOutput) {
+        if (!mopts->noOutput or !isSegmentIndex) {
             std::string outStr(sstream.str());
             // Get rid of last newline
             if (!outStr.empty()) {
@@ -373,9 +380,6 @@ void processReadsPairSA(paired_parser* parser,
         }
 
     } // processed all reads
-    if (rmi.segInfo) {
-      logger->info("size of table {}", rmi.segInfo->tableSize());
-    }
 }
 
 template <typename RapMapIndexT, typename MutexT>
@@ -401,6 +405,11 @@ bool spawnProcessReadsThreads(
             }
 
             for (auto& t : threads) { t.join(); }
+
+            if (rmi.isSegmentIndex()) {
+
+            }
+
             return true;
         }
 
@@ -441,7 +450,7 @@ bool mapReads(RapMapIndexT& rmi,
   std::unique_ptr<std::ostream> outStream{nullptr};
 	bool haveOutputFile{false};
   std::shared_ptr<spdlog::logger> outLog{nullptr};
-  if (!mopts->noOutput) {
+  if (!mopts->noOutput and !rmi.isSegmentIndex()) {
     if (mopts->outname == "") {
       outBuf = std::cout.rdbuf();
     } else {
@@ -495,6 +504,9 @@ bool mapReads(RapMapIndexT& rmi,
       spawnProcessReadsThreads(nthread, pairParserPtr.get(), rmi, iomutex,
                                outLog, hctrs, mopts);
       pairParserPtr->stop();
+      if (!mopts->noOutput and rmi.isSegmentIndex()) {
+        rmi.segInfo->writeSegmentOutput(mopts->outname, rmi.txpNames);
+      }
     } else {
       std::vector<std::string> unmatedReadVec = rapmap::utils::tokenize(mopts->unmatedReads, ',');
 

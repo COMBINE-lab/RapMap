@@ -1024,16 +1024,15 @@ namespace rapmap {
         return false;
       }
 
-      inline void mergeLeftRightSegments(
+      inline int32_t mergeLeftRightSegments(
                                      std::vector<QuasiAlignment>& leftHits,
                                      std::vector<QuasiAlignment>& rightHits,
-                                     std::vector<QuasiAlignment>& jointHits,
                                      uint32_t readLen,
                                      uint32_t maxNumHits,
                                      bool& tooManyHits,
                                      HitCounters& hctr,
                                      SegmentMappingInfo* smap) {
-
+        int32_t nhits{0};
         bool hadJointHit{false};
         for (auto& lh : leftHits) {
           auto leftTxps = smap->transcriptsForSegment(lh.tid);
@@ -1058,9 +1057,11 @@ namespace rapmap {
               auto smallerSegID = (lh.tid < rh.tid) ? lh.tid : rh.tid;
               auto largerSegID  = (lh.tid < rh.tid) ? rh.tid : lh.tid;
               smap->addHit(smallerSegID, largerSegID, mappingType);
+              ++nhits;
             }
           }
         }
+        return nhits;
       }
 
         inline void mergeLeftRightHits(
@@ -1072,10 +1073,7 @@ namespace rapmap {
                 bool& tooManyHits,
                 HitCounters& hctr,
                 SegmentMappingInfo* smap) {
-          if (smap != nullptr) {
-            mergeLeftRightSegments(leftHits, rightHits, jointHits, readLen, maxNumHits, tooManyHits, hctr, smap);
-            return;
-          }
+
             if (leftHits.size() > 0) {
                 constexpr const int32_t signedZero{0};
                 auto leftIt = leftHits.begin();

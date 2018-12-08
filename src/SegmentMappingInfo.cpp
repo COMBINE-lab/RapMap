@@ -159,6 +159,34 @@ void SegmentMappingInfo::serialize(const std::string& outDir) {
   mappingStream.close();
 }
 
+bool SegmentMappingInfo::writeSegmentOutput(const std::string& segFile, const std::vector<std::string>& segNames) {
+  std::ofstream ofile(segFile);
+
+  // number of segments
+  ofile << segNames.size() << '\n';
+  //ofile << txpNames_.size() << '\n';
+
+  auto lt = countMap_.lock_table();
+
+  ofile << lt.size() << '\n';
+
+  for (auto& sn : segNames) {
+    ofile << sn << '\n';
+  }
+
+  for (auto& kv : lt) {
+    auto sp = kv.first;
+    ofile << sp.first << '\t' << sp.second;
+    for (size_t i = 0; i < 8; ++i) {
+      ofile << '\t' << kv.second.typeCounts[i];
+    }
+    ofile << '\n';
+  }
+
+  ofile.close();
+  return true;
+}
+
 void SegmentMappingInfo::load(const std::string& indDir) {
   std::ifstream mappingStream(indDir + "segmentMappingInfo.bin", std::ios::binary);
   {

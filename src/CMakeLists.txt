@@ -12,6 +12,7 @@ set (RAPMAP_MAIN_SRCS
     stringpiece.cc
     xxhash.c
     bit_array.c
+    metro/metrohash64.cpp
     #RapMapIndex.cpp
     #RapMapMapper.cpp
     #RapMapIndexer.cpp
