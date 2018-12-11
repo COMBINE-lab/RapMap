@@ -176,7 +176,14 @@ bool SegmentMappingInfo::writeSegmentOutput(const std::string& segFile, const st
 
   for (auto& kv : lt) {
     auto sp = kv.first;
-    ofile << sp.first << '\t' << sp.second;
+    ofile << sp.first << '\t' ;
+
+    if (sp.second < std::numeric_limits<decltype(sp.second)>::max()) {
+      ofile << sp.second;
+    } else {
+      ofile << "NA";
+    }
+
     for (size_t i = 0; i < 8; ++i) {
       ofile << '\t' << kv.second.typeCounts[i];
     }

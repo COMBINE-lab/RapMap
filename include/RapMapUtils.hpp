@@ -1025,6 +1025,8 @@ namespace rapmap {
       }
 
       inline int32_t mergeLeftRightSegments(
+                                     bool leftMatches,
+                                     bool rightMatches,
                                      std::vector<QuasiAlignment>& leftHits,
                                      std::vector<QuasiAlignment>& rightHits,
                                      uint32_t readLen,
@@ -1033,7 +1035,33 @@ namespace rapmap {
                                      HitCounters& hctr,
                                      SegmentMappingInfo* smap) {
         int32_t nhits{0};
-        bool hadJointHit{false};
+
+        if (!leftHits.empty() and rightHits.empty() and !rightMatches) {
+          for(auto& lh : leftHits) {
+            // mapping types
+            // left read -> fwd : 0
+            // left read -> rc  : 2
+            uint8_t mappingType = lh.fwd ? 0 : 2;
+            smap->addHit(lh.tid, std::numeric_limits<decltype(lh.tid)>::max(), mappingType);
+            ++nhits;
+          }
+          return nhits;
+        }
+
+        if (!rightHits.empty() and leftHits.empty() and !leftMatches) {
+          for(auto& rh : rightHits) {
+            // mapping types
+            // right read -> fwd : 4
+            // right read -> rc  : 6
+            uint8_t mappingType = rh.fwd ? 4 : 6;
+            smap->addHit(rh.tid, std::numeric_limits<decltype(rh.tid)>::max(), mappingType);
+            ++nhits;
+          }
+          return nhits;
+        }
+
+
+        //bool hadJointHit{false};
         for (auto& lh : leftHits) {
           auto leftTxps = smap->transcriptsForSegment(lh.tid);
           for (auto& rh : rightHits) {
@@ -1042,17 +1070,17 @@ namespace rapmap {
                                            rightTxps.begin(), rightTxps.end());
             if (nonNull) {
               // mapping types
-              // r1 -> lh : fwd, r2 -> rh : fwd = 3
-              // r1 -> lh : fwd, r2 -> rh : rc  = 2
-              // r1 -> lh : rc , r2 -> rh : fwd = 1
-              // r1 -> lh : rc , r2 -> rh : rc = 0
+              // r1 -> lh : rc,   r2 -> rh : rc   = 3
+              // r1 -> lh : rc,   r2 -> rh : fwd  = 2
+              // r1 -> lh : fwd , r2 -> rh : rc   = 1
+              // r1 -> lh : fwd , r2 -> rh : fwd  = 0
 
-              // r2 -> lh : fwd, r1 -> rh : fwd = 7
-              // r2 -> lh : fwd, r1 -> rh : rc  = 6
-              // r2 -> lh : rc , r1 -> rh : fwd = 5
-              // r2 -> lh : rc , r1 -> rh : rc = 4
-              uint8_t mappingType = lh.fwd ? 2 : 0;
-              mappingType += rh.fwd ? 1 : 0;
+              // r2 -> lh : rc,   r1 -> rh : rc   = 7
+              // r2 -> lh : rc,   r1 -> rh : fwd  = 6
+              // r2 -> lh : fwd , r1 -> rh : rc   = 5
+              // r2 -> lh : fwd , r1 -> rh : fwd  = 4
+              uint8_t mappingType = lh.fwd ? 0 : 1;
+              mappingType += rh.fwd ? 0 : 2;
               if (lh.tid > rh.tid) { mappingType += 4; }
               auto smallerSegID = (lh.tid < rh.tid) ? lh.tid : rh.tid;
               auto largerSegID  = (lh.tid < rh.tid) ? rh.tid : lh.tid;
@@ -1061,6 +1089,7 @@ namespace rapmap {
             }
           }
         }
+
         return nhits;
       }
 

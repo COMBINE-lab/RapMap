@@ -139,6 +139,8 @@ void processReadsSingleSA(single_parser * parser,
                           MappingOpts* mopts) {
     using OffsetT = typename RapMapIndexT::IndexType;
 
+    bool isSegmentIndex = rmi.isSegmentIndex();
+    SegmentMappingInfo* smap = isSegmentIndex ? rmi.segInfo.get() : nullptr;
     SACollector<RapMapIndexT> hitCollector(&rmi);
     if (mopts->sensitive) {
         hitCollector.disableNIP();
@@ -184,7 +186,15 @@ void processReadsSingleSA(single_parser * parser,
             auto numHits = hits.size();
             hctr.totHits += numHits;
 
-	    if (hits.size() > 0 and !mopts->noOutput and hits.size() <= mopts->maxNumHits) {
+            if (isSegmentIndex) {
+                for(auto& h : hits) {
+                  // mapping types
+                  // read -> fwd : 0
+                  // read -> rc  : 2
+                  uint8_t mappingType = h.fwd ? 0 : 2;
+                  smap->addHit(h.tid, h.tid, mappingType);
+                }
+            } else if(hits.size() > 0 and !mopts->noOutput and hits.size() <= mopts->maxNumHits) {
                 /*
                 std::sort(hits.begin(), hits.end(),
                             [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
@@ -219,7 +229,7 @@ void processReadsSingleSA(single_parser * parser,
         } // for all reads in this job
 
         // DUMP OUTPUT
-        if (!mopts->noOutput) {
+        if (!isSegmentIndex and !mopts->noOutput) {
             std::string outStr(sstream.str());
             // Get rid of last newline
             if (!outStr.empty()) {
@@ -318,9 +328,11 @@ void processReadsPairSA(paired_parser* parser,
                                                      rightHCInfo, rightHits);
            if (isSegmentIndex) {
              auto nh = rapmap::utils::mergeLeftRightSegments(
+                                                             lh, rh,
                                                leftHits, rightHits,
                                                readLen, mopts->maxNumHits, tooManyHits, hctr, rmi.segInfo.get());
              hctr.totHits += nh;
+             hctr.peHits += nh;
            } else {
              if (mopts->fuzzy) {
                rapmap::utils::mergeLeftRightHitsFuzzy(
@@ -518,7 +530,9 @@ bool mapReads(RapMapIndexT& rmi,
       spawnProcessReadsThreads(nthread, singleParserPtr.get(), rmi, iomutex,
                                outLog, hctrs, mopts);
       singleParserPtr->stop();
-
+      if (!mopts->noOutput and rmi.isSegmentIndex()) {
+        rmi.segInfo->writeSegmentOutput(mopts->outname, rmi.txpNames);
+      }
     }
     if (!mopts->quiet) { std::cerr << "\n\n"; }
 
