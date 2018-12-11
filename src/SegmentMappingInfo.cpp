@@ -128,7 +128,7 @@ bool SegmentMappingInfo::loadFromFile(const std::string& fname,
   log->info("Total txps {} for {} segments.", txpNames_.size(), txpListRanges_.size());
   log->info("Total txps list length = {}", txpList_.size());
 
-
+  /*
   siIdx = 0;
   for (auto p : txpListRanges_) {
     std::stringstream s;
@@ -141,6 +141,7 @@ bool SegmentMappingInfo::loadFromFile(const std::string& fname,
     log->info(s.str());
     siIdx++;
   }
+  */
 
 
   ifile.close();
