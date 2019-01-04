@@ -82,7 +82,7 @@ namespace rapmap {
     public:
       bool consistentHits{false};
       bool doChaining{false};
-      int32_t maxSlack{0};
+      float consensusFraction{1.0};
       bool considerMultiPos{false};
     };
 

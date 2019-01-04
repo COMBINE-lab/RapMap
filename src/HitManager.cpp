@@ -558,6 +558,7 @@ namespace rapmap {
             auto& SA = rmi.SA;
             //auto& txpIDs = rmi.positionIDs;
             auto& txpStarts = rmi.txpOffsets;
+            bool nonStrictIntersection = maxSlack > 0;
 
             // Walk through every hit in the new interval 'h'
             for (OffsetT i = h.begin; i != h.end; ++i) {
@@ -574,7 +575,7 @@ namespace rapmap {
 
               // If we found this transcript
               // Add this position to the list
-              if (slack <= maxSlack) {
+              if (nonStrictIntersection or (slack <= maxSlack)) {
                 auto globalPos = SA[i];
                 auto localPos = globalPos - txpStarts[txpID];
                 // We already have records for this transcript
@@ -689,7 +690,7 @@ namespace rapmap {
                 SAIntervalVector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi,
                 size_t readLen,
-                int32_t maxSlack, // The number of intervals a transcript is allowed to miss and still be considered a valid mapping
+                float consensusFraction, // The fraction of intervals a transcript must appear in to still be considered a valid mapping
                 bool strictFilter) {
           using OffsetT = typename RapMapIndexT::IndexType;
           // Each inHit is a SAIntervalHit structure that contains
@@ -707,6 +708,24 @@ namespace rapmap {
             std::cerr << "intersectHitsSA() called with < 2 hits "
               " hits; this shouldn't happen\n";
             return outHits;
+          }
+
+          int32_t sInHitsSize = static_cast<int32_t>(inHits.size());
+          float requiredFrac = sInHitsSize * consensusFraction;
+          // The number of SA intervals a target must appear in to generate a valid mapping
+          int32_t requiredNumHits = sInHitsSize;
+          // The maximum slack (maximum number of SA intervals a target can miss and still generate
+          // a valid mapping).
+          int32_t maxSlack = 0;
+
+          // If the consensusFraction is less than one, then we will allow some slack.
+          // We compute the integer number of required intervals (and hence the maximum allowable slack)
+          // in this case below.
+          if(consensusFraction < 1.0) {
+            // always require at least one hit
+            requiredNumHits = std::max(static_cast<int32_t>(1), static_cast<int32_t>(std::floor(requiredFrac)));
+            // the maximum slack is simply the number of intervals minus the required num hits
+            maxSlack = sInHitsSize - requiredNumHits;
           }
 
           auto& SA = rmi.SA;
@@ -746,15 +765,27 @@ namespace rapmap {
             }
           }
 
-          int64_t sInHitsSize = inHits.size();
-          size_t requiredNumHits = (maxSlack < sInHitsSize) ? (sInHitsSize - maxSlack) : 1;
+          size_t numActive{0};
           // Mark as active any transcripts with the required number of hits.
           for (auto it = outHits.begin(); it != outHits.end(); ++it) {
-            bool enoughHits = (it->second.numActive >= requiredNumHits);
-            it->second.active = (strictFilter) ? 
+            int32_t intervalsForHit = it->second.numActive;
+            //maxNumIntervals = (intervalsForHit > maxNumIntervals) ? intervalsForHit : maxNumIntervals;
+            bool enoughHits = (intervalsForHit >= requiredNumHits);
+            bool setActive = (strictFilter) ?
               (enoughHits and it->second.checkConsistent(readLen, requiredNumHits)) :
               (enoughHits);
+            it->second.active = setActive;
+            numActive += setActive ? 1 : 0;
           }
+
+          // If we had no valid hits according to the interval criteria, then,
+          // unless we are using a strict intersection, allow all hits to be potentially considered.
+          if (maxSlack > 0 and numActive == 0) {
+            for (auto it = outHits.begin(); it != outHits.end(); ++it) {
+              it->second.active = true;
+            }
+          }
+
           return outHits;
         }
 
@@ -776,9 +807,9 @@ namespace rapmap {
         auto consistentHits = mc.consistentHits;
         //auto doChaining = mc.doChaining;
         bool considerMultiPos = mc.considerMultiPos;
+        float consensusFraction = mc.consensusFraction;
 
         auto fwdHitsStart = hits.size();
-        int32_t maxSlack = mc.maxSlack;
 
         // If the hit we have for a read is contained within a single suffix array interval
         // (i.e. there is only one MMP), then this function is called to collect the relevant
@@ -877,7 +908,7 @@ namespace rapmap {
         // If we had > 1 forward hit
         if (fwdSAInts.size() > 1) {
           auto processedHits = rapmap::hit_manager::intersectSAHits(
-                                                                    fwdSAInts, rmi, readLen, maxSlack, consistentHits);
+                                                                    fwdSAInts, rmi, readLen, consensusFraction, consistentHits);
           rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
                                                    hits, mateStatus, mc);
         } else if (fwdSAInts.size() == 1) { // only 1 hit!
@@ -889,7 +920,7 @@ namespace rapmap {
         // If we had > 1 rc hit
         if (rcSAInts.size() > 1) {
           auto processedHits = rapmap::hit_manager::intersectSAHits(
-                                                                    rcSAInts, rmi, readLen, maxSlack, consistentHits);
+                                                                    rcSAInts, rmi, readLen, consensusFraction, consistentHits);
           rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
                                                    hits, mateStatus, mc);
         } else if (rcSAInts.size() == 1) { // only 1 hit!
@@ -946,11 +977,11 @@ namespace rapmap {
 
         template
         SAHitMap intersectSAHits<SAIndex32BitDense>(SAIntervalVector<SAIntervalHit<int32_t>>& inHits,
-                                                    SAIndex32BitDense& rmi, size_t readLen, int32_t maxSlack, bool strictFilter);
+                                                    SAIndex32BitDense& rmi, size_t readLen, float consensusFraction, bool strictFilter);
 
         template
         SAHitMap intersectSAHits<SAIndex64BitDense>(SAIntervalVector<SAIntervalHit<int64_t>>& inHits,
-                                                    SAIndex64BitDense& rmi, size_t readLen, int32_t maxSlack, bool strictFilter);
+                                                    SAIndex64BitDense& rmi, size_t readLen, float consensusFraction, bool strictFilter);
 
         template
         void intersectSAIntervalWithOutput<SAIndex32BitPerfect>(SAIntervalHit<int32_t>& h,
@@ -968,11 +999,11 @@ namespace rapmap {
 
         template
         SAHitMap intersectSAHits<SAIndex32BitPerfect>(SAIntervalVector<SAIntervalHit<int32_t>>& inHits,
-                                                      SAIndex32BitPerfect& rmi, size_t readLen, int32_t maxSlack, bool strictFilter);
+                                                      SAIndex32BitPerfect& rmi, size_t readLen, float consensusFraction, bool strictFilter);
 
         template
         SAHitMap intersectSAHits<SAIndex64BitPerfect>(SAIntervalVector<SAIntervalHit<int64_t>>& inHits,
-                                                      SAIndex64BitPerfect& rmi, size_t readLen, int32_t maxSlack, bool strictFilter);
+                                                      SAIndex64BitPerfect& rmi, size_t readLen, float consensusFraction, bool strictFilter);
       template
       void hitsToMappingsSimple<SAIndex32BitDense>(SAIndex32BitDense& rmi,
                                                    rapmap::utils::MappingConfig& mc,
