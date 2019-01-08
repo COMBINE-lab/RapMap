@@ -493,6 +493,7 @@ namespace rapmap {
         // If one or both of the reads is a complete match (no mismatch, indels), say what kind.
         FragmentChainStatus chainStatus;
         double chainScore_{std::numeric_limits<double>::lowest()};
+      //int32_t queryOffset{-1};
       //MateStatus completeMatchType{MateStatus::NOTHING};
     };
 
@@ -961,7 +962,11 @@ namespace rapmap {
                                 }
                               } // end find best pos
 
+                              //auto ldist = std::distance(leftIt->allPositions.begin(), bestLeftPosIt);
+                              //auto rdist = std::distance(rightIt->allPositions.begin(), bestRightPosIt);
 
+                              //auto lSeedOffset = leftIt->allSeeds[ldist];
+                              //auto rSeedOffset = rightIt->allSeeds[rdist];
 
                               // If we consider only a single position per transcript
                                 int32_t startRead1 = std::max(*bestLeftPosIt, signedZero);

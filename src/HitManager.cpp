@@ -830,6 +830,7 @@ namespace rapmap {
               int32_t hitPos = pos - saIntervalHit.queryPos;
               outHits.emplace_back(txpID, hitPos, isFw, readLen);
               auto& lastHit = outHits.back();
+              //lastHit.queryOffset = saIntervalHit.queryPos;
               lastHit.mateStatus = mateStatus;
               lastHit.allPositions.push_back(hitPos);
               lastHit.hasMultiPos = false;
