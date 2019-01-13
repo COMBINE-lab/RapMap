@@ -915,6 +915,7 @@ namespace rapmap {
                                 // positions that produced it.
                                 auto updateBestGap = [&bestGap, &bestLeftPosIt, &bestRightPosIt, leftIt, rightIt, signedZero](
                                                                                                  int32_t startRead1,
+                                                                                                 bool read1Fwd,
                                                                                                  chobo::small_vector<int32_t>::iterator leftPosIt,
                                                                                                  chobo::small_vector<int32_t>::iterator rightPosIt
                                                                                                  ) {
@@ -923,9 +924,26 @@ namespace rapmap {
                                                        // The gap between the end of the first read and the start of the
                                                        // second (we take the absolute value so it is always non-negative,
                                                        // even if they overlap).
+
+                                                       // if read 1 is on the forward strand, we expect the
+                                                       // other read to be "downstream" of it.
+                                                       constexpr int32_t maxGap = std::numeric_limits<int32_t>::max();
+                                                       int32_t gap = maxGap;
+                                                       if (read1Fwd) {
+                                                         gap = (startRead2 > startRead1) ?
+                                                           std::abs(startRead2 - (startRead1 + static_cast<int32_t>(leftIt->readLen))) :
+                                                           maxGap;
+                                                       } else {
+                                                         // otherwise we expect the other read to be upstream.
+                                                         gap = (startRead2 < startRead1) ?
+                                                         std::abs(startRead1 - (startRead2 + static_cast<int32_t>(rightIt->readLen))) :
+                                                         maxGap;
+                                                       }
+                                                       /*
                                                        int32_t gap = (startRead1 < startRead2) ?
                                                          std::abs(startRead2 - (startRead1 + static_cast<int32_t>(leftIt->readLen))) :
                                                          std::abs(startRead1 - (startRead2 + static_cast<int32_t>(rightIt->readLen)));
+                                                       */
                                                        if (gap < bestGap) {
                                                          bestGap = gap;
                                                          bestLeftPosIt = leftPosIt;
@@ -941,23 +959,23 @@ namespace rapmap {
                                 for (auto pIt = leftIt->allPositions.begin(); pIt != leftIt->allPositions.end(); ++pIt) {
                                   auto p1 = *pIt;
                                   int32_t startRead1 = std::max(p1, signedZero);
-
+                                  bool read1Fwd = leftIt->fwd;
                                   // find the closest position for the right read
                                   auto lbIt = std::lower_bound(rightBeg, rightEnd, p1);
 
                                   // p1 is greater than every position where the right read can start
                                   if (lbIt == rightEnd) {
                                     auto closestIt = lbIt - 1;
-                                    updateBestGap(startRead1, pIt, closestIt);
+                                    updateBestGap(startRead1, read1Fwd, pIt, closestIt);
                                   } else if (lbIt == rightBeg) {
                                     // every position where the right read can start is greater than p1
-                                    updateBestGap(startRead1, pIt, lbIt);
+                                    updateBestGap(startRead1, read1Fwd, pIt, lbIt);
                                   } else {
                                     // check the current element
-                                    updateBestGap(startRead1, pIt, lbIt);
+                                    updateBestGap(startRead1, read1Fwd, pIt, lbIt);
                                     // and the previous
                                     auto prevIt = lbIt - 1;
-                                    updateBestGap(startRead1, pIt, prevIt);
+                                    updateBestGap(startRead1, read1Fwd, pIt, prevIt);
                                   }
                                 }
                               } // end find best pos
