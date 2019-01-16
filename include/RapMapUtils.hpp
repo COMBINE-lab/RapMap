@@ -35,6 +35,7 @@
 #include "spdlog/fmt/fmt.h"
 #include "chobo/small_vector.hpp"
 #include "RapMapConfig.hpp"
+#include "nonstd/optional.hpp"
 
 #ifdef RAPMAP_SALMON_SUPPORT
 #include "LibraryFormat.hpp"
@@ -464,6 +465,7 @@ namespace rapmap {
 #endif // RAPMAP_SALMON_SUPPORT
        bool hasMultiPos{false};
        chobo::small_vector<int32_t> allPositions;
+       chobo::small_vector<int32_t> oppositeStrandPositions;
 
         // Only 1 since the mate must have the same tid
         // we won't call *chimeric* alignments here.
@@ -844,7 +846,16 @@ namespace rapmap {
           return MateStatus::PAIRED_END_PAIRED;
         }
 
-        inline void mergeLeftRightHitsFuzzy(
+      enum class MergeResult : uint8_t {
+        HAD_NONE,
+        HAD_EMPTY_INTERSECTION,
+        HAD_CONCORDANT,
+        HAD_DISCORDANT,
+        HAD_ONLY_LEFT,
+        HAD_ONLY_RIGHT,
+      };
+
+        inline MergeResult mergeLeftRightHitsFuzzy(
                 bool leftMatches,
                 bool rightMatches,
                 std::vector<QuasiAlignment>& leftHits,
@@ -856,6 +867,9 @@ namespace rapmap {
                 bool& tooManyHits,
                 HitCounters& hctr) {
 
+          using rapmap::utils::MergeResult;
+          MergeResult mergeRes{MergeResult::HAD_NONE};
+
           bool considerMultiPos = mc.considerMultiPos;
             if (leftHits.empty()) {
                 if (!leftMatches) {
@@ -864,6 +878,7 @@ namespace rapmap {
                                 std::make_move_iterator(rightHits.begin()),
                                 std::make_move_iterator(rightHits.end()));
                         hctr.seHits += rightHits.size();
+                        mergeRes = MergeResult::HAD_ONLY_RIGHT;
                     }
                 }
             } else if (rightHits.empty()) {
@@ -873,10 +888,12 @@ namespace rapmap {
                                 std::make_move_iterator(leftHits.begin()),
                                 std::make_move_iterator(leftHits.end()));
                         hctr.seHits += leftHits.size();
+                        mergeRes = MergeResult::HAD_ONLY_LEFT;
                     }
                 }
             } else {
                 constexpr const int32_t signedZero{0};
+                uint32_t sameTxpCount{0};
                 auto leftIt = leftHits.begin();
                 auto leftEnd = leftHits.end();
                 auto leftLen = std::distance(leftIt, leftEnd);
@@ -894,14 +911,140 @@ namespace rapmap {
                             ++leftIt;
                         } else {
                             if (!(rightTxp < leftTxp)) {
+                              ++sameTxpCount;
 
+                              // returned tuple is fwPos, rcPos, gapLength
+                              auto findBestHitFWRC = [signedZero, considerMultiPos](
+                                                                       chobo::small_vector<int32_t>& fwdHits,
+                                                                       chobo::small_vector<int32_t>& rcHits,
+                                                                       int32_t fwdReadLen) ->
+                                nonstd::optional<std::tuple<int32_t, int32_t, int32_t>> {
+
+                                // If either of the position vectors is empty, there can be no valid
+                                // mapping.
+                                if (fwdHits.empty() or rcHits.empty()) {
+                                  return nonstd::nullopt;
+                                }
+
+                                // Remember the pair of positions that gives us the best gap
+                                // here, a gap of 0 is "optimal".
+                                int32_t bestGap = std::numeric_limits<int32_t>::max();
+                                auto bestFWPosIt = fwdHits.begin();
+                                auto bestRCPosIt = rcHits.begin();
+
+                                // NOTE: Do we need an explicit fast path here?
+                                // if (considerMultiPos and (fwdHits.size() > 1 or rcHits.size() > 1))
+
+                                // Given a left position and a right position, if they produce a better
+                                // gap than the current best, then update the best gap and remember these
+                                // positions that produced it.
+                                auto updateBestGap = [&bestGap, &bestFWPosIt, &bestRCPosIt,
+                                                      signedZero, fwdReadLen](
+                                                                                   chobo::small_vector<int32_t>::iterator fwdPosIt,
+                                                                                   chobo::small_vector<int32_t>::iterator rcPosIt
+                                                                                   ) {
+                                  // The gap between the end of the first read and the start of the
+                                  // second (we take the absolute value so it is always non-negative,
+                                  // even if they overlap).
+
+                                  // we expect the rc read to be "downstream" of the fwd read.
+                                  constexpr int32_t maxGap = std::numeric_limits<int32_t>::max();
+
+                                  int32_t gap = ((*rcPosIt) >= (*fwdPosIt)) ?
+                                  std::abs((*rcPosIt) - ((*fwdPosIt) + static_cast<int32_t>(fwdReadLen))) :
+                                  maxGap;
+
+                                  // if this is the best gap so far
+                                  if (gap < bestGap) {
+                                    bestGap = gap;
+                                    bestFWPosIt = fwdPosIt;
+                                    bestRCPosIt = rcPosIt;
+                                  }
+                                };
+
+
+                                auto rcBeg = rcHits.begin(); auto rcEnd = rcHits.end();
+
+                                // for every position the forward read could start
+                                for (auto pIt = fwdHits.begin(); pIt != fwdHits.end(); ++pIt) {
+                                  auto p1 = *pIt;
+
+                                  // find the closest position for the rc read
+                                  auto lbIt = std::lower_bound(rcBeg, rcEnd, p1);
+
+                                  // p1 is greater than every position where the rc read can start
+                                  if (lbIt == rcEnd) {
+                                    auto closestIt = lbIt - 1;
+                                    updateBestGap(pIt, closestIt);
+                                  } else if (lbIt == rcBeg) {
+                                    // every position where the rc read can start is greater than p1
+                                    updateBestGap(pIt, lbIt);
+                                  } else {
+                                    // check the current element
+                                    updateBestGap(pIt, lbIt);
+                                    // and the previous
+                                    auto prevIt = lbIt - 1;
+                                    updateBestGap(pIt, prevIt);
+                                  }
+                                }
+
+                                // if we had a valid gap, return the best gap
+                                return (bestGap == std::numeric_limits<int32_t>::max()) ? nonstd::nullopt :
+                                nonstd::optional<std::tuple<int32_t, int32_t, int32_t>>(std::make_tuple(*bestFWPosIt, *bestRCPosIt, bestGap));
+                              };
+
+
+                              // valid pairings have hits on opposite strands
+                              auto& leftFwdHits = (leftIt->fwd) ? leftIt->allPositions : leftIt->oppositeStrandPositions;
+                              auto& leftRCHits  = (leftIt->fwd) ? leftIt->oppositeStrandPositions : leftIt->allPositions;
+
+                              auto& rightFwdHits = (rightIt->fwd) ? rightIt->allPositions : rightIt->oppositeStrandPositions;
+                              auto& rightRCHits  = (rightIt->fwd) ? rightIt->oppositeStrandPositions : rightIt->allPositions;
+
+                              auto bestFWRC = findBestHitFWRC(leftFwdHits, rightRCHits, static_cast<int32_t>(leftIt->readLen));
+                              auto bestRCFW = findBestHitFWRC(rightFwdHits, leftRCHits, static_cast<int32_t>(rightIt->readLen));
+
+                              bool foundValidHit{false};
+                              bool leftFwd{false};
+                              bool rightFwd{false};
+                              int32_t bestGap{std::numeric_limits<int32_t>::max()};
+                              int32_t leftPos = -1, rightPos = -1;
+                              if (bestFWRC){
+                                std::tie(leftPos, rightPos, bestGap) = *bestFWRC;
+                                leftFwd = true; rightFwd = false;
+                                foundValidHit = true;
+                              }
+                              if (bestRCFW) {
+                                int32_t fwPos, rcPos, bestGapRCFW;
+                                std::tie(fwPos, rcPos, bestGapRCFW) = *bestRCFW;
+                                if (bestGapRCFW < bestGap) {
+                                  leftPos = rcPos;
+                                  rightPos = fwPos;
+                                  leftFwd = false; rightFwd = true;
+                                }
+                                foundValidHit = true;
+                              }
+
+
+                              /*
                               // we start off using the first (or only) positions for the left and right read
                               auto bestLeftPosIt = leftIt->allPositions.begin();
                               auto bestRightPosIt = rightIt->allPositions.begin();
+                              bool leftFwd = leftIt->fwd;
+                              bool rightFwd = rightIt->fwd;
+                              constexpr const int32_t maxGap = std::numeric_limits<int32_t>::max();
+                              int32_t bestGap = maxGap-1;
+                              // if (leftFwd != rightFwd) {
+                              //   if (leftFwd) {
+                              //     bestGap = ((*bestLeftPosIt) <= (*bestRightPosIt) ? (maxGap-1) : maxGap);
+                              //   } else {
+                              //     bestGap = ((*bestRightPosIt) <= (*bestLeftPosIt) ? (maxGap-1) : maxGap);
+                              //   }
+                              // }
 
                               // if we are considering multiple positions, and either of these reads appears in
                               // more than one place, then find the best (smallest gap).
-                              if (considerMultiPos and (leftIt->hasMultiPos or rightIt->hasMultiPos)) {
+                              if (considerMultiPos and (leftFwd != rightFwd) and (leftIt->hasMultiPos or rightIt->hasMultiPos)) {
                                 // NOTE: There is certainly a better way to do this, but current
                                 // algorithm is O(n1 log n2) where
                                 // n1 = leftIt->allPositions.size()
@@ -909,11 +1052,11 @@ namespace rapmap {
 
                                 // Remember the pair of positions that gives us the best gap
                                 // here, a gap of 0 is "optimal".
-                                int32_t bestGap = std::numeric_limits<int32_t>::max();
+                                bestGap = std::numeric_limits<int32_t>::max();
                                 // Given a left position and a right position, if they produce a better
                                 // gap than the current best, then update the best gap and remember these
                                 // positions that produced it.
-                                auto updateBestGap = [&bestGap, &bestLeftPosIt, &bestRightPosIt, leftIt, rightIt, signedZero](
+                                auto updateBestGap = [&bestGap, &bestLeftPosIt, &bestRightPosIt, leftIt, rightIt, signedZero, maxGap](
                                                                                                  int32_t startRead1,
                                                                                                  bool read1Fwd,
                                                                                                  chobo::small_vector<int32_t>::iterator leftPosIt,
@@ -927,23 +1070,17 @@ namespace rapmap {
 
                                                        // if read 1 is on the forward strand, we expect the
                                                        // other read to be "downstream" of it.
-                                                       constexpr int32_t maxGap = std::numeric_limits<int32_t>::max();
                                                        int32_t gap = maxGap;
                                                        if (read1Fwd) {
-                                                         gap = (startRead2 > startRead1) ?
+                                                         gap = (startRead2 >= startRead1) ?
                                                            std::abs(startRead2 - (startRead1 + static_cast<int32_t>(leftIt->readLen))) :
                                                            maxGap;
                                                        } else {
                                                          // otherwise we expect the other read to be upstream.
-                                                         gap = (startRead2 < startRead1) ?
+                                                         gap = (startRead2 <= startRead1) ?
                                                          std::abs(startRead1 - (startRead2 + static_cast<int32_t>(rightIt->readLen))) :
                                                          maxGap;
                                                        }
-                                                       /*
-                                                       int32_t gap = (startRead1 < startRead2) ?
-                                                         std::abs(startRead2 - (startRead1 + static_cast<int32_t>(leftIt->readLen))) :
-                                                         std::abs(startRead1 - (startRead2 + static_cast<int32_t>(rightIt->readLen)));
-                                                       */
                                                        if (gap < bestGap) {
                                                          bestGap = gap;
                                                          bestLeftPosIt = leftPosIt;
@@ -979,43 +1116,55 @@ namespace rapmap {
                                   }
                                 }
                               } // end find best pos
+                              bool foundValidHit = bestGap < std::numeric_limits<int32_t>::max();
 
-                              //auto ldist = std::distance(leftIt->allPositions.begin(), bestLeftPosIt);
-                              //auto rdist = std::distance(rightIt->allPositions.begin(), bestRightPosIt);
+                              int32_t leftPos = *bestLeftPosIt;
+                              int32_t rightPos = *bestRightPosIt;
+                              */
 
-                              //auto lSeedOffset = leftIt->allSeeds[ldist];
-                              //auto rSeedOffset = rightIt->allSeeds[rdist];
 
-                              // If we consider only a single position per transcript
-                                int32_t startRead1 = std::max(*bestLeftPosIt, signedZero);
-                                int32_t startRead2 = std::max(*bestRightPosIt, signedZero);
+
+                              if (foundValidHit) {
+                                // If we consider only a single position per transcript
+                                int32_t startRead1 = std::max(leftPos, signedZero);
+                                int32_t startRead2 = std::max(rightPos, signedZero);
                                 bool read1First{(startRead1 < startRead2)};
                                 int32_t fragStartPos = read1First ? startRead1 : startRead2;
                                 int32_t fragEndPos = read1First ?
-                                    (startRead2 + rightIt->readLen) : (startRead1 + leftIt->readLen);
+                                  (startRead2 + rightIt->readLen) : (startRead1 + leftIt->readLen);
                                 uint32_t fragLen = fragEndPos - fragStartPos;
                                 jointHits.emplace_back(leftTxp,
-                                        *bestLeftPosIt,
-                                        leftIt->fwd,
-                                        leftIt->readLen,
-                                        fragLen, true);
+                                                       leftPos,
+                                                       leftFwd,
+                                                       leftIt->readLen,
+                                                       fragLen, true);
                                 // Fill in the mate info
                                 auto& qaln = jointHits.back();
                                 qaln.mateLen = rightIt->readLen;
-                                qaln.matePos = *bestRightPosIt;
-                                qaln.mateIsFwd = rightIt->fwd;
+                                qaln.matePos = rightPos;
+                                qaln.mateIsFwd = rightFwd;
                                 jointHits.back().mateStatus = MateStatus::PAIRED_END_PAIRED;
                                 jointHits.back().chainStatus = FragmentChainStatus(leftIt->chainStatus.getLeft(), rightIt->chainStatus.getRight());
-                                //jointHits.back().completeMatchType = mergeMatchType(leftIt->completeMatchType, rightIt->completeMatchType);
                                 ++numHits;
+                                mergeRes = MergeResult::HAD_CONCORDANT;
                                 if (numHits > maxNumHits) { tooManyHits = true; break; }
-                                ++leftIt;
-                            }
+                              }
+                              ++leftIt;
+
+                            } // END if (!(rightTxp < leftTxp))
+
                             ++rightIt;
                         }
                     }
+                    //if (triedHit and jointHits.empty()) { tooManyHits = true;}
                 }
                 if (tooManyHits) { jointHits.clear(); ++hctr.tooManyHits; }
+
+                if (mergeRes == MergeResult::HAD_NONE) {
+                  // If we had hits on the same transcript, but our status isn't concordant,
+                  // then we had discordant hits, otherwise, we had a null intersection.
+                  mergeRes = (sameTxpCount > 0) ? MergeResult::HAD_DISCORDANT : MergeResult::HAD_EMPTY_INTERSECTION;
+                }
             }
 
             // If we had proper paired hits
@@ -1023,6 +1172,8 @@ namespace rapmap {
                 hctr.peHits += jointHits.size();
                 //orphanStatus = 0;
             }
+
+            return mergeRes;
         }
 
         inline void mergeLeftRightHits(

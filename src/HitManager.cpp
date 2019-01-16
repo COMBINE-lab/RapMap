@@ -940,14 +940,42 @@ namespace rapmap {
                                // comes *before* the one with the worse chain score.
                                return (a.tid == b.tid) ? a.chainScore() > b.chainScore() : a.tid < b.tid;
                              });
+
+          ////
+          auto mergeOrientationUnique = [](decltype(hits.begin()) first, decltype(hits.end()) last) -> decltype(hits.end()) {
+            if (first == last)
+              return last;
+
+            decltype(first) result = first;
+            while (++first != last) {
+              bool distinct = !(result->tid == first->tid);
+              // If we just completed a run of transcript-identical hits
+              // then move the new transcript's first hit into the next
+              // position.
+              if (distinct && ++result != first) {
+                *result = std::move(*first);
+              } else if(!distinct) {
+                // We copy the hits from the second hit to the opposite strand
+                result->oppositeStrandPositions = first->allPositions;
+              }
+            }
+
+            // NOTE: positions within transcripts should already be sorted, so we don't need
+            // to do it again here.
+            return ++result;
+          };
+          auto newEnd = mergeOrientationUnique(hits.begin() + fwdHitsStart, hits.begin() + rcHitsEnd);
+          ////
+
+
           // And get rid of duplicate transcript IDs
           // TODO: We generally don't want to get rid of duplicate transcripts if we are allowing multiple
           // positions, since we may want to consider both fw and rev on the same transcript.
-          auto newEnd = std::unique(
-                                    hits.begin() + fwdHitsStart, hits.begin() + rcHitsEnd,
-                                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                                      return a.tid == b.tid;
-                                    });
+          //auto newEnd = std::unique(
+          //                          hits.begin() + fwdHitsStart, hits.begin() + rcHitsEnd,
+          //                          [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+          //                            return a.tid == b.tid;
+          //                          });
           hits.resize(std::distance(hits.begin(), newEnd));
         }
       }
