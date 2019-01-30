@@ -80,7 +80,7 @@
 #include "IndexHeader.hpp"
 #include "SASearcher.hpp"
 #include "SACollector.hpp"
-
+#include "SelectiveAlignmentUtils.hpp"
 //#define __TRACK_CORRECT__
 
 using paired_parser = fastx_parser::FastxParser<fastx_parser::ReadPair>;

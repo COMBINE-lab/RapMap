@@ -432,36 +432,37 @@ namespace rapmap {
       inline double chainScore() const {
         return chainScore_;
       }
-        // Some convenience functions to allow salmon interop
+
+      inline uint32_t transcriptID() const { return tid; }
+      inline double score() const { return score_; }
+      inline void score(double scoreIn) { score_ = scoreIn; }
+      inline int32_t alnScore() const { return alnScore_; }
+      inline void alnScore(int32_t alnScoreIn) { alnScore_ = alnScoreIn; }
+      inline uint32_t fragLength() const { return fragLen; }
+      inline int32_t hitPos() { return std::min(pos, matePos); }
+
+// Some convenience functions to allow salmon interop
 #ifdef RAPMAP_SALMON_SUPPORT
-        inline uint32_t transcriptID() const { return tid; }
-        inline double score() const { return score_; }
-        inline void score(double scoreIn) { score_ = scoreIn; }
-        inline int32_t alnScore() const { return alnScore_; }
-        inline void alnScore(int32_t alnScoreIn) { alnScore_ = alnScoreIn; }
-        inline uint32_t fragLength() const { return fragLen; }
-
-        inline uint32_t fragLengthPedantic(uint32_t txpLen) const {
-            if (mateStatus != rapmap::utils::MateStatus::PAIRED_END_PAIRED
-                or fwd == mateIsFwd) {
-                return 0;
-            }
-            int32_t p1 = fwd ? pos : matePos;
-            int32_t sTxpLen = static_cast<int32_t>(txpLen);
-            p1 = (p1 < 0) ? 0 : p1;
-            p1 = (p1 > sTxpLen) ? sTxpLen : p1;
-            int32_t p2 = fwd ? matePos + mateLen : pos + readLen;
-            p2 = (p2 < 0) ? 0 : p2;
-            p2 = (p2 > sTxpLen) ? sTxpLen : p2;
-
-            return (p1 > p2) ? p1 - p2 : p2 - p1;
+      inline uint32_t fragLengthPedantic(uint32_t txpLen) const {
+        if (mateStatus != rapmap::utils::MateStatus::PAIRED_END_PAIRED
+            or fwd == mateIsFwd) {
+          return 0;
         }
+        int32_t p1 = fwd ? pos : matePos;
+        int32_t sTxpLen = static_cast<int32_t>(txpLen);
+        p1 = (p1 < 0) ? 0 : p1;
+        p1 = (p1 > sTxpLen) ? sTxpLen : p1;
+        int32_t p2 = fwd ? matePos + mateLen : pos + readLen;
+        p2 = (p2 < 0) ? 0 : p2;
+        p2 = (p2 > sTxpLen) ? sTxpLen : p2;
 
-        inline int32_t hitPos() { return std::min(pos, matePos); }
-        double logProb{HUGE_VAL};
-        double logBias{HUGE_VAL};
-        inline LibraryFormat libFormat() { return format; }
-        LibraryFormat format;
+        return (p1 > p2) ? p1 - p2 : p2 - p1;
+      }
+
+      double logProb{HUGE_VAL};
+      double logBias{HUGE_VAL};
+      inline LibraryFormat libFormat() { return format; }
+      LibraryFormat format;
 #endif // RAPMAP_SALMON_SUPPORT
        bool hasMultiPos{false};
        chobo::small_vector<int32_t> allPositions;

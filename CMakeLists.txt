@@ -1,4 +1,17 @@
-cmake_minimum_required (VERSION 3.1)
+cmake_minimum_required(VERSION 3.9)
+
+if(DEFINED ENV{CC})
+  set(CC $ENV{CC})
+else()
+  set(CC gcc)
+endif()
+message("CC: ${CC}")
+
+set(CC_VERSION "")
+if(${CC} MATCHES ^gcc-)
+  string(REGEX REPLACE "gcc-" "" CC_VERSION ${CC})
+endif()
+message("CC version: ${CC_VERSION}")
 
 enable_testing()
 
@@ -25,6 +38,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 #    message("Enabling popcount")
 #    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DEMPHF_USE_POPCOUNT")
 #endif(SSE4_2_FOUND)
+
+include(CheckIPOSupported)
 
 if (APPLE)
 set (WARNING_IGNORE_FLAGS "-Wno-deprecated-register -Wno-unknon-pragmas -Wreturn-type -Werror=return-type")
