@@ -80,6 +80,7 @@
 #include "IndexHeader.hpp"
 #include "SASearcher.hpp"
 #include "SACollector.hpp"
+#include "ksw2pp/KSW2Aligner.hpp"
 #include "SelectiveAlignmentUtils.hpp"
 //#define __TRACK_CORRECT__
 
