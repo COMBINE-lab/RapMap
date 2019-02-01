@@ -435,6 +435,9 @@ bool mapReads(RapMapIndexT& rmi,
 	bool pairedEnd = mopts->pairedEnd;//(read1.isSet() or read2.isSet());
 	// from: http://stackoverflow.com/questions/366955/obtain-a-stdostream-either-from-stdcout-or-stdofstreamfile
 	// set either a file or cout as the output stream
+  const constexpr uint32_t buffSize{262144};
+  std::vector<char> customStreamBuffer;
+  customStreamBuffer.resize(buffSize);
 	std::streambuf* outBuf;
 	std::ofstream outFile;
   std::unique_ptr<std::ostream> outStream{nullptr};
@@ -444,10 +447,13 @@ bool mapReads(RapMapIndexT& rmi,
     if (mopts->outname == "") {
       outBuf = std::cout.rdbuf();
     } else {
-      outFile.open(mopts->outname);
       outBuf = outFile.rdbuf();
+      outFile.open(mopts->outname);
       haveOutputFile = true;
     }
+    // set the stream buffer size --- thanks for the suggestion @dnbaker!
+    outBuf->pubsetbuf(customStreamBuffer.data(), customStreamBuffer.size());
+
     // Now set the output stream to the buffer, which is
     // either std::cout, or a file.
 
