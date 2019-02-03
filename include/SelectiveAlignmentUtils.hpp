@@ -65,7 +65,7 @@ namespace selective_alignment {
       int32_t maxDistLeft = l1 / 4;
       constexpr const int32_t signedZero{0};
       int32_t lreadLen = l1;
-      int32_t rreadLen = l2;
+      //int32_t rreadLen = l2;
 
       auto recoverSingleOrphan = [&] (const QuasiAlignment& anchorHit, bool anchorIsLeft) -> bool {
         bool recovered = false;
@@ -177,7 +177,6 @@ namespace selective_alignment {
       };
 
       {
-        constexpr const int32_t signedZero{0};
         auto leftIt = leftHits.begin();
         auto leftEnd = leftHits.end();
         auto leftLen = std::distance(leftIt, leftEnd);
