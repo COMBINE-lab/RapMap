@@ -907,6 +907,11 @@ bool mapReads(RapMapIndexT& rmi,
 
 bool validateOpts(MappingOpts& mopts, spdlog::logger* log) {
   bool valid{true};
+
+  if (mopts.maxMMPExtension < 1) {
+    log->error("--maxMMPExtension must be at least 1, but {} was provided.", mopts.maxMMPExtension);
+    valid = false;
+  }
   if(mopts.selAln) {
     if (mopts.consensusSlack < 0 or mopts.consensusSlack > 1) {
       log->error("--consensusSlack must be between 0.0 and 1.0, you passed {}.", mopts.consensusSlack);
@@ -1002,6 +1007,8 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::SwitchArg hardFilter("", "hardFilter", "[only with selAln]: apply hard filter to only return best alignments for each read", false);
   TCLAP::SwitchArg mimicBT2("", "mimicBT2", "[only with selAln]: mimic Bowtie2-like default params but with --no-mixed and --no-discordant", false);
   TCLAP::SwitchArg mimicStrictBT2("", "mimicStrictBT2", "[only with selAln]: mimic strict Bowtie2-like default params (e.g. like those recommended for running RSEM)", false);
+  TCLAP::ValueArg<int32_t> maxMMPExtension("", "maxMMPExtension", "[only with selAln or with chaining]: maximum allowable MMP extension", false, 7, "positive integer > 1");
+
 
   cmd.add(index);
   cmd.add(noout);
@@ -1033,6 +1040,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(hardFilter);
   cmd.add(mimicBT2);
   cmd.add(mimicStrictBT2);
+  cmd.add(maxMMPExtension);
 
   auto consoleSink = std::make_shared<spdlog::sinks::ansicolor_stderr_sink_mt>();
   auto consoleLog = spdlog::create("stderrLog", {consoleSink});
@@ -1098,6 +1106,7 @@ int rapMapSAMap(int argc, char* argv[]) {
     mopts.quiet = quiet.getValue();
     mopts.noOrphans = noOrphans.getValue();
     mopts.noDovetail = noDovetail.getValue();
+    mopts.maxMMPExtension = maxMMPExtension.getValue();
 
     mopts.selAln = selAln.getValue();
     if ( (mimicBT2.getValue() or mimicStrictBT2.getValue()) and !mopts.selAln ) {
