@@ -36,14 +36,14 @@ int rapMapSAMap(int argc, char* argv[]);
 
 void printUsage() {
     std::string versionString = rapmap::version;
-    std::cerr << "RapMap Transcriptome Aligner v"
+    std::cerr << "rapmap v"
               << versionString << '\n';
     std::cerr << "=====================================\n";
     auto usage =
         R"(
-There are currently 2 RapMap subcommands
-    quasiindex --- builds a suffix array-based (SA) index
-    quasimap   --- map reads using the SA-based index
+There are currently 2 rapmap subcommands
+    quasiindex --- builds a quasi-mapping index on the reference
+    quasimap   --- maps reads to a quasi-mapping index
 
 Run a corresponding command "rapmap <cmd> -h" for
 more information on each of the possible RapMap
@@ -77,14 +77,14 @@ int main(int argc, char* argv[]) {
         std::exit(0);
     }
 
-    if (std::string(argv[1]) == "pseudoindex") {
-        std::cerr << "This mode not enabled in this branch\n";
-        return 1;//rapMapIndex(argc - 1, args.data());
-    } else if (std::string(argv[1]) == "quasiindex") {
+    if (std::string(argv[1]) == "-v" or
+        std::string(argv[1]) == "--version") {
+      std::cout << "rapmap " << rapmap::version << "\n";
+      std::exit(0);
+    }
+
+    if (std::string(argv[1]) == "quasiindex") {
         return rapMapSAIndex(argc - 1, args.data());
-    } else if (std::string(argv[1]) == "pseudomap") {
-        std::cerr << "This mode not enabled in this branch\n";
-        return 1;//rapMapMap(argc - 1, args.data());
     } else if (std::string(argv[1]) == "quasimap") {
         return rapMapSAMap(argc - 1, args.data());
     } else {
