@@ -11,6 +11,8 @@ set (RAPMAP_MAIN_SRCS
     stringpiece.cc
     xxhash.c
     bit_array.c
+    edlib.cpp
+    metro/metrohash64.cpp
     #RapMapIndex.cpp
     #RapMapMapper.cpp
     #RapMapIndexer.cpp
@@ -64,6 +66,48 @@ add_executable(rapmap ${RAPMAP_MAIN_SRCS})
 set (SUFFARRAY_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort.a)
 set (SUFFARRAY64_LIB ${GAT_SOURCE_DIR}/external/install/lib/libdivsufsort64.a)
 
+# build KSW2 library
+set (KSW2PP_BASIC_LIB_SRCS
+ksw2pp/kalloc.c
+ksw2pp/ksw2_extd.c
+ksw2pp/ksw2_extz.c
+ksw2pp/ksw2_gg.c
+ksw2pp/ksw2_gg2.c
+ksw2pp/ksw2_gg2_sse.c
+ksw2pp/KSW2Aligner.cpp
+)
+
+set (KSW2PP_ADVANCED_LIB_SRCS
+ksw2pp/ksw2_extd2_sse.c
+ksw2pp/ksw2_extf2_sse.c
+ksw2pp/ksw2_extz2_sse.c
+)
+
+# check if we know how to do IPO
+check_ipo_supported(RESULT HAS_IPOHAS_IPO)
+
+add_library(ksw2pp_sse2 OBJECT ${KSW2PP_ADVANCED_LIB_SRCS})
+add_library(ksw2pp_sse4 OBJECT ${KSW2PP_ADVANCED_LIB_SRCS})
+add_library(ksw2pp_basic OBJECT ${KSW2PP_BASIC_LIB_SRCS})
+
+set_target_properties(ksw2pp_sse2 PROPERTIES COMPILE_FLAGS "-O3 -msse2 -mno-sse4.1")
+set_target_properties(ksw2pp_sse2 PROPERTIES COMPILE_DEFINITIONS "KSW_CPU_DISPATCH;KSW_SSE2_ONLY;HAVE_KALLOC")
+set_target_properties(ksw2pp_sse4 PROPERTIES COMPILE_FLAGS "-O3 -msse4.1")
+set_target_properties(ksw2pp_sse4 PROPERTIES COMPILE_DEFINITIONS "KSW_CPU_DISPATCH;HAVE_KALLOC")
+set_target_properties(ksw2pp_basic PROPERTIES COMPILE_DEFINITIONS "KSW_CPU_DISPATCH;HAVE_KALLOC")
+
+set_target_properties(ksw2pp_basic PROPERTIES INCLUDE_DIRECTORIES ${GAT_SOURCE_DIR}/include)
+set_target_properties(ksw2pp_sse4 PROPERTIES INCLUDE_DIRECTORIES ${GAT_SOURCE_DIR}/include)
+
+# Build the ksw2pp library
+add_library(ksw2pp STATIC $<TARGET_OBJECTS:ksw2pp_sse2> $<TARGET_OBJECTS:ksw2pp_sse4> $<TARGET_OBJECTS:ksw2pp_basic>)
+set_target_properties(ksw2pp PROPERTIES COMPILE_DEFINITIONS "KSW_CPU_DISPATCH;HAVE_KALLOC")
+if(HAS_IPO)
+  set_property(TARGET ksw2pp PROPERTY INTERPROCEDURAL_OPTIMIZATION True)
+endif()
+
+
+
 # Link the executable
 target_link_libraries(rapmap
     # ${PTHREAD_LIB}
@@ -74,6 +118,7 @@ target_link_libraries(rapmap
     ${NON_APPLECLANG_LIBS}
     ${FAST_MALLOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
+    ksw2pp
     #${GAT_SOURCE_DIR}/external/install/lib/libjellyfish-2.0.a
     #${LIBLZMA_LIBRARIES}
 )

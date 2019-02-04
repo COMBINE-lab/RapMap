@@ -137,6 +137,11 @@ namespace spp
             return res;
         }
 
+        pointer reallocate(pointer p, size_type /* old_size */, size_t new_size)
+        {
+            return reallocate(p, new_size);
+        }
+        
         size_type max_size() const
         {
             return static_cast<size_type>(-1) / sizeof(value_type);
@@ -177,7 +182,7 @@ namespace spp
 
         void clear()
         {
-            assert(!_space && _space_to_clear);
+            assert(!_space && !!_space_to_clear);
             _space_to_clear.reset();
             _space = new MSpace;
         }
@@ -3747,7 +3752,7 @@ SPP_API void mspace_free(mspace msp, void* mem)
     }
 }
 
-SPP_API void* mspace_calloc(mspace msp, size_t n_elements, size_t elem_size)
+SPP_API inline void* mspace_calloc(mspace msp, size_t n_elements, size_t elem_size)
 {
     void* mem;
     size_t req = 0;
@@ -3770,7 +3775,7 @@ SPP_API void* mspace_calloc(mspace msp, size_t n_elements, size_t elem_size)
     return mem;
 }
 
-SPP_API void* mspace_realloc(mspace msp, void* oldmem, size_t bytes)
+SPP_API inline void* mspace_realloc(mspace msp, void* oldmem, size_t bytes)
 {
     void* mem = 0;
     if (oldmem == 0)
@@ -3928,7 +3933,7 @@ SPP_API void** mspace_independent_comalloc(mspace msp, size_t n_elements,
 
 #endif
 
-SPP_API size_t mspace_bulk_free(mspace msp, void* array[], size_t nelem)
+SPP_API inline size_t mspace_bulk_free(mspace msp, void* array[], size_t nelem)
 {
     return ((mstate)msp)->internal_bulk_free(array, nelem);
 }
@@ -3949,7 +3954,7 @@ SPP_API void mspace_inspect_all(mspace msp,
 }
 #endif
 
-SPP_API int mspace_trim(mspace msp, size_t pad)
+SPP_API inline int mspace_trim(mspace msp, size_t pad)
 {
     int result = 0;
     mstate ms = (mstate)msp;
@@ -3960,7 +3965,7 @@ SPP_API int mspace_trim(mspace msp, size_t pad)
     return result;
 }
 
-SPP_API size_t mspace_footprint(mspace msp)
+SPP_API inline size_t mspace_footprint(mspace msp)
 {
     size_t result = 0;
     mstate ms = (mstate)msp;
@@ -3971,7 +3976,7 @@ SPP_API size_t mspace_footprint(mspace msp)
     return result;
 }
 
-SPP_API size_t mspace_max_footprint(mspace msp)
+SPP_API inline size_t mspace_max_footprint(mspace msp)
 {
     size_t result = 0;
     mstate ms = (mstate)msp;
@@ -3982,7 +3987,7 @@ SPP_API size_t mspace_max_footprint(mspace msp)
     return result;
 }
 
-SPP_API size_t mspace_footprint_limit(mspace msp)
+SPP_API inline size_t mspace_footprint_limit(mspace msp)
 {
     size_t result = 0;
     mstate ms = (mstate)msp;
@@ -3996,7 +4001,7 @@ SPP_API size_t mspace_footprint_limit(mspace msp)
     return result;
 }
 
-SPP_API size_t mspace_set_footprint_limit(mspace msp, size_t bytes)
+SPP_API inline size_t mspace_set_footprint_limit(mspace msp, size_t bytes)
 {
     size_t result = 0;
     mstate ms = (mstate)msp;
@@ -4015,7 +4020,7 @@ SPP_API size_t mspace_set_footprint_limit(mspace msp, size_t bytes)
     return result;
 }
 
-SPP_API size_t mspace_usable_size(const void* mem)
+SPP_API inline size_t mspace_usable_size(const void* mem)
 {
     if (mem != 0)
     {
@@ -4026,7 +4031,7 @@ SPP_API size_t mspace_usable_size(const void* mem)
     return 0;
 }
 
-SPP_API int mspace_mallopt(int param_number, int value)
+SPP_API inline int mspace_mallopt(int param_number, int value)
 {
     return mparams.change(param_number, value);
 }

@@ -72,6 +72,7 @@ namespace rapmap {
                 // determine forward
                 hits.emplace_back(tid, hitPos, isFwd, readLen);
                 hits.back().mateStatus = mateStatus;
+                hits.back().mateIsFwd = true;
             }
 
             return true;
@@ -262,6 +263,7 @@ namespace rapmap {
                   int32_t hitPos = (*posIt)->pos - (*posIt)->queryPos;
                   hits.emplace_back(tid, hitPos, isFwd, readLen);
                   auto& currHit = hits.back();
+                  currHit.mateIsFwd = true; // address issue #46
                   currHit.setChainScore(bestScore);
                   currHit.mateStatus = mateStatus;
                   currHit.allPositions.push_back(hitPos);
@@ -313,118 +315,15 @@ namespace rapmap {
                 int32_t hitPos = minPosIt->pos - minPosIt->queryPos;
                 bool isFwd = !hitRC;
                 hits.emplace_back(tid, hitPos, isFwd, readLen);
-                hits.back().mateStatus = mateStatus;
-		hits.back().allPositions.push_back(hitPos);
+                auto& currHit = hits.back();
+                currHit.mateIsFwd = true; // address issue #46
+                currHit.mateStatus = mateStatus;
+                currHit.allPositions.push_back(hitPos);
               }
             }
           }
-          // if SAHitMap is sorted, no need to sort here
-          /*
-            std::sort(hits.begin() + startOffset, hits.end(),
-            [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-            return a.tid < b.tid;
-            });
-          */
           return true;
         }
-
-
-        // Return hits from processedHits where position constraints
-        // match maxDist
-        bool collectHitsSimpleSA2(std::vector<ProcessedSAHit>& processedHits,
-                        uint32_t readLen,
-                        uint32_t maxDist,
-                        std::vector<QuasiAlignment>& hits,
-                        MateStatus mateStatus){
-                //bool foundHit{false};
-
-                // One processed hit per transcript
-                for (auto& ph : processedHits) {
-                        // If this is an *active* position list
-                        if (ph.active) {
-                                auto tid = ph.tid;
-                                auto minPosIt =
-                                    std::min_element(ph.tqvec.begin(),
-                                                     ph.tqvec.end(),
-                                                     [](const SATxpQueryPos& a, const SATxpQueryPos& b) -> bool {
-                                                        return a.pos < b.pos;
-                                                        });
-
-                                bool hitRC = minPosIt->queryRC;
-                                int32_t hitPos = minPosIt->pos - minPosIt->queryPos;
-                                bool isFwd = !hitRC;
-                                hits.emplace_back(tid, hitPos, isFwd, readLen);
-                                hits.back().mateStatus = mateStatus;
-                        }
-                }
-                return true;
-        }
-
-
-
-
-        // Intersects the hit h2 with outHits.
-        // This will modify outHits so that the tqvec field of the
-        // entries in outHits that are labeled by the transcripts in
-        // which h2 appears will have an iterator to the beginning of
-        // the position list for h2.
-        /*void intersectWithOutput(HitInfo& h2, RapMapIndex& rmi,
-                std::vector<ProcessedHit>& outHits) {
-
-            // Convenient bindings for variables we'll use
-            auto& eqClasses = rmi.eqClassList;
-            auto& eqClassLabels = rmi.eqLabelList;
-            auto& posList = rmi.posList;
-
-            // Iterator to the beginning and end of the output hits
-            auto outHitIt = outHits.begin();
-            auto outHitEnd = outHits.end();
-
-            // Equiv. class for h2
-            auto& eqClassRight = eqClasses[h2.kinfo->eqId];
-
-            // Iterator into, length of and end of the positon list for h2
-            auto rightPosIt = posList.begin() + h2.kinfo->offset;
-            auto rightPosLen = h2.kinfo->count;
-            // auto rightPosEnd = rightPosIt + rightPosLen;
-            // Iterator into, length of and end of the transcript list for h2
-            auto rightTxpIt = eqClassLabels.begin() + eqClassRight.txpListStart;
-            auto rightTxpListLen = eqClassRight.txpListLen;
-            auto rightTxpEnd = rightTxpIt + rightTxpListLen;
-
-            auto rightQueryPos = h2.queryPos;
-            auto rightQueryRC = h2.queryRC;
-            PositionListHelper rightPosHelper(rightPosIt, posList.end());
-
-            uint32_t leftTxp, rightTxp;
-            while (outHitIt != outHitEnd and rightTxpIt != rightTxpEnd) {
-                // Get the current transcript ID for the left and right eq class
-                leftTxp = outHitIt->tid;
-                rightTxp = *rightTxpIt;
-                // If we need to advance the left txp, do it
-                if (leftTxp < rightTxp) {
-                    // Advance to the next transcript in the
-                    // equivalence class label
-                    ++outHitIt;
-                } else {
-                    // If the transcripts are equal (i.e. leftTxp >= rightTxp and !(rightTxp < leftTxp))
-                    // Then see if there are any hits here.
-                    if (!(rightTxp < leftTxp)) {
-                        // Add the position list iterator and query pos for the
-                        // hit from h2 to the back of outHits' tqvec.
-                        outHitIt->tqvec.emplace_back(rightPosHelper, rightQueryPos, rightQueryRC);
-                        ++outHitIt;
-                    }
-                    // advance the hit we're intersecting to the next transcript
-                    rightPosHelper.advanceToNextTranscript();
-                    // Advance the right transcript id regardless of whether
-                    // we found a hit or not.
-                    ++rightTxpIt;
-                }
-            }
-
-        }
-        */
 
         /** from http://en.cppreference.com/w/cpp/algorithm/lower_bound **/
         template <typename ForwardIt>
@@ -558,6 +457,7 @@ namespace rapmap {
             auto& SA = rmi.SA;
             //auto& txpIDs = rmi.positionIDs;
             auto& txpStarts = rmi.txpOffsets;
+            bool nonStrictIntersection = maxSlack > 0;
 
             // Walk through every hit in the new interval 'h'
             for (OffsetT i = h.begin; i != h.end; ++i) {
@@ -574,7 +474,7 @@ namespace rapmap {
 
               // If we found this transcript
               // Add this position to the list
-              if (slack <= maxSlack) {
+              if (nonStrictIntersection or (slack <= maxSlack)) {
                 auto globalPos = SA[i];
                 auto localPos = globalPos - txpStarts[txpID];
                 // We already have records for this transcript
@@ -689,7 +589,7 @@ namespace rapmap {
                 SAIntervalVector<SAIntervalHit<typename RapMapIndexT::IndexType>>& inHits,
                 RapMapIndexT& rmi,
                 size_t readLen,
-                int32_t maxSlack, // The number of intervals a transcript is allowed to miss and still be considered a valid mapping
+                float consensusFraction, // The fraction of intervals a transcript must appear in to still be considered a valid mapping
                 bool strictFilter) {
           using OffsetT = typename RapMapIndexT::IndexType;
           // Each inHit is a SAIntervalHit structure that contains
@@ -707,6 +607,24 @@ namespace rapmap {
             std::cerr << "intersectHitsSA() called with < 2 hits "
               " hits; this shouldn't happen\n";
             return outHits;
+          }
+
+          int32_t sInHitsSize = static_cast<int32_t>(inHits.size());
+          float requiredFrac = sInHitsSize * consensusFraction;
+          // The number of SA intervals a target must appear in to generate a valid mapping
+          int32_t requiredNumHits = sInHitsSize;
+          // The maximum slack (maximum number of SA intervals a target can miss and still generate
+          // a valid mapping).
+          int32_t maxSlack = 0;
+
+          // If the consensusFraction is less than one, then we will allow some slack.
+          // We compute the integer number of required intervals (and hence the maximum allowable slack)
+          // in this case below.
+          if(consensusFraction < 1.0) {
+            // always require at least one hit
+            requiredNumHits = std::max(static_cast<int32_t>(1), static_cast<int32_t>(std::floor(requiredFrac)));
+            // the maximum slack is simply the number of intervals minus the required num hits
+            maxSlack = sInHitsSize - requiredNumHits;
           }
 
           auto& SA = rmi.SA;
@@ -746,15 +664,27 @@ namespace rapmap {
             }
           }
 
-          int64_t sInHitsSize = inHits.size();
-          size_t requiredNumHits = (maxSlack < sInHitsSize) ? (sInHitsSize - maxSlack) : 1;
+          size_t numActive{0};
           // Mark as active any transcripts with the required number of hits.
           for (auto it = outHits.begin(); it != outHits.end(); ++it) {
-            bool enoughHits = (it->second.numActive >= requiredNumHits);
-            it->second.active = (strictFilter) ? 
+            int32_t intervalsForHit = it->second.numActive;
+            //maxNumIntervals = (intervalsForHit > maxNumIntervals) ? intervalsForHit : maxNumIntervals;
+            bool enoughHits = (intervalsForHit >= requiredNumHits);
+            bool setActive = (strictFilter) ?
               (enoughHits and it->second.checkConsistent(readLen, requiredNumHits)) :
               (enoughHits);
+            it->second.active = setActive;
+            numActive += setActive ? 1 : 0;
           }
+
+          // If we had no valid hits according to the interval criteria, then,
+          // unless we are using a strict intersection, allow all hits to be potentially considered.
+          if (maxSlack > 0 and numActive == 0) {
+            for (auto it = outHits.begin(); it != outHits.end(); ++it) {
+              it->second.active = true;
+            }
+          }
+
           return outHits;
         }
 
@@ -776,9 +706,9 @@ namespace rapmap {
         auto consistentHits = mc.consistentHits;
         //auto doChaining = mc.doChaining;
         bool considerMultiPos = mc.considerMultiPos;
+        float consensusFraction = mc.consensusFraction;
 
         auto fwdHitsStart = hits.size();
-        int32_t maxSlack = mc.maxSlack;
 
         // If the hit we have for a read is contained within a single suffix array interval
         // (i.e. there is only one MMP), then this function is called to collect the relevant
@@ -799,6 +729,9 @@ namespace rapmap {
               int32_t hitPos = pos - saIntervalHit.queryPos;
               outHits.emplace_back(txpID, hitPos, isFw, readLen);
               auto& lastHit = outHits.back();
+              lastHit.mateIsFwd = true; // address issue #46
+
+              //lastHit.queryOffset = saIntervalHit.queryPos;
               lastHit.mateStatus = mateStatus;
               lastHit.allPositions.push_back(hitPos);
               lastHit.hasMultiPos = false;
@@ -877,7 +810,7 @@ namespace rapmap {
         // If we had > 1 forward hit
         if (fwdSAInts.size() > 1) {
           auto processedHits = rapmap::hit_manager::intersectSAHits(
-                                                                    fwdSAInts, rmi, readLen, maxSlack, consistentHits);
+                                                                    fwdSAInts, rmi, readLen, consensusFraction, consistentHits);
           rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
                                                    hits, mateStatus, mc);
         } else if (fwdSAInts.size() == 1) { // only 1 hit!
@@ -889,7 +822,7 @@ namespace rapmap {
         // If we had > 1 rc hit
         if (rcSAInts.size() > 1) {
           auto processedHits = rapmap::hit_manager::intersectSAHits(
-                                                                    rcSAInts, rmi, readLen, maxSlack, consistentHits);
+                                                                    rcSAInts, rmi, readLen, consensusFraction, consistentHits);
           rapmap::hit_manager::collectHitsSimpleSA(processedHits, readLen, maxDist,
                                                    hits, mateStatus, mc);
         } else if (rcSAInts.size() == 1) { // only 1 hit!
@@ -908,14 +841,42 @@ namespace rapmap {
                                // comes *before* the one with the worse chain score.
                                return (a.tid == b.tid) ? a.chainScore() > b.chainScore() : a.tid < b.tid;
                              });
+
+          ////
+          auto mergeOrientationUnique = [](decltype(hits.begin()) first, decltype(hits.end()) last) -> decltype(hits.end()) {
+            if (first == last)
+              return last;
+
+            decltype(first) result = first;
+            while (++first != last) {
+              bool distinct = !(result->tid == first->tid);
+              // If we just completed a run of transcript-identical hits
+              // then move the new transcript's first hit into the next
+              // position.
+              if (distinct && ++result != first) {
+                *result = std::move(*first);
+              } else if(!distinct) {
+                // We copy the hits from the second hit to the opposite strand
+                result->oppositeStrandPositions = first->allPositions;
+              }
+            }
+
+            // NOTE: positions within transcripts should already be sorted, so we don't need
+            // to do it again here.
+            return ++result;
+          };
+          auto newEnd = mergeOrientationUnique(hits.begin() + fwdHitsStart, hits.begin() + rcHitsEnd);
+          ////
+
+
           // And get rid of duplicate transcript IDs
           // TODO: We generally don't want to get rid of duplicate transcripts if we are allowing multiple
           // positions, since we may want to consider both fw and rev on the same transcript.
-          auto newEnd = std::unique(
-                                    hits.begin() + fwdHitsStart, hits.begin() + rcHitsEnd,
-                                    [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                                      return a.tid == b.tid;
-                                    });
+          //auto newEnd = std::unique(
+          //                          hits.begin() + fwdHitsStart, hits.begin() + rcHitsEnd,
+          //                          [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
+          //                            return a.tid == b.tid;
+          //                          });
           hits.resize(std::distance(hits.begin(), newEnd));
         }
       }
@@ -946,11 +907,11 @@ namespace rapmap {
 
         template
         SAHitMap intersectSAHits<SAIndex32BitDense>(SAIntervalVector<SAIntervalHit<int32_t>>& inHits,
-                                                    SAIndex32BitDense& rmi, size_t readLen, int32_t maxSlack, bool strictFilter);
+                                                    SAIndex32BitDense& rmi, size_t readLen, float consensusFraction, bool strictFilter);
 
         template
         SAHitMap intersectSAHits<SAIndex64BitDense>(SAIntervalVector<SAIntervalHit<int64_t>>& inHits,
-                                                    SAIndex64BitDense& rmi, size_t readLen, int32_t maxSlack, bool strictFilter);
+                                                    SAIndex64BitDense& rmi, size_t readLen, float consensusFraction, bool strictFilter);
 
         template
         void intersectSAIntervalWithOutput<SAIndex32BitPerfect>(SAIntervalHit<int32_t>& h,
@@ -968,11 +929,11 @@ namespace rapmap {
 
         template
         SAHitMap intersectSAHits<SAIndex32BitPerfect>(SAIntervalVector<SAIntervalHit<int32_t>>& inHits,
-                                                      SAIndex32BitPerfect& rmi, size_t readLen, int32_t maxSlack, bool strictFilter);
+                                                      SAIndex32BitPerfect& rmi, size_t readLen, float consensusFraction, bool strictFilter);
 
         template
         SAHitMap intersectSAHits<SAIndex64BitPerfect>(SAIntervalVector<SAIntervalHit<int64_t>>& inHits,
-                                                      SAIndex64BitPerfect& rmi, size_t readLen, int32_t maxSlack, bool strictFilter);
+                                                      SAIndex64BitPerfect& rmi, size_t readLen, float consensusFraction, bool strictFilter);
       template
       void hitsToMappingsSimple<SAIndex32BitDense>(SAIndex32BitDense& rmi,
                                                    rapmap::utils::MappingConfig& mc,
