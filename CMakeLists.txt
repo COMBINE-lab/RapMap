@@ -1,30 +1,67 @@
-cmake_minimum_required (VERSION 3.1)
+cmake_minimum_required(VERSION 3.9)
+
+if(DEFINED ENV{CC})
+  set(CC $ENV{CC})
+else()
+  set(CC gcc)
+endif()
+message("CC: ${CC}")
+
+set(CC_VERSION "")
+if(${CC} MATCHES ^gcc-)
+  string(REGEX REPLACE "gcc-" "" CC_VERSION ${CC})
+endif()
+message("CC version: ${CC_VERSION}")
 
 enable_testing()
 
 project (RapMap)
 
-set(CPACK_PACKAGE_VERSION "0.6.0")
-SET(CPACK_PACKAGE_VERSION_MAJOR "0")
-set(CPACK_PACKAGE_VERSION_MINOR "6")
-set(CPACK_PACKAGE_VERSION_PATCH "0")
+# auto-populate version:
+# from https://stackoverflow.com/questions/47066115/cmake-get-version-from-multi-line-text-file
+file(READ "current_version.txt" ver)
+
+string(REGEX MATCH "VERSION_MAJOR ([0-9]*)" _ ${ver})
+set(ver_major ${CMAKE_MATCH_1})
+
+string(REGEX MATCH "VERSION_MINOR ([0-9]*)" _ ${ver})
+set(ver_minor ${CMAKE_MATCH_1})
+
+string(REGEX MATCH "VERSION_PATCH ([0-9]*)" _ ${ver})
+set(ver_patch ${CMAKE_MATCH_1})
+
+set(CPACK_PACKAGE_VERSION_MAJOR ${ver_major})
+set(CPACK_PACKAGE_VERSION_MINOR ${ver_minor})
+set(CPACK_PACKAGE_VERSION_PATCH ${ver_patch})
+
+set(CPACK_PACKAGE_VERSION "${ver_major}.${ver_minor}.${ver_patch}")
+message("version: ${CPACK_PACKAGE_VERSION}")
+
 set(PROJECT_VERSION ${CPACK_PACKAGE_VERSION})
 set(CPACK_GENERATOR "TGZ")
 set(CPACK_SOURCE_GENERATOR "TGZ")
 set(CPACK_PACKAGE_VENDOR "Stony Brook University")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "RapMap - Wicked-fast quasi-mapping")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "rapmap - fast transcriptome mapping")
 set(CPACK_PACKAGE_NAME
   "${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME
   "${CMAKE_PROJECT_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}-Source")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
-#include(FindSSE)
-#FindSSE ()
-#if(SSE4_2_FOUND)
-#    message("Enabling popcount")
-#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DEMPHF_USE_POPCOUNT")
-#endif(SSE4_2_FOUND)
+
+# Set a default build type if none was specified
+set(default_build_type "Release")
+
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  message(STATUS "Setting build type to '${default_build_type}' as none was specified.")
+  set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE
+      STRING "Choose the type of build." FORCE)
+  # Set the possible values of build type for cmake-gui
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+    "Debug" "Release")
+endif()
+
+include(CheckIPOSupported)
 
 if (APPLE)
 set (WARNING_IGNORE_FLAGS "-Wno-deprecated-register -Wno-unknon-pragmas -Wreturn-type -Werror=return-type")

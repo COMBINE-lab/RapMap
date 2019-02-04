@@ -80,7 +80,8 @@
 #include "IndexHeader.hpp"
 #include "SASearcher.hpp"
 #include "SACollector.hpp"
-
+#include "ksw2pp/KSW2Aligner.hpp"
+#include "SelectiveAlignmentUtils.hpp"
 //#define __TRACK_CORRECT__
 
 using paired_parser = fastx_parser::FastxParser<fastx_parser::ReadPair>;
@@ -111,24 +112,45 @@ using QuasiAlignment = rapmap::utils::QuasiAlignment;
 using FixedWriter = rapmap::utils::FixedWriter;
 
 struct MappingOpts {
-    std::string index;
-    std::string read1;
-    std::string read2;
-    std::string unmatedReads;
-    uint32_t numThreads{1};
-    uint32_t maxNumHits{200};
-    std::string outname;
-    double quasiCov{0.0};
-    bool pairedEnd{false};
-    bool noOutput{true};
-    bool sensitive{false};
-    bool strictCheck{false};
-    bool fuzzy{false};
-    bool consistentHits{false};
-    bool compressedOutput{false};
-    bool quiet{false};
-    int32_t maxMMPExtension{7};
+  std::string index;
+  std::string read1;
+  std::string read2;
+  std::string unmatedReads;
+  uint32_t numThreads{1};
+  uint32_t maxNumHits{200};
+  std::string outname;
+  double quasiCov{0.0};
+  bool pairedEnd{false};
+  bool noOutput{true};
+  bool sensitive{false};
+  bool strictCheck{false};
+  bool fuzzy{false};
+  /** DEPRECATED --- should remain false
+   *  until we can remove it from the codebase
+   **/
+  bool consistentHits{false};
+ 
+  bool doChaining{false};
+  bool compressedOutput{false};
+  bool quiet{false};
+  int32_t maxMMPExtension{7};
+  bool selAln{false};
+  float consensusSlack{0.0};
+  double minScoreFraction{0.65};
+  int16_t matchScore{2};
+  int16_t mismatchPenalty{-4};
+  int16_t gapOpenPenalty{4};
+  int16_t gapExtendPenalty{2};
+  int32_t dpBandwidth{15};
+  //int32_t consensusSlack{0.2};
+  bool hardFilter{false};
+  selective_alignment::utils::AlignmentPolicy ap{selective_alignment::utils::AlignmentPolicy::DEFAULT};
+  bool noOrphans{false};
+  bool noDovetail{false};
+  bool recoverOrphans{false};
 };
+
+using AlnCacheMap = selective_alignment::utils::AlnCacheMap;
 
 template <typename RapMapIndexT, typename MutexT>
 void processReadsSingleSA(single_parser * parser,
@@ -155,11 +177,43 @@ void processReadsSingleSA(single_parser * parser,
 
     rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> hcInfo;
     rapmap::utils::MappingConfig mc;
-    mc.consistentHits = false;
-    mc.doChaining = mopts->consistentHits;
+    mc.consistentHits = false;//mopts->consistentHits;
+    mc.doChaining = mopts->selAln;
     if (mc.doChaining) {
+      auto consensusSlack = mopts->consensusSlack;
+      mc.consensusFraction = (consensusSlack == 0.0) ? 1.0 : (1.0 - consensusSlack);
+      mc.considerMultiPos = true;
+      hitCollector.enableChainScoring();
       hitCollector.setMaxMMPExtension(mopts->maxMMPExtension);
     }
+    bool hardFilter = mopts->hardFilter;
+    std::string rc1; rc1.reserve(300);
+
+    // Start: Setup alignment engine
+    using ksw2pp::KSW2Aligner;
+    using ksw2pp::KSW2Config;
+    using ksw2pp::EnumToType;
+    using ksw2pp::KSW2AlignmentType;
+    KSW2Config config;
+    config.dropoff = -1;
+    config.gapo = mopts->gapOpenPenalty;
+    config.gape = mopts->gapExtendPenalty;
+    config.bandwidth = mopts->dpBandwidth;
+    config.flag = 0;
+    config.flag |= KSW_EZ_SCORE_ONLY;
+    int8_t a = static_cast<int8_t>(mopts->matchScore);
+    int8_t b = static_cast<int8_t>(mopts->mismatchPenalty);
+    KSW2Aligner aligner(static_cast<int8_t>(a), static_cast<int8_t>(b));
+    aligner.config() = config;
+    ksw_extz_t ez;
+    memset(&ez, 0, sizeof(ksw_extz_t));
+    auto ap = mopts->ap;
+
+    size_t numMappingsDropped{0};
+    size_t numFragsDropped{0};
+
+    AlnCacheMap alnCache; alnCache.reserve(16);
+    // Done: Setup alignment engine
 
     SingleAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
     SASearcher<RapMapIndexT> saSearcher(&rmi);
@@ -180,11 +234,88 @@ void processReadsSingleSA(single_parser * parser,
                                                       MateStatus::SINGLE_END,
                                                       hcInfo, hits);
 
-
             auto numHits = hits.size();
             hctr.totHits += numHits;
 
-	    if (hits.size() > 0 and !mopts->noOutput and hits.size() <= mopts->maxNumHits) {
+            if(hits.size() > mopts->maxNumHits) {
+              hits.clear();
+            }
+
+            if (mopts->selAln) {
+              alnCache.clear();
+              auto* r1 = read.seq.data();
+              auto l1 = static_cast<int32_t>(read.seq.length());
+
+              char* r1rc = nullptr;
+              int32_t bestScore{std::numeric_limits<int32_t>::lowest()};
+              std::vector<decltype(bestScore)> scores(hits.size(), bestScore);
+              size_t idx{0};
+              double optFrac{mopts->minScoreFraction};
+              int32_t maxReadScore = a * read.seq.length();
+              bool multiMapping{hits.size() > 1};
+
+              for (auto& h : hits) {
+                int32_t score{std::numeric_limits<int32_t>::min()};
+                auto txpID = h.tid;
+                char* tseq = const_cast<char*>(rmi.seq.data()) + rmi.txpOffsets[txpID];
+                const int32_t tlen = static_cast<int32_t>(rmi.txpLens[txpID]);
+                const uint32_t buf{20};
+
+                // compute the reverse complement only if we
+                // need it and don't have it
+                if (!h.fwd and !r1rc) {
+                  rapmap::utils::reverseRead(read.seq, rc1);
+                  // we will not break the const promise
+                  r1rc = const_cast<char*>(rc1.data());
+                }
+
+                auto* rptr = h.fwd ? r1 : r1rc;
+                int32_t s =
+                  selective_alignment::utils::getAlnScore(aligner, ez, h.pos, rptr, l1, tseq, tlen, a, b, maxReadScore, h.chainStatus.getLeft(),
+                                                          multiMapping, ap, buf, alnCache);
+                if (s < (optFrac * maxReadScore)) {
+                  score = std::numeric_limits<decltype(score)>::min();
+                } else {
+                  score = s;
+                }
+                bestScore = (score > bestScore) ? score : bestScore;
+                scores[idx] = score;
+                h.score(score);
+                ++idx;
+              }
+
+              uint32_t ctr{0};
+              if (bestScore > std::numeric_limits<int32_t>::min()) {
+                // Note --- with soft filtering, only those hits that are given the minimum possible
+                // score are filtered out.
+                hits.erase(
+                                std::remove_if(hits.begin(), hits.end(),
+                                               [&ctr, &scores, &numMappingsDropped, bestScore, hardFilter] (const QuasiAlignment& qa) -> bool {
+                                                 // if soft filtering, we only drop things with an invalid score
+                                                 // if hard filtering, we drop everything with a sub-optimal score.
+                                                 bool rem = hardFilter ? (scores[ctr] < bestScore) :
+                                                   (scores[ctr] == std::numeric_limits<int32_t>::min());
+                                                 ++ctr;
+                                                 numMappingsDropped += rem ? 1 : 0;
+                                                 return rem;
+                                               }),
+                                hits.end()
+                                );
+                // for soft filter
+                double bestScoreD = static_cast<double>(bestScore);
+                std::for_each(hits.begin(), hits.end(),
+                              [bestScoreD, hardFilter](QuasiAlignment& qa) -> void {
+                                qa.alnScore(static_cast<int32_t>(qa.score())); 
+                                double v = bestScoreD - qa.score();
+                                qa.score( (hardFilter ? -1.0 : std::exp(-v)) );
+                              });
+              } else {
+                ++numFragsDropped;
+                hits.clear();
+              }
+            }
+
+            if (hits.size() > 0 and !mopts->noOutput) {
                 /*
                 std::sort(hits.begin(), hits.end(),
                             [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
@@ -267,6 +398,8 @@ void processReadsPairSA(paired_parser* parser,
     std::vector<QuasiAlignment> leftHits;
     std::vector<QuasiAlignment> rightHits;
     std::vector<QuasiAlignment> jointHits;
+    std::string rc1; rc1.reserve(250);
+    std::string rc2; rc2.reserve(250);
 
     size_t readLen{0};
     bool tooManyHits{false};
@@ -275,10 +408,47 @@ void processReadsPairSA(paired_parser* parser,
     rapmap::hit_manager::HitCollectorInfo<rapmap::utils::SAIntervalHit<OffsetT>> rightHCInfo;
     rapmap::utils::MappingConfig mc;
     mc.consistentHits = false;//mopts->consistentHits;
-    mc.doChaining = mopts->consistentHits;
+    mc.doChaining = mopts->selAln;
     if (mc.doChaining) {
+      auto consensusSlack = mopts->consensusSlack;
+      mc.consensusFraction = (consensusSlack == 0.0) ? 1.0 : (1.0 - consensusSlack);
+      mc.considerMultiPos = true;
+      hitCollector.enableChainScoring();
       hitCollector.setMaxMMPExtension(mopts->maxMMPExtension);
     }
+    bool hardFilter = mopts->hardFilter;
+
+    // Start: Setup alignment engine
+    using ksw2pp::KSW2Aligner;
+    using ksw2pp::KSW2Config;
+    using ksw2pp::EnumToType;
+    using ksw2pp::KSW2AlignmentType;
+    KSW2Config config;
+    config.dropoff = -1;
+    config.gapo = mopts->gapOpenPenalty;
+    config.gape = mopts->gapExtendPenalty;
+    config.bandwidth = mopts->dpBandwidth;
+    config.flag = 0;
+    config.flag |= KSW_EZ_SCORE_ONLY;
+    int8_t a = static_cast<int8_t>(mopts->matchScore);
+    int8_t b = static_cast<int8_t>(mopts->mismatchPenalty);
+    KSW2Aligner aligner(static_cast<int8_t>(a), static_cast<int8_t>(b));
+    aligner.config() = config;
+    ksw_extz_t ez;
+    memset(&ez, 0, sizeof(ksw_extz_t));
+    bool noDovetail = mopts->noDovetail;
+    bool noOrphans = mopts->noOrphans;
+    size_t numOrphansRescued{0};
+    auto ap = mopts->ap;
+
+    size_t numMappingsDropped{0};
+    size_t numFragsDropped{0};
+
+    AlnCacheMap alnCacheLeft; alnCacheLeft.reserve(32);
+    AlnCacheMap alnCacheRight; alnCacheRight.reserve(32);
+    // Done: Setup alignment engine
+
+    bool useSmartIntersect{mopts->fuzzy or mopts->selAln};
 
     // Create a formatter for alignments
     PairAlignmentFormatter<RapMapIndexT*> formatter(&rmi);
@@ -316,18 +486,218 @@ void processReadsPairSA(paired_parser* parser,
                                                      MateStatus::PAIRED_END_RIGHT,
                                                      rightHCInfo, rightHits);
 
-            if (mopts->fuzzy) {
-                rapmap::utils::mergeLeftRightHitsFuzzy(
-                        lh, rh,
-                        leftHits, rightHits, jointHits,
-                        mc,
-                        readLen, mopts->maxNumHits, tooManyHits, hctr);
+           if (useSmartIntersect) {
+             auto mergeRes = rapmap::utils::mergeLeftRightHitsFuzzy(
+                                                                    lh, rh,
+                                                                    leftHits, rightHits, jointHits,
+                                                                    mc,
+                                                                    readLen, mopts->maxNumHits, tooManyHits, hctr);
+             bool mergeStatusOK = (mergeRes == rapmap::utils::MergeResult::HAD_EMPTY_INTERSECTION or
+                                   mergeRes == rapmap::utils::MergeResult::HAD_ONLY_LEFT or
+                                   mergeRes == rapmap::utils::MergeResult::HAD_ONLY_RIGHT);
 
-            } else {
-                rapmap::utils::mergeLeftRightHits(
-                        leftHits, rightHits, jointHits,
-                        readLen, mopts->maxNumHits, tooManyHits, hctr);
-            }
+             if ( mergeStatusOK and mopts->recoverOrphans and !tooManyHits) {
+               if (leftHits.size() + rightHits.size() > 0) {
+                 if (mergeRes == rapmap::utils::MergeResult::HAD_ONLY_LEFT) {
+                   // In this case, we've "moved" the left hit's into joint, so put them back into
+                   // left and make sure joint is clear.
+                   leftHits.swap(jointHits);
+                   jointHits.clear();
+                 } else if (mergeRes == rapmap::utils::MergeResult::HAD_ONLY_RIGHT) {
+                   // In this case, we've "moved" the right hit's into joint, so put them back into
+                   // right and make sure joint is clear.
+                   rightHits.swap(jointHits);
+                   jointHits.clear();
+                 }
+                 selective_alignment::utils::recoverOrphans(rpair.first.seq,
+                                                            rpair.second.seq,
+                                                            rc1,
+                                                            rc2,
+                                                            //
+                                                            rmi.seq,
+                                                            rmi.txpNames,
+                                                            rmi.txpOffsets,
+                                                            rmi.txpLens,
+                                                            //
+                                                            leftHits,
+                                                            rightHits,
+                                                            jointHits);
+                 if (!jointHits.empty()) { numOrphansRescued++; }
+               }
+             }
+           } else {
+             rapmap::utils::mergeLeftRightHits(
+                                               leftHits, rightHits, jointHits,
+                                               readLen, mopts->maxNumHits, tooManyHits, hctr);
+           }
+
+           // If the read mapped to > maxReadOccs places, discard it
+           if (jointHits.size() > mopts->maxNumHits) {
+             jointHits.clear();
+           }
+
+           // If we have mappings, then process them.
+           if (!jointHits.empty()) {
+             bool isPaired = jointHits.front().mateStatus ==
+               rapmap::utils::MateStatus::PAIRED_END_PAIRED;
+             // If we are ignoring orphans
+             if (noOrphans) {
+               // If the mappings for the current read are not properly-paired (i.e.
+               // are orphans)
+               // then just clear the group.
+               if (!isPaired) {
+                 jointHits.clear();
+               }
+             }
+           }
+
+           // Start: If requested, perform selective alignment
+           if (mopts->selAln and !jointHits.empty()) {
+             alnCacheLeft.clear();
+             alnCacheRight.clear();
+             auto* r1 = rpair.first.seq.data();
+             auto* r2 = rpair.second.seq.data();
+             auto l1 = static_cast<int32_t>(rpair.first.seq.length());
+             auto l2 = static_cast<int32_t>(rpair.second.seq.length());
+             // We compute the reverse complements below only if we
+             // need them and don't have them.
+             char* r1rc = nullptr;
+             char* r2rc = nullptr;
+             int32_t bestScore{std::numeric_limits<int32_t>::lowest()};
+             std::vector<decltype(bestScore)> scores(jointHits.size(), bestScore);
+             size_t idx{0};
+             double optFrac{mopts->minScoreFraction};
+             int32_t maxLeftScore{a * static_cast<int32_t>(rpair.first.seq.length())};
+             int32_t maxRightScore{a * static_cast<int32_t>(rpair.second.seq.length())};
+             bool multiMapping{jointHits.size() > 1};
+
+             for (auto& h : jointHits) {
+               int32_t score{std::numeric_limits<int32_t>::min()};
+               auto txpID = h.tid;
+               char* tseq = const_cast<char*>(rmi.seq.data()) + rmi.txpOffsets[txpID];
+               const int32_t tlen = static_cast<int32_t>(rmi.txpLens[txpID]);
+               const uint32_t buf{20};
+
+               if (h.mateStatus == rapmap::utils::MateStatus::PAIRED_END_PAIRED) {
+                 if (!h.fwd and !r1rc) {
+                   rapmap::utils::reverseRead(rpair.first.seq, rc1);
+                   r1rc = const_cast<char*>(rc1.data());
+                 }
+                 if (!h.mateIsFwd and !r2rc) {
+                   rapmap::utils::reverseRead(rpair.second.seq, rc2);
+                   r2rc = const_cast<char*>(rc2.data());
+                 }
+                 auto* r1ptr = h.fwd ? r1 : r1rc;
+                 auto* r2ptr = h.mateIsFwd ? r2 : r2rc;
+
+                 int32_t s1 =
+                   selective_alignment::utils::getAlnScore(aligner, ez, h.pos, r1ptr, l1, tseq, tlen, a, b, maxLeftScore, h.chainStatus.getLeft(),
+                                                           multiMapping, ap, buf, alnCacheLeft);
+
+                 int32_t s2 =
+                   selective_alignment::utils::getAlnScore(aligner, ez, h.matePos, r2ptr, l2, tseq, tlen, a, b, maxRightScore, h.chainStatus.getRight(),
+                                                           multiMapping, ap, buf, alnCacheRight);
+
+                 // throw away dovetailed reads
+                 if (h.fwd != h.mateIsFwd and noDovetail) {
+                   if (h.fwd and (h.pos > h.matePos)) {
+                     s1 = std::numeric_limits<int32_t>::min();
+                     s2 = std::numeric_limits<int32_t>::min();
+                   } else if (h.mateIsFwd and (h.matePos > h.pos)) {
+                     s1 = std::numeric_limits<int32_t>::min();
+                     s2 = std::numeric_limits<int32_t>::min();
+                   }
+                 }
+
+                 // ends are scored separately
+                 if ((s1 < (optFrac * maxLeftScore)) or (s2 < (optFrac * maxRightScore))) {
+                   score = std::numeric_limits<decltype(score)>::min();
+                 } else {
+                   score = s1 + s2;
+                 }
+               } else if (h.mateStatus == rapmap::utils::MateStatus::PAIRED_END_LEFT) {
+                 if (!h.fwd and !r1rc) {
+                   rapmap::utils::reverseRead(rpair.first.seq, rc1);
+                   r1rc = const_cast<char*>(rc1.data());
+                 }
+                 auto* rptr = h.fwd ? r1 : r1rc;
+
+                 int32_t s =
+                   selective_alignment::utils::getAlnScore(aligner, ez, h.pos, rptr, l1, tseq, tlen, a, b, maxLeftScore, h.chainStatus.getLeft(),
+                                                           multiMapping, ap, buf, alnCacheLeft);
+                 if (s < (optFrac * maxLeftScore)) {
+                   score = std::numeric_limits<decltype(score)>::min();
+                 } else {
+                   score = s;
+                 }
+               } else if (h.mateStatus == rapmap::utils::MateStatus::PAIRED_END_RIGHT) {
+                 if (!h.fwd and !r2rc) {
+                   rapmap::utils::reverseRead(rpair.second.seq, rc2);
+                   r2rc = const_cast<char*>(rc2.data());
+                 }
+                 auto* rptr = h.fwd ? r2 : r2rc;
+
+                 int32_t s =
+                   selective_alignment::utils::getAlnScore(aligner, ez, h.pos, rptr, l2, tseq, tlen, a, b, maxRightScore, h.chainStatus.getRight(),
+                                                           multiMapping, ap, buf, alnCacheRight);
+                 if (s < (optFrac * maxRightScore)) {
+                   score = std::numeric_limits<decltype(score)>::min();
+                 } else {
+                   score = s;
+                 }
+               }
+
+               bestScore = (score > bestScore) ? score : bestScore;
+               scores[idx] = score;
+               h.score(score);
+               ++idx;
+             }
+
+             uint32_t ctr{0};
+             if (bestScore > std::numeric_limits<int32_t>::min()) {
+               // Note --- with soft filtering, only those hits that are given the minimum possible
+               // score are filtered out.
+               jointHits.erase(
+                               std::remove_if(jointHits.begin(), jointHits.end(),
+                                              [&ctr, &scores, &numMappingsDropped, bestScore, hardFilter] (const QuasiAlignment& qa) -> bool {
+                                                // if soft filtering, we only drop things with an invalid score
+                                                // if hard filtering, we drop everything with a sub-optimal score.
+                                                bool rem = hardFilter ? (scores[ctr] < bestScore) :
+                                                  (scores[ctr] == std::numeric_limits<int32_t>::min());
+                                                ++ctr;
+                                                numMappingsDropped += rem ? 1 : 0;
+                                                return rem;
+                                              }),
+                               jointHits.end()
+                               );
+
+               double bestScoreD = static_cast<double>(bestScore);
+               std::for_each(jointHits.begin(), jointHits.end(),
+                             [bestScoreD, hardFilter](QuasiAlignment& qa) -> void {
+                               qa.alnScore(static_cast<int32_t>(qa.score()));
+                               double v = bestScoreD - qa.score();
+                               qa.score( (hardFilter ? -1.0 : std::exp(-v)) );
+                             });
+             } else {
+               ++numFragsDropped;
+               jointHits.clear();
+             }
+           } else if (noDovetail) {
+             jointHits.erase(
+                             std::remove_if(jointHits.begin(), jointHits.end(),
+                                            [](const QuasiAlignment& h) -> bool {
+                                              if (h.fwd != h.mateIsFwd) {
+                                                if (h.fwd and (h.pos > h.matePos)) {
+                                                  return true;
+                                                } else if (h.mateIsFwd and (h.matePos > h.pos)) {
+                                                  return true;
+                                                }
+                                              }
+                                              return false;
+                                            }),
+                             jointHits.end());
+           }
+           // Done: If requested, perform selective alignment
 
             hctr.totHits += jointHits.size();
 
@@ -434,6 +804,9 @@ bool mapReads(RapMapIndexT& rmi,
 	bool pairedEnd = mopts->pairedEnd;//(read1.isSet() or read2.isSet());
 	// from: http://stackoverflow.com/questions/366955/obtain-a-stdostream-either-from-stdcout-or-stdofstreamfile
 	// set either a file or cout as the output stream
+  const constexpr uint32_t buffSize{262144};
+  std::vector<char> customStreamBuffer;
+  customStreamBuffer.resize(buffSize);
 	std::streambuf* outBuf;
 	std::ofstream outFile;
   std::unique_ptr<std::ostream> outStream{nullptr};
@@ -443,10 +816,13 @@ bool mapReads(RapMapIndexT& rmi,
     if (mopts->outname == "") {
       outBuf = std::cout.rdbuf();
     } else {
-      outFile.open(mopts->outname);
       outBuf = outFile.rdbuf();
+      outFile.open(mopts->outname);
       haveOutputFile = true;
     }
+    // set the stream buffer size --- thanks for the suggestion @dnbaker!
+    outBuf->pubsetbuf(customStreamBuffer.data(), customStreamBuffer.size());
+
     // Now set the output stream to the buffer, which is
     // either std::cout, or a file.
 
@@ -529,6 +905,42 @@ bool mapReads(RapMapIndexT& rmi,
   return true;
 }
 
+bool validateOpts(MappingOpts& mopts, spdlog::logger* log) {
+  bool valid{true};
+
+  if (mopts.maxMMPExtension < 1) {
+    log->error("--maxMMPExtension must be at least 1, but {} was provided.", mopts.maxMMPExtension);
+    valid = false;
+  }
+  if(mopts.selAln) {
+    if (mopts.consensusSlack < 0 or mopts.consensusSlack > 1) {
+      log->error("--consensusSlack must be between 0.0 and 1.0, you passed {}.", mopts.consensusSlack);
+      valid = false;
+    }
+    if (mopts.minScoreFraction < 0 or mopts.minScoreFraction > 1) {
+      log->error("--minScoreFrac slack must be between 0.0 and 1.0, you passed {}.", mopts.minScoreFraction);
+      valid = false;
+    }
+    if (mopts.matchScore <= 0) {
+      log->error("match score must be positive!");
+      valid = false;
+    }
+    if (mopts.mismatchPenalty > 0) {
+      log->error("mismatch penalty cannot be positve!");
+      valid = false;
+    }
+    int32_t scoreVal = 2 * (static_cast<int32_t>(mopts.gapOpenPenalty) +
+                            static_cast<int32_t>(mopts.gapExtendPenalty)) +
+      static_cast<int32_t>(mopts.matchScore);
+    int32_t maxAllowed = std::numeric_limits<int8_t>::max();
+    if (scoreVal >= maxAllowed) {
+      log->error(" [2* (gapOpen + gapExtend) + matchScore] cannot exceed {}!", maxAllowed);
+      valid = false;
+    }
+  }
+  return valid;
+}
+
 void displayOpts(MappingOpts& mopts, spdlog::logger* log) {
         fmt::MemoryWriter optWriter;
         optWriter.write("\ncommand line options\n"
@@ -548,7 +960,10 @@ void displayOpts(MappingOpts& mopts, spdlog::logger* log) {
         optWriter.write("sensitive: {}\n", mopts.sensitive); 
         optWriter.write("strict check: {}\n", mopts.strictCheck); 
         optWriter.write("fuzzy intersection: {}\n", mopts.fuzzy); 
-        optWriter.write("consistent hits: {}\n", mopts.consistentHits); 
+        optWriter.write("do chaining : {}\n", mopts.doChaining); 
+        optWriter.write("selective alignment: {}\n", mopts.selAln); 
+        optWriter.write("no orphans: {}\n", mopts.noOrphans); 
+        optWriter.write("no dovetail: {}\n", mopts.noDovetail); 
         optWriter.write("====================");
         log->info(optWriter.str());
 }
@@ -574,9 +989,27 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::SwitchArg nosensitive("", "noSensitive", "Perform a less sensitive quasi-mapping by enabling NIP skipping", false);
   TCLAP::SwitchArg noStrict("", "noStrictCheck", "Don't perform extra checks to try and assure that only equally \"best\" mappings for a read are reported", false);
   TCLAP::SwitchArg fuzzy("f", "fuzzyIntersection", "Find paired-end mapping locations using fuzzy intersection", false);
-  TCLAP::SwitchArg consistent("c", "chaining", "Score the hits to find the best chain", false);
+  TCLAP::SwitchArg chain("c", "chaining", "Score the hits to find the best chain", false);
   TCLAP::SwitchArg compressedOutput("x", "compressed", "Compress the output SAM file using zlib", false);
   TCLAP::SwitchArg quiet("q", "quiet", "Disable all console output apart from warnings and errors", false);
+  TCLAP::SwitchArg recoverOrphans("", "recoverOrphans", "perform orphan recovery to try and recover endpoints of orphaned reads", false);
+  TCLAP::SwitchArg noDovetail("", "noDovetail", "discard dovetailing mappings", false);
+  TCLAP::SwitchArg noOrphans("", "noOrphans", "discard orphaned mappings", false);
+
+  TCLAP::SwitchArg selAln("s", "selAln", "Perform selective alignment to validate mapping hits", false);
+  TCLAP::ValueArg<int16_t> gapOpenPen("", "go", "[only with selAln]: gap open penalty", false, 4, "positive integer");
+  TCLAP::ValueArg<int16_t> gapExtendPen("", "ge", "[only with selAln]: gap extend penalty", false, 2, "positive integer");
+  TCLAP::ValueArg<int16_t> mismatchPen("", "mm", "[only with selAln]: mismatch penalty", false, -4, "negative integer");
+  TCLAP::ValueArg<int16_t> matchScore("", "ma", "[only with selAln]: match score", false, 2, "positive integer");
+  TCLAP::ValueArg<int32_t> dpBandwidth("", "dpBandwidth", "[only with selAln]: bandwidth to use in extension alignment", false, 15, "positive integer");
+  TCLAP::ValueArg<double> minScoreFrac("", "minScoreFrac", "[only with selAln]: minimum score fraction for a valid alignment", false, 0.65, "ratio in (0,1]");
+  TCLAP::ValueArg<double> consensusSlack("", "consensusSlack", "[only with selAln]: consensus slack to apply during mapping", false, 0.2, "ratio in (0,1]");
+  TCLAP::SwitchArg hardFilter("", "hardFilter", "[only with selAln]: apply hard filter to only return best alignments for each read", false);
+  TCLAP::SwitchArg mimicBT2("", "mimicBT2", "[only with selAln]: mimic Bowtie2-like default params but with --no-mixed and --no-discordant", false);
+  TCLAP::SwitchArg mimicStrictBT2("", "mimicStrictBT2", "[only with selAln]: mimic strict Bowtie2-like default params (e.g. like those recommended for running RSEM)", false);
+  TCLAP::ValueArg<int32_t> maxMMPExtension("", "maxMMPExtension", "[only with selAln or with chaining]: maximum allowable MMP extension", false, 7, "positive integer > 1");
+
+
   cmd.add(index);
   cmd.add(noout);
 
@@ -590,10 +1023,25 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(nosensitive);
   cmd.add(noStrict);
   cmd.add(fuzzy);
-  cmd.add(consistent);
+  cmd.add(chain);
   cmd.add(compressedOutput);
   cmd.add(quiet);
-  
+  cmd.add(recoverOrphans);
+  cmd.add(noDovetail);
+  cmd.add(noOrphans);
+  cmd.add(selAln);
+  cmd.add(gapOpenPen);
+  cmd.add(gapExtendPen);
+  cmd.add(mismatchPen);
+  cmd.add(matchScore);
+  cmd.add(dpBandwidth);
+  cmd.add(minScoreFrac);
+  cmd.add(consensusSlack);
+  cmd.add(hardFilter);
+  cmd.add(mimicBT2);
+  cmd.add(mimicStrictBT2);
+  cmd.add(maxMMPExtension);
+
   auto consoleSink = std::make_shared<spdlog::sinks::ansicolor_stderr_sink_mt>();
   auto consoleLog = spdlog::create("stderrLog", {consoleSink});
 
@@ -635,7 +1083,7 @@ int rapMapSAMap(int argc, char* argv[]) {
 			"doesn't exist", indexPrefix);
       std::exit(1);
     }
-    
+
     MappingOpts mopts;
     if (pairedEnd) {
         mopts.read1 = read1.getValue();
@@ -651,16 +1099,81 @@ int rapMapSAMap(int argc, char* argv[]) {
     mopts.noOutput = noout.getValue();
     mopts.sensitive = !nosensitive.getValue();
     mopts.strictCheck = !noStrict.getValue();
-    mopts.consistentHits = consistent.getValue();
+    mopts.consistentHits = false;//consistent.getValue();
+    mopts.doChaining = chain.getValue();
     mopts.compressedOutput = compressedOutput.getValue();
     mopts.fuzzy = fuzzy.getValue();
     mopts.quiet = quiet.getValue();
+    mopts.noOrphans = noOrphans.getValue();
+    mopts.noDovetail = noDovetail.getValue();
+    mopts.maxMMPExtension = maxMMPExtension.getValue();
+
+    mopts.selAln = selAln.getValue();
+    if ( (mimicBT2.getValue() or mimicStrictBT2.getValue()) and !mopts.selAln ) {
+      consoleLog->info("--mimicBT2 and --mimicStrictBT2 imply --selAln, turning selective alignment on.");
+      mopts.selAln = true;
+    }
+
+    // selective alignment implies chaining
+    if(mopts.selAln) {
+      if (!mopts.doChaining) {
+        consoleLog->info("The --selAln option implies --chaining.  Setting --chaining to true.");
+        mopts.doChaining = true;
+      }
+      mopts.gapOpenPenalty = gapOpenPen.getValue();
+      mopts.gapExtendPenalty = gapExtendPen.getValue();
+      mopts.mismatchPenalty = mismatchPen.getValue();
+      mopts.matchScore = matchScore.getValue();
+      mopts.dpBandwidth = dpBandwidth.getValue();
+      mopts.minScoreFraction = minScoreFrac.getValue();
+      mopts.consensusSlack = consensusSlack.getValue();
+      mopts.hardFilter = hardFilter.getValue();
+      if (mimicBT2.getValue() and mimicStrictBT2.getValue()) {
+        consoleLog->info("Cannot set --mimicBT2 and --mimicStrictBT2 simultaneously.  Please choose one");
+        consoleLog->flush();
+        spdlog::drop_all();
+        std::exit(1);
+      }
+      if (mimicBT2.getValue()) {
+        consoleLog->info("Setting parameters implied by --mimicBT2.");
+        mopts.ap = selective_alignment::utils::AlignmentPolicy::BT2;
+        mopts.noOrphans = true;
+        mopts.noDovetail = true;
+        mopts.consensusSlack = 0.35;
+        mopts.maxNumHits = 1000;
+      }
+      if (mimicStrictBT2.getValue()) {
+        consoleLog->info("Setting parameters implied by --mimicStrictBT2.");
+        mopts.ap = selective_alignment::utils::AlignmentPolicy::BT2_STRICT;
+        mopts.noOrphans = true;
+        mopts.noDovetail = true;
+        mopts.consensusSlack = 0.35;
+        mopts.maxNumHits = 1000;
+        mopts.minScoreFraction = 0.8;
+        mopts.matchScore = 1;
+        mopts.mismatchPenalty = 0;
+        // NOTE: as a limitation of ksw2, we can't have
+        // (gapOpenPenalty + gapExtendPenalty) * 2 + matchScore < numeric_limits<int8_t>::max()
+        // these parameters below are sufficiently large penalties to
+        // prohibit gaps, while not overflowing the above condition
+        mopts.gapOpenPenalty = 25;
+        mopts.gapExtendPenalty = 25;
+      }
+    }
+
+    mopts.recoverOrphans = recoverOrphans.getValue();
 
     if (quasiCov.isSet() and nosensitive.isSet()) {
         consoleLog->info("The --quasiCoverage option is set to {}, but the --noSensitive flag was also set. The former forbids the later. Enabling sensitive mode.", quasiCov.getValue());
         mopts.sensitive = true;
     }
 
+    if (!validateOpts(mopts, consoleLog.get())) {
+        consoleLog->error("Failed to validate provided options!");
+        consoleLog->flush();
+        spdlog::drop_all();
+        std::exit(1);
+    }
     displayOpts(mopts, consoleLog.get());
 
     IndexHeader h;
