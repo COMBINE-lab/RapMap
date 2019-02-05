@@ -36,6 +36,7 @@
 #include "chobo/small_vector.hpp"
 #include "RapMapConfig.hpp"
 #include "nonstd/optional.hpp"
+#include "FastxParser.hpp"
 
 #ifdef RAPMAP_SALMON_SUPPORT
 #include "LibraryFormat.hpp"
@@ -821,6 +822,10 @@ namespace rapmap {
 
         std::string reverseComplement(std::string& seq);
 
+
+        uint32_t writeUnalignedSingleToStream(fastx_parser::ReadSeq& r, fmt::MemoryWriter& sstream);
+        uint32_t writeUnalignedPairToStream(fastx_parser::ReadPair& r, fmt::MemoryWriter& sstream);
+
         template <typename ReadPairT, typename IndexT>
         uint32_t writeAlignmentsToStream(
                 ReadPairT& r,
@@ -1262,7 +1267,7 @@ namespace rapmap {
     template <typename Archive>
     void save(Archive& archive, const my_mer& mer);
 
-    template <typename Archive>
+    teplate <typename Archive>
     void load(Archive& archive, my_mer& mer);
     */
     }

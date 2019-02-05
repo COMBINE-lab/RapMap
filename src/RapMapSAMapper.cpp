@@ -148,6 +148,7 @@ struct MappingOpts {
   bool noOrphans{false};
   bool noDovetail{false};
   bool recoverOrphans{false};
+  bool writeUnmapped{false};
 };
 
 using AlnCacheMap = selective_alignment::utils::AlnCacheMap;
@@ -315,15 +316,13 @@ void processReadsSingleSA(single_parser * parser,
               }
             }
 
-            if (hits.size() > 0 and !mopts->noOutput) {
-                /*
-                std::sort(hits.begin(), hits.end(),
-                            [](const QuasiAlignment& a, const QuasiAlignment& b) -> bool {
-                                return a.tid < b.tid;
-                            });
-                */
+            if (!mopts->noOutput){
+              if (hits.size() > 0) {
                 rapmap::utils::writeAlignmentsToStream(read, formatter,
                                                        hctr, hits, sstream);
+              } else {
+                rapmap::utils::writeUnalignedSingleToStream(read, sstream);
+              }
             }
 
             if (hctr.numReads > hctr.lastPrint + 1000000) {
@@ -702,9 +701,13 @@ void processReadsPairSA(paired_parser* parser,
             hctr.totHits += jointHits.size();
 
             // If we have reads to output, and we're writing output.
-            if (jointHits.size() > 0 and !mopts->noOutput and jointHits.size() <= mopts->maxNumHits) {
+            if (!mopts->noOutput) {
+              if (jointHits.size() > 0 and jointHits.size() <= mopts->maxNumHits) {
                 rapmap::utils::writeAlignmentsToStream(rpair, formatter,
                                                        hctr, jointHits, sstream);
+              } else {
+                rapmap::utils::writeUnalignedPairToStream(rpair, sstream);
+              }
             }
 
             if (hctr.numReads > hctr.lastPrint + 1000000) {
@@ -1001,10 +1004,11 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::SwitchArg chain("c", "chaining", "Score the hits to find the best chain", false);
   TCLAP::SwitchArg compressedOutput("x", "compressed", "Compress the output SAM file using zlib", false);
   TCLAP::SwitchArg quiet("q", "quiet", "Disable all console output apart from warnings and errors", false);
+  TCLAP::SwitchArg writeUnmapped("u", "writeUnmapped", "include unmapped reads in the output SAM records", false);
+
   TCLAP::SwitchArg recoverOrphans("", "recoverOrphans", "perform orphan recovery to try and recover endpoints of orphaned reads", false);
   TCLAP::SwitchArg noDovetail("", "noDovetail", "discard dovetailing mappings", false);
   TCLAP::SwitchArg noOrphans("", "noOrphans", "discard orphaned mappings", false);
-
   TCLAP::SwitchArg selAln("s", "selAln", "Perform selective alignment to validate mapping hits", false);
   TCLAP::ValueArg<int16_t> gapOpenPen("", "go", "[only with selAln]: gap open penalty", false, 4, "positive integer");
   TCLAP::ValueArg<int16_t> gapExtendPen("", "ge", "[only with selAln]: gap extend penalty", false, 2, "positive integer");
@@ -1026,6 +1030,7 @@ int rapMapSAMap(int argc, char* argv[]) {
   cmd.add(fuzzy);
   cmd.add(chain);
   cmd.add(quiet);
+  cmd.add(writeUnmapped);
   cmd.add(hardFilter);
   cmd.add(recoverOrphans);
   cmd.add(noDovetail);
@@ -1099,6 +1104,7 @@ int rapMapSAMap(int argc, char* argv[]) {
     } else {
         mopts.unmatedReads = unmatedReads.getValue();
     }
+    mopts.writeUnmapped = writeUnmapped.getValue();
     mopts.numThreads = numThreads.getValue();
     mopts.maxNumHits = maxNumHits.getValue();
     mopts.outname = (outname.isSet()) ? outname.getValue() : "";
