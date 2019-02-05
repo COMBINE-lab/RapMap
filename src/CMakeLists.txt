@@ -118,7 +118,9 @@ target_link_libraries(rapmap
     ${NON_APPLECLANG_LIBS}
     ${FAST_MALLOC_LIB}
     ${CMAKE_THREAD_LIBS_INIT}
+    ${LIBRT}
     ksw2pp
+    ${CMAKE_DL_LIBS}
     #${GAT_SOURCE_DIR}/external/install/lib/libjellyfish-2.0.a
     #${LIBLZMA_LIBRARIES}
 )
