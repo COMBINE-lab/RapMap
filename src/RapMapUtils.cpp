@@ -133,6 +133,99 @@ namespace rapmap {
             return work;
         }
 
+
+      uint32_t writeUnalignedPairToStream(fastx_parser::ReadPair& r,
+                                          fmt::MemoryWriter& sstream) {
+        constexpr uint16_t flags1 = 0x1 | 0x4 | 0x8 | 0x40;
+        constexpr uint16_t flags2 = 0x1 | 0x4 | 0x8 | 0x80;
+
+        auto processReadName = [](const std::string& name) -> fmt::StringRef {
+                                 nonstd::string_view readNameView(name);
+                                 // If the read name contains multiple space-separated parts,
+                                 // print only the first
+                                 size_t splitPos = readNameView.find(' ');
+                                 if (splitPos < readNameView.length()) {
+                                   readNameView.remove_suffix(readNameView.length() - splitPos);
+                                 } else {
+                                   splitPos = readNameView.length();
+                                 }
+
+                                 // trim /1 from the pe read
+                                 if (splitPos > 2 and readNameView[splitPos - 2] == '/') {
+                                   readNameView.remove_suffix(2);
+                                   //readName[splitPos - 2] = '\0';
+                                 }
+                                 return fmt::StringRef(readNameView.data(), readNameView.size());
+                               };
+
+        auto readNameView = processReadName(r.first.name);
+        auto mateNameView = processReadName(r.second.name);
+        std::string* readSeq1 = &(r.first.seq);
+        std::string* readSeq2 = &(r.second.seq);
+
+        sstream << readNameView << '\t' // QNAME
+                << flags1 << '\t'       // FLAGS
+                << "*\t"                // RNAME
+                << "0\t"                // POS (1-based)
+                << "255\t"              // MAPQ
+                << "*\t"                // CIGAR
+                << "*\t"                // RNEXT
+                << "*\t"                // PNEXT
+                << "0\t"                // TLEN
+                << *readSeq1 << '\t'    // SEQ
+                << "*\t"                // QUAL
+                << "NH:i:0\t"
+                << "HI:i:0\t"
+                << "AS:i:0\n";
+
+        sstream << mateNameView << '\t' // QNAME
+                << flags2 << '\t'       // FLAGS
+                << "*\t"                // RNAME
+                << "0\t"                // POS (1-based)
+                << "255\t"              // MAPQ
+                << "*\t"                // CIGAR
+                << "*\t"                // RNEXT
+                << "*\t"                // PNEXT
+                << "0\t"                // TLEN
+                << *readSeq2 << '\t'    // SEQ
+                << "*\t"                // QUAL
+                << "NH:i:0\t"
+                << "HI:i:0\t"
+                << "AS:i:0\n";
+        return 0;
+      }
+
+      uint32_t writeUnalignedSingleToStream(fastx_parser::ReadSeq& r,
+                                            fmt::MemoryWriter& sstream) {
+        constexpr uint16_t flags = 0x4;
+
+        nonstd::string_view readNameViewSV(r.name);
+        // If the read name contains multiple space-separated parts, print
+        // only the first
+        size_t splitPos = readNameViewSV.find(' ');
+        if (splitPos < readNameViewSV.length()) {
+          readNameViewSV.remove_suffix(readNameViewSV.size() - splitPos);
+        }
+        fmt::StringRef readNameView(readNameViewSV.data(), readNameViewSV.size());
+        std::string* readSeq = &(r.seq);
+
+        sstream << readNameView << '\t' // QNAME
+                << flags << '\t'    // FLAGS
+                << "*\t"            // RNAME
+                << 0 << '\t'        // POS (1-based)
+                << 255 << '\t'      // MAPQ
+                << "*\t"            // CIGAR
+                << "*\t"            // MATE NAME
+                << "0\t"            // MATE POS
+                << "0\t"            // TLEN
+                << *readSeq << '\t' // SEQ
+                << "*\t"            // QSTR
+                << "NH:i:0\t"
+                << "HI:i:0\t"
+                << "AS:i:0\n";
+        return 0;
+      }
+
         template <typename ReadT, typename IndexT>
         uint32_t writeAlignmentsToStream(
                 ReadT& r,
