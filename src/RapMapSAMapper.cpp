@@ -908,6 +908,15 @@ bool mapReads(RapMapIndexT& rmi,
 bool validateOpts(MappingOpts& mopts, spdlog::logger* log) {
   bool valid{true};
 
+  if (!mopts.selAln) {
+    log->warn("\n\n"
+              "NOTE: It appears you are running rapmap without the selective-alignment (`--selAln`) option.\n"
+              "Selective alignment can generally improve both the sensitivity and specificity of mapping,\n"
+              "with only a moderate increase in use of computational resources. \n"
+              "Unless there is a specific reason to do this (e.g. testing on clean simulated data),\n"
+              "`--selAln` is generally recommended.\n");
+  }
+
   if (mopts.maxMMPExtension < 1) {
     log->error("--maxMMPExtension must be at least 1, but {} was provided.", mopts.maxMMPExtension);
     valid = false;
@@ -1009,38 +1018,36 @@ int rapMapSAMap(int argc, char* argv[]) {
   TCLAP::SwitchArg mimicStrictBT2("", "mimicStrictBT2", "[only with selAln]: mimic strict Bowtie2-like default params (e.g. like those recommended for running RSEM)", false);
   TCLAP::ValueArg<int32_t> maxMMPExtension("", "maxMMPExtension", "[only with selAln or with chaining]: maximum allowable MMP extension", false, 7, "positive integer > 1");
 
-
-  cmd.add(index);
   cmd.add(noout);
-
-  cmd.add(read1);
-  cmd.add(read2);
-  cmd.add(unmatedReads);
-  cmd.add(outname);
-  cmd.add(numThreads);
   cmd.add(maxNumHits);
   cmd.add(quasiCov);
   cmd.add(nosensitive);
   cmd.add(noStrict);
   cmd.add(fuzzy);
   cmd.add(chain);
-  cmd.add(compressedOutput);
   cmd.add(quiet);
+  cmd.add(hardFilter);
   cmd.add(recoverOrphans);
   cmd.add(noDovetail);
   cmd.add(noOrphans);
-  cmd.add(selAln);
-  cmd.add(gapOpenPen);
+  cmd.add(dpBandwidth);
   cmd.add(gapExtendPen);
+  cmd.add(gapOpenPen);
   cmd.add(mismatchPen);
   cmd.add(matchScore);
-  cmd.add(dpBandwidth);
-  cmd.add(minScoreFrac);
   cmd.add(consensusSlack);
-  cmd.add(hardFilter);
-  cmd.add(mimicBT2);
-  cmd.add(mimicStrictBT2);
   cmd.add(maxMMPExtension);
+  cmd.add(minScoreFrac);
+  cmd.add(mimicStrictBT2);
+  cmd.add(mimicBT2);
+  cmd.add(selAln);
+  cmd.add(numThreads);
+  cmd.add(compressedOutput);
+  cmd.add(outname);
+  cmd.add(unmatedReads);
+  cmd.add(read2);
+  cmd.add(read1);
+  cmd.add(index);
 
   auto consoleSink = std::make_shared<spdlog::sinks::ansicolor_stderr_sink_mt>();
   auto consoleLog = spdlog::create("stderrLog", {consoleSink});
