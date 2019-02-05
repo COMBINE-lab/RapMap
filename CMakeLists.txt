@@ -88,6 +88,12 @@ endif()
 
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -funroll-loops -fPIC -fomit-frame-pointer -O4 -DHAVE_ANSI_TERM ${WALL} -std=c++14")
 
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CXXSTDFLAG "-std=c++14")
+set(GCCVERSION "5.2")
+
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
 
@@ -111,8 +117,12 @@ endif()
 set( BOOST_EXTRA_FLAGS "--layout=tagged" )
 ## this get's set differently below if we
 ## are on clang & apple
-set (NON_APPLECLANG_LIBS gomp rt)
+set (NON_APPLECLANG_LIBS gomp)
 set (PTHREAD_LIB)
+
+if(UNIX AND NOT APPLE)
+  set(LIBRT rt)
+endif()
 
 ##
 # Compiler-specific C++11 activation.
