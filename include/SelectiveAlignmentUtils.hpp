@@ -290,7 +290,7 @@ inline int32_t getAlnScore(
   // TODO : Determine what is the most "appropriate" penalty for
   // an overhang (based on the scoring function).
   bool invalidStart = (pos < 0);
-  bool invalidEnd = (pos + rlen >= tlen);
+  bool invalidEnd = (pos + rlen > tlen);
   if (invalidStart) { rptr += -pos; rlen += pos; pos = 0; }
 
   // if we are trying to mimic Bowtie2 with RSEM params

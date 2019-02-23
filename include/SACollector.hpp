@@ -61,8 +61,8 @@ public:
   void setStrictCheck(bool sc) { strictCheck_ = sc; }
 
   /** Get/Set usage of MMP chain scoring **/
-  void enableChainScoring() { doChaining_ = true; strictCheckSlack_ = 1; }
-  void disableChainScoring() { doChaining_ = false; strictCheckSlack_ = 0; }
+  void enableChainScoring() { doChaining_ = true; strictCheckFraction_ = 0.65; }
+  void disableChainScoring() { doChaining_ = false; strictCheckFraction_ = 1.0; }
   bool getChainScoring() const { return doChaining_; }
 
   /** Get/Set the "mohsen number" that is used to limit the
@@ -281,10 +281,14 @@ public:
       // If we're computing coverage, then we can make use of that info here
       //useCoverageCheck = false;
       if (useCoverageCheck) {
-        if (fwdCov > rcCov + strictCheckSlack_) {
-          rcSAInts.clear();
-        } else if (rcCov > fwdCov + strictCheckSlack_) {
+        auto maxCov = std::max(fwdCov, rcCov);
+        int32_t requiredNumHits = (strictCheckFraction_ < 1.0) ?
+          std::max(static_cast<int32_t>(1), static_cast<int32_t>(std::floor(maxCov * strictCheckFraction_))) : maxCov;
+        if (static_cast<int32_t>(fwdCov) < requiredNumHits) {
           fwdSAInts.clear();
+        }
+        if (static_cast<int32_t>(rcCov) < requiredNumHits) {
+          rcSAInts.clear();
         }
       } else { // use the k-mer "spot check"
         // The first two conditions shouldn't happen
@@ -684,7 +688,7 @@ private:
   bool strictCheck_;
   bool doChaining_;
   int32_t maxMMPExtension_{7};
-  int32_t strictCheckSlack_{0};
+  double strictCheckFraction_{1.0};
   std::string rcBuffer_;
 };
 
