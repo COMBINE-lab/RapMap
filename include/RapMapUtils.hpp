@@ -214,6 +214,7 @@ namespace rapmap {
         std::atomic<uint64_t> numReads{0};
         std::atomic<uint64_t> tooManyHits{0};
         std::atomic<uint64_t> lastPrint{0};
+        std::atomic<uint64_t> numDovetails{0};
     };
 
     class JFMerKeyHasher{
@@ -901,6 +902,8 @@ namespace rapmap {
                     }
                 }
             } else {
+                bool bestMappingIsDovetail = true;
+                bool hadOppositeStrandMapping = false;
                 constexpr const int32_t signedZero{0};
                 uint32_t sameTxpCount{0};
                 auto leftIt = leftHits.begin();
@@ -923,17 +926,20 @@ namespace rapmap {
                               ++sameTxpCount;
 
                               // returned tuple is fwPos, rcPos, gapLength
-                              auto findBestHitFWRC = [signedZero, considerMultiPos, allowDovetail](
+                              auto findBestHitFWRC = [signedZero, considerMultiPos, allowDovetail, &hadOppositeStrandMapping](
                                                                        chobo::small_vector<int32_t>& fwdHits,
                                                                        chobo::small_vector<int32_t>& rcHits,
-                                                                       int32_t fwdReadLen) ->
+                                                                       int32_t fwdReadLen,
+                                                                       bool& bestHitIsDovetail) ->
                                 nonstd::optional<std::tuple<int32_t, int32_t, int32_t>> {
 
                                 // If either of the position vectors is empty, there can be no valid
                                 // mapping.
                                 if (fwdHits.empty() or rcHits.empty()) {
+                                  bestHitIsDovetail = true;
                                   return nonstd::nullopt;
                                 }
+                                hadOppositeStrandMapping = true;
 
                                 // Remember the pair of positions that gives us the best gap
                                 // here, a gap of 0 is "optimal".
@@ -967,7 +973,7 @@ namespace rapmap {
                                   // so figure out the gap.
                                   if (rcPos >= fwdPos) {
                                     gap = std::abs(rcPos - (fwdPos + static_cast<int32_t>(fwdReadLen)));
-                                  } else if (allowDovetail) {
+                                  } else {
                                     // If the rc read is upstream of the fwd read, then compute the gap with dovetail penalty
                                     // if dovetails are allowed; otherwise leave it as maxGap.
                                     gap = (fwdPos - rcPos) + dovetailPenalty;
@@ -1008,8 +1014,14 @@ namespace rapmap {
                                 }
 
                                 // if we had a valid gap, return the best gap
-                                return (bestGap == std::numeric_limits<int32_t>::max()) ? nonstd::nullopt :
-                                nonstd::optional<std::tuple<int32_t, int32_t, int32_t>>(std::make_tuple(*bestFWPosIt, *bestRCPosIt, bestGap));
+                                bestHitIsDovetail = (bestGap >= dovetailPenalty);
+                                if (allowDovetail) {
+                                  return (bestGap <  std::numeric_limits<int32_t>::max()) ? nonstd::nullopt :
+                                  nonstd::optional<std::tuple<int32_t, int32_t, int32_t>>(std::make_tuple(*bestFWPosIt, *bestRCPosIt, bestGap));
+                                } else {
+                                  return (bestGap < dovetailPenalty) ? nonstd::nullopt :
+                                  nonstd::optional<std::tuple<int32_t, int32_t, int32_t>>(std::make_tuple(*bestFWPosIt, *bestRCPosIt, bestGap));
+                                }
                               };
 
 
@@ -1020,8 +1032,11 @@ namespace rapmap {
                               auto& rightFwdHits = (rightIt->fwd) ? rightIt->allPositions : rightIt->oppositeStrandPositions;
                               auto& rightRCHits  = (rightIt->fwd) ? rightIt->oppositeStrandPositions : rightIt->allPositions;
 
-                              auto bestFWRC = findBestHitFWRC(leftFwdHits, rightRCHits, static_cast<int32_t>(leftIt->readLen));
-                              auto bestRCFW = findBestHitFWRC(rightFwdHits, leftRCHits, static_cast<int32_t>(rightIt->readLen));
+                              bool bestHitIsDovetailFWRC{false};
+                              bool bestHitIsDovetailRCFW{false};
+                              auto bestFWRC = findBestHitFWRC(leftFwdHits, rightRCHits, static_cast<int32_t>(leftIt->readLen), bestHitIsDovetailFWRC);
+                              auto bestRCFW = findBestHitFWRC(rightFwdHits, leftRCHits, static_cast<int32_t>(rightIt->readLen), bestHitIsDovetailRCFW);
+                              bestMappingIsDovetail = (bestMappingIsDovetail and bestHitIsDovetailFWRC and bestHitIsDovetailRCFW);
 
                               bool foundValidHit{false};
                               bool leftFwd{false};
@@ -1177,6 +1192,7 @@ namespace rapmap {
                     }
                     //if (triedHit and jointHits.empty()) { tooManyHits = true;}
                 }
+                if (bestMappingIsDovetail and hadOppositeStrandMapping) { ++hctr.numDovetails; }
                 if (tooManyHits) { jointHits.clear(); ++hctr.tooManyHits; }
 
                 if (mergeRes == MergeResult::HAD_NONE) {
