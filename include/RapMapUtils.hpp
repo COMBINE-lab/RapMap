@@ -1016,10 +1016,10 @@ namespace rapmap {
                                 // if we had a valid gap, return the best gap
                                 bestHitIsDovetail = (bestGap >= dovetailPenalty);
                                 if (allowDovetail) {
-                                  return (bestGap <  std::numeric_limits<int32_t>::max()) ? nonstd::nullopt :
+                                  return (bestGap ==  std::numeric_limits<int32_t>::max()) ? nonstd::nullopt :
                                   nonstd::optional<std::tuple<int32_t, int32_t, int32_t>>(std::make_tuple(*bestFWPosIt, *bestRCPosIt, bestGap));
                                 } else {
-                                  return (bestGap < dovetailPenalty) ? nonstd::nullopt :
+                                  return (bestGap > dovetailPenalty) ? nonstd::nullopt :
                                   nonstd::optional<std::tuple<int32_t, int32_t, int32_t>>(std::make_tuple(*bestFWPosIt, *bestRCPosIt, bestGap));
                                 }
                               };
