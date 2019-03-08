@@ -86,6 +86,7 @@ namespace rapmap {
       bool doChaining{false};
       float consensusFraction{1.0};
       bool considerMultiPos{false};
+      bool allowDovetail{false};
     };
 
     // Positions are stored in a packed format, where the highest
@@ -876,7 +877,9 @@ namespace rapmap {
           using rapmap::utils::MergeResult;
           MergeResult mergeRes{MergeResult::HAD_NONE};
 
+          const constexpr int32_t dovetailPenalty = std::numeric_limits<int32_t>::max() / 2;
           bool considerMultiPos = mc.considerMultiPos;
+          bool allowDovetail = mc.allowDovetail;
             if (leftHits.empty()) {
                 if (!leftMatches) {
                     if (!rightHits.empty()) {
@@ -920,7 +923,7 @@ namespace rapmap {
                               ++sameTxpCount;
 
                               // returned tuple is fwPos, rcPos, gapLength
-                              auto findBestHitFWRC = [signedZero, considerMultiPos](
+                              auto findBestHitFWRC = [signedZero, considerMultiPos, allowDovetail](
                                                                        chobo::small_vector<int32_t>& fwdHits,
                                                                        chobo::small_vector<int32_t>& rcHits,
                                                                        int32_t fwdReadLen) ->
@@ -945,7 +948,7 @@ namespace rapmap {
                                 // gap than the current best, then update the best gap and remember these
                                 // positions that produced it.
                                 auto updateBestGap = [&bestGap, &bestFWPosIt, &bestRCPosIt,
-                                                      signedZero, fwdReadLen](
+                                                      signedZero, fwdReadLen, allowDovetail](
                                                                                    chobo::small_vector<int32_t>::iterator fwdPosIt,
                                                                                    chobo::small_vector<int32_t>::iterator rcPosIt
                                                                                    ) {
@@ -956,9 +959,19 @@ namespace rapmap {
                                   // we expect the rc read to be "downstream" of the fwd read.
                                   constexpr int32_t maxGap = std::numeric_limits<int32_t>::max();
 
-                                  int32_t gap = ((*rcPosIt) >= (*fwdPosIt)) ?
-                                  std::abs((*rcPosIt) - ((*fwdPosIt) + static_cast<int32_t>(fwdReadLen))) :
-                                  maxGap;
+                                  int32_t gap = maxGap;
+                                  int32_t fwdPos = *fwdPosIt;
+                                  int32_t rcPos = *rcPosIt;
+
+                                  // If the rc read is already downstream of the fwd read, then it's not dovetailed
+                                  // so figure out the gap.
+                                  if (rcPos >= fwdPos) {
+                                    std::abs(rcPos - (fwdPos + static_cast<int32_t>(fwdReadLen)));
+                                  } else if (allowDovetail) {
+                                    // If the rc read is upstream of the fwd read, then compute the gap with dovetail penalty
+                                    // if dovetails are allowed; otherwise leave it as maxGap.
+                                    gap = (fwdPos - rcPos) + dovetailPenalty;
+                                  }
 
                                   // if this is the best gap so far
                                   if (gap < bestGap) {
