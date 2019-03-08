@@ -966,7 +966,7 @@ namespace rapmap {
                                   // If the rc read is already downstream of the fwd read, then it's not dovetailed
                                   // so figure out the gap.
                                   if (rcPos >= fwdPos) {
-                                    std::abs(rcPos - (fwdPos + static_cast<int32_t>(fwdReadLen)));
+                                    gap = std::abs(rcPos - (fwdPos + static_cast<int32_t>(fwdReadLen)));
                                   } else if (allowDovetail) {
                                     // If the rc read is upstream of the fwd read, then compute the gap with dovetail penalty
                                     // if dovetails are allowed; otherwise leave it as maxGap.
