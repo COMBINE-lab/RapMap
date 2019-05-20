@@ -162,6 +162,18 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         txpLens[txpOffsets.size()-1] = (SA.size() - 1) - txpOffsets[txpOffsets.size() - 1];
     } 
 
+    std::string decoyBVFileName = indDir + "isdecoy.bin";
+    FILE* decoyBVFile = fopen(decoyBVFileName.c_str(), "r");
+    {
+      logger->info("Loading decoy bitvector.");
+      decoyArray.reset(bit_array_create(0));
+      if (!bit_array_load(decoyArray.get(), decoyBVFile)) {
+        logger->error("Couldn't load decoy vector from {}!", decoyBVFileName);
+        std::exit(1);
+      }
+      logger->info("Finished loading decoy bitvector.");
+    }
+
     logger->info("Waiting to finish loading hash");
     loadingHash.wait();
     auto hashLoadRes = loadingHash.get();

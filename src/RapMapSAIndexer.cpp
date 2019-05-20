@@ -448,6 +448,7 @@ bool buildHash(const std::string& outputDir, nonstd::string_view concatText,
 template <typename ParserT> //, typename CoverageCalculator>
 void indexTranscriptsSA(ParserT* parser,
                         std::string& outputDir,
+                        spp::sparse_hash_set<std::string>& decoyNames,
                         bool noClipPolyA, bool usePerfectHash,
                         uint32_t numHashThreads,
                         bool keepDuplicates,
@@ -471,6 +472,7 @@ void indexTranscriptsSA(ParserT* parser,
   uint32_t k = rapmap::utils::my_mer::k();
   std::vector<std::string> transcriptNames;
   std::vector<int64_t> transcriptStarts;
+  std::vector<int64_t> decoyIndices;
   // std::vector<uint32_t> positionIDs;
   constexpr char bases[] = {'A', 'C', 'G', 'T'};
   uint32_t polyAClipLength{10};
@@ -482,6 +484,7 @@ void indexTranscriptsSA(ParserT* parser,
   using KmerBinT = uint64_t;
 
   bool clipPolyA = !noClipPolyA;
+  bool haveDecoys = !decoyNames.empty();
 
   struct DupInfo {
     uint64_t txId;
@@ -531,6 +534,8 @@ void indexTranscriptsSA(ParserT* parser,
 
         // get the hash to check for collisions before we change anything.
         auto txStringHash = XXH64(reinterpret_cast<void*>(const_cast<char*>(readStr.data())), readLen, 0);
+        auto& readName = read.name;
+        bool isDecoy = (haveDecoys) ? decoyNames.contains(readName) : false;
 
         // First, replace non ATCG nucleotides
         for (size_t b = 0; b < readLen; ++b) {
@@ -570,7 +575,7 @@ void indexTranscriptsSA(ParserT* parser,
         if (readStr.size() > 0) {
           // If we're suspicious the user has fed in a *genome* rather
           // than a transcriptome, say so here.
-          if (readStr.size() >= tooLong) {
+          if (readStr.size() >= tooLong and !isDecoy) {
             log->warn("Entry with header [{}] was longer than {} nucleotides.  "
                       "Are you certain that "
                       "we are indexing a transcriptome and not a genome?",
@@ -622,6 +627,7 @@ void indexTranscriptsSA(ParserT* parser,
           transcriptStarts.push_back(currIndex);
           // The un-molested length of this transcript
           completeLengths.push_back(completeLen);
+          if (isDecoy) { decoyIndices.push_back(txpIndex); }
 
           // If we made it here, we were not an actual duplicate, so add this transcript
           // for future duplicate checking.
@@ -731,6 +737,19 @@ void indexTranscriptsSA(ParserT* parser,
   }
   seqStream.close();
 
+  // Save the bit vector that tells us what targets are decoys
+  BIT_ARRAY* decoyArray = bit_array_create(transcriptNames.size());
+  if (haveDecoys) {
+    for (auto i : decoyIndices) {
+      bit_array_set_bit(decoyArray, i);
+    }
+  }
+  std::string decoyBVFileName = outputDir + "isdecoy.bin";
+  FILE* decoyBVFile = fopen(decoyBVFileName.c_str(), "w");
+  bit_array_save(decoyArray, decoyBVFile);
+  fclose(decoyBVFile);
+  bit_array_free(decoyArray);
+
   // clear stuff we no longer need
   // positionIDs.clear();
   // positionIDs.shrink_to_fit();
@@ -788,7 +807,7 @@ void indexTranscriptsSA(ParserT* parser,
   //seqHasher.finish();
   //nameHasher.finish();
 
-  std::string indexVersion = "q5";
+  std::string indexVersion = "q6";
   IndexHeader header(IndexType::QUASI,
                      indexVersion,
                      true, k, largeIndex,
@@ -818,6 +837,22 @@ void indexTranscriptsSA(ParserT* parser,
   headerStream.close();
 }
 
+spp::sparse_hash_set<std::string> populateDecoyHash(const std::string& fname, std::shared_ptr<spdlog::logger> log) {
+  spp::sparse_hash_set<std::string> dset;
+  std::ifstream dfile(fname);
+
+  std::string dname;
+  while (dfile >> dname) {
+    auto it = dset.insert(dname);
+    if (!it.second) {
+      log->warn("The decoy name {} was encountered more than once --- please be sure all decoy names and sequences are unique.", dname);
+    }
+  }
+
+  dfile.close();
+  return dset;
+}
+
 int rapMapSAIndex(int argc, char* argv[]) {
   TCLAP::CmdLine cmd("RapMap Indexer");
   TCLAP::ValueArg<std::string> transcripts("t", "transcripts",
@@ -836,6 +871,9 @@ int rapMapSAIndex(int argc, char* argv[]) {
   TCLAP::SwitchArg noClip(
       "n", "noClip",
       "Don't clip poly-A tails from the ends of target sequences", false);
+  TCLAP::ValueArg<std::string> decoyList(
+                             "d", "decoys",
+                             "Treat these sequences as decoys that may have sequence homologous to some known transcript", false, "", "path");
   TCLAP::SwitchArg perfectHash(
       "p", "perfectHash", "Use a perfect hash instead of sparse hash --- "
                           "somewhat slows construction, but uses less memory",
@@ -859,6 +897,7 @@ int rapMapSAIndex(int argc, char* argv[]) {
   cmd.add(perfectHash);
   cmd.add(customSeps);
   cmd.add(numHashThreads);
+  cmd.add(decoyList);
   cmd.parse(argc, argv);
 
   // stupid parsing for now
@@ -899,10 +938,19 @@ int rapMapSAIndex(int argc, char* argv[]) {
   std::vector<spdlog::sink_ptr> sinks{consoleSink, fileSink};
   auto jointLog = spdlog::create("jointLog", std::begin(sinks), std::end(sinks));
 
+  spp::sparse_hash_set<std::string> decoyNames;
+  if (decoyList.isSet()) {
+    std::string decoyFileName = decoyList.getValue();
+    bool decoyFileExists = rapmap::fs::FileExists(decoyFileName.c_str());
+    if (!decoyFileExists) {
+      jointLog->error("The decoy file {} does not exist.", decoyFileName);
+      std::exit(1);
+    }
+    decoyNames = populateDecoyHash(decoyFileName, jointLog);
+  }
+
   size_t numThreads{1};
-
   std::unique_ptr<single_parser> transcriptParserPtr{nullptr};
-
   size_t numProd = 1;
   transcriptParserPtr.reset(
 			    new single_parser(transcriptFiles, numThreads, numProd));
@@ -912,7 +960,7 @@ int rapMapSAIndex(int argc, char* argv[]) {
   bool keepDuplicates = keepDuplicatesSwitch.getValue();
   uint32_t numPerfectHashThreads = numHashThreads.getValue();
   std::mutex iomutex;
-  indexTranscriptsSA(transcriptParserPtr.get(), indexDir, noClipPolyA,
+  indexTranscriptsSA(transcriptParserPtr.get(), indexDir, decoyNames, noClipPolyA,
                      usePerfectHash, numPerfectHashThreads, keepDuplicates, sepStr, iomutex, jointLog);
 
   // Output info about the reference

@@ -70,6 +70,7 @@ class RapMapSAIndex {
     std::vector<IndexT> SA;
 
     BitArrayPointer bitArray{nullptr};
+    BitArrayPointer decoyArray{nullptr};
     std::unique_ptr<rank9b> rankDict{nullptr};
 
     std::string seq;
