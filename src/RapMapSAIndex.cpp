@@ -93,6 +93,12 @@ IndexT RapMapSAIndex<IndexT, HashT>::transcriptAtPosition(IndexT p) {
     return rankDict->rank(p);
 }
 
+// Return true if the corresponding bit in the decoyArray is set
+template <typename IndexT, typename HashT>
+bool RapMapSAIndex<IndexT, HashT>::isDecoy(IndexT p) {
+  return (decoyArray) ? bit_array_get_bit(decoyArray.get(), p) : false;
+}
+
 template <typename IndexT, typename HashT>
 bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
 

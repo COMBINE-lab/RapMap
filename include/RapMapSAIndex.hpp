@@ -64,7 +64,7 @@ class RapMapSAIndex {
   	// Given a position, p, in the concatenated text,
   	// return the corresponding transcript
   	IndexT transcriptAtPosition(IndexT p);
-
+    bool isDecoy(IndexT p);
     bool load(const std::string& indDir);
 
     std::vector<IndexT> SA;
