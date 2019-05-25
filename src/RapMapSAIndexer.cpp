@@ -548,7 +548,6 @@ void indexTranscriptsSA(ParserT* parser,
         // we haven't seen any decoys yet.  Otherwise we are violating
         // the condition that decoys must come last.
         if (!isDecoy and sawDecoy) {
-          parser->stop();
           log->critical("Observed a non-decoy sequence [{}] after having already observed a decoy. "
                         "However, it is required that any decoy target records appear, consecutively, "
                         "at the end of the input fasta file.  Please re-format your input file so that "
@@ -556,7 +555,8 @@ void indexTranscriptsSA(ParserT* parser,
                         "(non-decoy) records", readName);
           log->flush();
           spdlog::drop_all();
-          throw std::logic_error("Input fasta file contained out-of-order decoy targets.");
+          std::exit(1);
+          //throw std::logic_error("Input fasta file contained out-of-order decoy targets.");
         }
 
         // First, replace non ATCG nucleotides
