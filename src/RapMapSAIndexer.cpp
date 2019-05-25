@@ -472,7 +472,15 @@ void indexTranscriptsSA(ParserT* parser,
   uint32_t k = rapmap::utils::my_mer::k();
   std::vector<std::string> transcriptNames;
   std::vector<int64_t> transcriptStarts;
-  std::vector<int64_t> decoyIndices;
+
+  // Keep track of if we've seen a decoy sequence yet.
+  // The index enforces that all decoy sequences are consecutive, and that
+  // they come after all valid (non-decoy) sequences.  If we see a non-decoy
+  // sequence after having observed a decoy, then we complain and exit.
+  bool sawDecoy{false};
+  uint64_t numberOfDecoys{0};
+  uint64_t firstDecoyIndex{std::numeric_limits<uint64_t>::max()};
+
   // std::vector<uint32_t> positionIDs;
   constexpr char bases[] = {'A', 'C', 'G', 'T'};
   uint32_t polyAClipLength{10};
@@ -536,6 +544,19 @@ void indexTranscriptsSA(ParserT* parser,
         auto txStringHash = XXH64(reinterpret_cast<void*>(const_cast<char*>(readStr.data())), readLen, 0);
         auto& readName = read.name;
         bool isDecoy = (haveDecoys) ? decoyNames.contains(readName) : false;
+        // If this is *not* a decoy sequence, make sure that
+        // we haven't seen any decoys yet.  Otherwise we are violating
+        // the condition that decoys must come last.
+        if (!isDecoy and sawDecoy) {
+          log->critical("Observed a non-decoy sequence [{}] after having already observed a decoy. "
+                        "However, it is required that any decoy target records appear, consecutively, "
+                        "at the end of the input fasta file.  Please re-format your input file so that "
+                        "all decoy records appear contiguously at the end of the file, after all valid "
+                        "(non-decoy) records", readName);
+          log->flush();
+          spdlog::drop_all();
+          throw std::logic_error("Input fasta file contained out-of-order decoy targets.");
+        }
 
         // First, replace non ATCG nucleotides
         for (size_t b = 0; b < readLen; ++b) {
@@ -627,7 +648,18 @@ void indexTranscriptsSA(ParserT* parser,
           transcriptStarts.push_back(currIndex);
           // The un-molested length of this transcript
           completeLengths.push_back(completeLen);
-          if (isDecoy) { decoyIndices.push_back(txpIndex); }
+          if (isDecoy) {
+            // if we haven't seen another decoy yet, this is the first decoy
+            // index
+            if (!sawDecoy) {
+              firstDecoyIndex = txpIndex;
+            }
+            // once we see the first decoy, saw decoy is set to true
+            // for the rest of the processing.
+            sawDecoy = true;
+            ++numberOfDecoys;
+            //decoyIndices.push_back(txpIndex);
+          }
 
           // If we made it here, we were not an actual duplicate, so add this transcript
           // for future duplicate checking.
@@ -733,10 +765,15 @@ void indexTranscriptsSA(ParserT* parser,
     //seqArchive(concatText);
 
     seqArchive(completeLengths);
+
+    seqArchive(numberOfDecoys);
+    seqArchive(firstDecoyIndex);
+
     log->info("done");
   }
   seqStream.close();
 
+  /*
   // Save the bit vector that tells us what targets are decoys
   BIT_ARRAY* decoyArray = bit_array_create(transcriptNames.size());
   if (haveDecoys) {
@@ -749,6 +786,7 @@ void indexTranscriptsSA(ParserT* parser,
   bit_array_save(decoyArray, decoyBVFile);
   fclose(decoyBVFile);
   bit_array_free(decoyArray);
+  */
 
   // clear stuff we no longer need
   // positionIDs.clear();

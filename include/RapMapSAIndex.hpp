@@ -65,12 +65,15 @@ class RapMapSAIndex {
   	// return the corresponding transcript
   	IndexT transcriptAtPosition(IndexT p);
     bool isDecoy(IndexT p);
+    uint64_t getNumDecoys();
     bool load(const std::string& indDir);
 
     std::vector<IndexT> SA;
 
     BitArrayPointer bitArray{nullptr};
-    BitArrayPointer decoyArray{nullptr};
+    uint64_t numDecoys{0};
+    uint64_t firstDecoyIndex{std::numeric_limits<uint64_t>::max()};
+  //BitArrayPointer decoyArray{nullptr};
     std::unique_ptr<rank9b> rankDict{nullptr};
 
     std::string seq;

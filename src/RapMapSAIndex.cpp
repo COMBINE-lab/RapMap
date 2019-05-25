@@ -96,7 +96,14 @@ IndexT RapMapSAIndex<IndexT, HashT>::transcriptAtPosition(IndexT p) {
 // Return true if the corresponding bit in the decoyArray is set
 template <typename IndexT, typename HashT>
 bool RapMapSAIndex<IndexT, HashT>::isDecoy(IndexT p) {
-  return (decoyArray) ? bit_array_get_bit(decoyArray.get(), p) : false;
+  return (numDecoys > 0 and p >= static_cast<int64_t>(firstDecoyIndex));
+  //return (decoyArray) ? bit_array_get_bit(decoyArray.get(), p) : false;
+}
+
+// Return true if the corresponding bit in the decoyArray is set
+template <typename IndexT, typename HashT>
+uint64_t RapMapSAIndex<IndexT, HashT>::getNumDecoys() {
+  return numDecoys;
 }
 
 template <typename IndexT, typename HashT>
@@ -137,6 +144,8 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         //seqArchive(positionIDs);
         seqArchive(seq);
         seqArchive(txpCompleteLens);
+        seqArchive(numDecoys);
+        seqArchive(firstDecoyIndex);
     }
     seqStream.close();
 
@@ -166,8 +175,9 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         }
         // The last length is just the length of the suffix array - the last offset
         txpLens[txpOffsets.size()-1] = (SA.size() - 1) - txpOffsets[txpOffsets.size() - 1];
-    } 
+    }
 
+    /*
     std::string decoyBVFileName = indDir + "isdecoy.bin";
     FILE* decoyBVFile = fopen(decoyBVFileName.c_str(), "r");
     {
@@ -179,6 +189,7 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
       }
       logger->info("Finished loading decoy bitvector.");
     }
+    */
 
     logger->info("Waiting to finish loading hash");
     loadingHash.wait();
