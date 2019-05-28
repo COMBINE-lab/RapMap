@@ -140,12 +140,12 @@ bool RapMapSAIndex<IndexT, HashT>::load(const std::string& indDir) {
         logger->info("Loading Transcript Info ");
         cereal::BinaryInputArchive seqArchive(seqStream);
         seqArchive(txpNames);
+        seqArchive(numDecoys);
+        seqArchive(firstDecoyIndex);
         seqArchive(txpOffsets);
         //seqArchive(positionIDs);
         seqArchive(seq);
         seqArchive(txpCompleteLens);
-        seqArchive(numDecoys);
-        seqArchive(firstDecoyIndex);
     }
     seqStream.close();
 

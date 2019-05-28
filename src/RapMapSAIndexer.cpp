@@ -747,6 +747,9 @@ void indexTranscriptsSA(ParserT* parser,
     log->info("Writing sequence data to file . . . ");
     cereal::BinaryOutputArchive seqArchive(seqStream);
     seqArchive(transcriptNames);
+    seqArchive(numberOfDecoys);
+    seqArchive(firstDecoyIndex);
+
     if (largeIndex) {
       seqArchive(transcriptStarts);
     } else {
@@ -766,10 +769,6 @@ void indexTranscriptsSA(ParserT* parser,
     //seqArchive(concatText);
 
     seqArchive(completeLengths);
-
-    seqArchive(numberOfDecoys);
-    seqArchive(firstDecoyIndex);
-
     log->info("done");
   }
   seqStream.close();
