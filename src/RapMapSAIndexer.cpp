@@ -468,6 +468,8 @@ void indexTranscriptsSA(ParserT* parser,
   //picosha2::hash256_one_by_one seqHasher; seqHasher.init();
   //picosha2::hash256_one_by_one nameHasher; nameHasher.init();
 
+  bool firstRecord{true};
+  bool hasGencodeSep = (sepStr.find('|') != std::string::npos);
   uint32_t n{0};
   uint32_t k = rapmap::utils::my_mer::k();
   std::vector<std::string> transcriptNames;
@@ -543,6 +545,18 @@ void indexTranscriptsSA(ParserT* parser,
         // get the hash to check for collisions before we change anything.
         auto txStringHash = XXH64(reinterpret_cast<void*>(const_cast<char*>(readStr.data())), readLen, 0);
         auto& readName = read.name;
+
+        // check if we think this is a gencode transcriptome, and the user has not passed the gencode flag
+        if (firstRecord and !hasGencodeSep) {
+          constexpr const size_t numGencodeSep{8};
+          if ( std::count(readName.begin(), readName.end(), '|') == numGencodeSep ) {
+            log->warn("It appears that this may be a GENCODE transcriptome (from analyzing the separators in the FASTA header).  However, "
+                      "you have not set \'|\' as a header separator.  If this is a GENCODE transcriptome, consider passing --gencode to the "
+                      "salmon index command.\n\n");
+          }
+          firstRecord = false;
+        }
+
         bool isDecoy = (haveDecoys) ? decoyNames.contains(readName) : false;
         // If this is *not* a decoy sequence, make sure that
         // we haven't seen any decoys yet.  Otherwise we are violating
