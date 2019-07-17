@@ -54,6 +54,8 @@ class IndexHeader {
                 ar( cereal::make_nvp("NameHash", nameHash256_) );
                 ar( cereal::make_nvp("SeqHash512", seqHash512_) );
                 ar( cereal::make_nvp("NameHash512", nameHash512_) );
+                ar( cereal::make_nvp("DecoySeqHash", decoySeqHash256_) );
+                ar( cereal::make_nvp("DecoyNameHash", decoyNameHash256_) );
             }
 
         template <typename Archive>
@@ -69,6 +71,8 @@ class IndexHeader {
                 ar( cereal::make_nvp("NameHash", nameHash256_) );
                 ar( cereal::make_nvp("SeqHash512", seqHash512_) );
                 ar( cereal::make_nvp("NameHash512", nameHash512_) );
+                ar( cereal::make_nvp("DecoySeqHash", decoySeqHash256_) );
+                ar( cereal::make_nvp("DecoyNameHash", decoyNameHash256_) );
             } catch (const cereal::Exception& e) {
                 auto cerrLog = spdlog::get("stderrLog");
                 cerrLog->error("Encountered exception [{}] when loading index.", e.what());
@@ -91,10 +95,16 @@ class IndexHeader {
         std::string seqHash256() const { return seqHash256_; }
         std::string nameHash256() const { return nameHash256_; }
 
+        void setDecoySeqHash256(const std::string& seqHash) { decoySeqHash256_ = seqHash; }
+        void setDecoyNameHash256(const std::string& nameHash) { decoyNameHash256_ = nameHash; }
+        std::string decoySeqHash256() const { return decoySeqHash256_; }
+        std::string decoyNameHash256() const { return decoyNameHash256_; }
+
         void setSeqHash512(const std::string& seqHash) { seqHash512_ = seqHash; }
         void setNameHash512(const std::string& nameHash) { nameHash512_ = nameHash; }
         std::string seqHash512() const { return seqHash512_; }
         std::string nameHash512() const { return nameHash512_; }
+
     private:
         // The type of index we have
         IndexType type_;
@@ -117,6 +127,10 @@ class IndexHeader {
         std::string seqHash512_;
         // Hash of sequence names in txome
         std::string nameHash512_;
+        // Hash of the names of decoys
+        std::string decoyNameHash256_;
+        // Hash of the sequences of decoys
+        std::string decoySeqHash256_;
 };
 
 

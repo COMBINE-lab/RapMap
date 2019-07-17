@@ -465,8 +465,11 @@ void indexTranscriptsSA(ParserT* parser,
   digestpp::sha256 nameHasher256;
   digestpp::sha512 seqHasher512;
   digestpp::sha512 nameHasher512;
-  //picosha2::hash256_one_by_one seqHasher; seqHasher.init();
-  //picosha2::hash256_one_by_one nameHasher; nameHasher.init();
+
+  digestpp::sha256 decoySeqHasher256;
+  digestpp::sha256 decoyNameHasher256;
+
+
 
   bool firstRecord{true};
   bool hasGencodeSep = (sepStr.find('|') != std::string::npos);
@@ -536,9 +539,6 @@ void indexTranscriptsSA(ParserT* parser,
                            [](const char a) -> bool { return !(isprint(a)); }),
             readStr.end());
 
-        seqHasher256.absorb(readStr.begin(), readStr.end());
-        seqHasher512.absorb(readStr.begin(), readStr.end());
-
         uint32_t readLen = readStr.size();
         uint32_t completeLen = readLen;
 
@@ -571,6 +571,14 @@ void indexTranscriptsSA(ParserT* parser,
           spdlog::drop_all();
           std::exit(1);
           //throw std::logic_error("Input fasta file contained out-of-order decoy targets.");
+        }
+
+        // If this was a decoy, add it to the decoy hash
+        if (isDecoy) {
+          decoySeqHasher256.absorb(readStr.begin(), readStr.end());
+        } else { // otherwise the ref hash
+          seqHasher256.absorb(readStr.begin(), readStr.end());
+          seqHasher512.absorb(readStr.begin(), readStr.end());
         }
 
         // First, replace non ATCG nucleotides
@@ -656,8 +664,12 @@ void indexTranscriptsSA(ParserT* parser,
 
           // If there was no collision, then add the transcript
           transcriptNames.emplace_back(processedName);
-          nameHasher256.absorb(processedName.begin(), processedName.end());
-          nameHasher512.absorb(processedName.begin(), processedName.end());
+          if (isDecoy) {
+            decoyNameHasher256.absorb(processedName.begin(), processedName.end());
+          } else {
+            nameHasher256.absorb(processedName.begin(), processedName.end());
+            nameHasher512.absorb(processedName.begin(), processedName.end());
+          }
 
           // The position at which this transcript starts
           transcriptStarts.push_back(currIndex);
@@ -869,10 +881,15 @@ void indexTranscriptsSA(ParserT* parser,
   std::string nameHash256 = nameHasher256.hexdigest();
   std::string seqHash512 = seqHasher512.hexdigest();
   std::string nameHash512 = nameHasher512.hexdigest();
+  std::string decoySeqHash256 = decoySeqHasher256.hexdigest();
+  std::string decoyNameHash256 = decoyNameHasher256.hexdigest();
+
   header.setSeqHash256(seqHash256);
   header.setNameHash256(nameHash256);
   header.setSeqHash512(seqHash512);
   header.setNameHash512(nameHash512);
+  header.setDecoySeqHash256(decoySeqHash256);
+  header.setDecoyNameHash256(decoyNameHash256);
   //std::string seqHash;
   //std::string nameHash;
   //picosha2::get_hash_hex_string(seqHasher, seqHash);
